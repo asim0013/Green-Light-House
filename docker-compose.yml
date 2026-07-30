@@ -1,0 +1,64 @@
+# GREENLIGHTHOUSE — dev/prod-parity stack (Story 1.1).
+# Services: app, worker, postgres, redis, minio (S3-compatible), clamav.
+# NOTE: could not be booted in the authoring environment (no Docker); verify with
+# `docker compose up` on a Docker-capable machine (closes Story 1.1 AC3).
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    env_file: .env
+    depends_on:
+      - postgres
+      - redis
+      - minio
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    env_file: .env
+    depends_on:
+      - redis
+      - postgres
+      - clamav
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: glh
+      POSTGRES_PASSWORD: glh
+      POSTGRES_DB: greenlighthouse
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+
+  clamav:
+    image: clamav/clamav:latest
+    ports:
+      - "3310:3310"
+
+volumes:
+  pgdata:
+  miniodata:

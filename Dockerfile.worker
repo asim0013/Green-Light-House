@@ -1,0 +1,11 @@
+# syntax=docker/dockerfile:1
+# GREENLIGHTHOUSE BullMQ worker (email send + retry, ClamAV scan orchestration — Epic 3).
+# Story 1.1 ships a stub entry so the service is present and healthy in compose.
+
+FROM node:22-alpine
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+ENV NODE_ENV=production
+CMD ["npx", "tsx", "worker/index.ts"]
