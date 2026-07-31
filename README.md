@@ -1,36 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GREENLIGHTHOUSE
 
-## Getting Started
+B2B product-intelligence website for project-based supply of industrial + fire-rescue/protective equipment. **Not a store** — no prices, no cart, no checkout. EN/TR/RU. Built on Next.js 16 (App Router) + TypeScript + Tailwind + Prisma/PostgreSQL + Redis. See [`CLAUDE.md`](./CLAUDE.md) for engineering conventions.
 
-First, run the development server:
+## Prerequisites
+
+- **Node.js 22+** and npm
+- **Docker** (only for the full local stack — Postgres/Redis/MinIO/ClamAV/worker)
+
+## Local setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env      # required — fill in as needed
+npm run dev               # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Full stack via Docker
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The app, worker, and backing services (Postgres, Redis, MinIO, ClamAV) run via Docker Compose.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+cp .env.example .env      # REQUIRED FIRST — compose reads env_file: .env
+docker compose up -d
+```
 
-## Learn More
+> First boot pulls several images and builds the app/worker (multi-minute). **ClamAV** downloads virus definitions on startup and can sit "starting" for a few minutes before healthy.
 
-To learn more about Next.js, take a look at the following resources:
+Services: `app` (:3000) · `worker` · `postgres` (:5432) · `redis` (:6379) · `minio` (:9000, console :9001) · `clamav` (:3310).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Scripts
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Script | Purpose |
+|---|---|
+| `npm run dev` | Dev server (Turbopack) |
+| `npm run build` / `start` | Production build / serve |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run test` / `test:watch` | Vitest (unit, co-located) |
+| `npm run test:e2e` | Playwright (run `npx playwright install` once first) |
+| `npm run format` / `format:check` | Prettier |
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+CI (`.github/workflows/ci.yml`) runs lint + typecheck + build + test on push to `main` and on PRs.
