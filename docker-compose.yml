@@ -1,9 +1,9 @@
-# GREENLIGHTHOUSE — dev/prod-parity stack (Story 1.1).
+# GREENLIGHTHOUSE — dev/prod-parity stack.
 # Services: app, worker, postgres, redis, minio (S3-compatible), clamav.
 # SETUP: run `cp .env.example .env` BEFORE `docker compose up` — the app/worker
-#        services below use `env_file: .env`, which must exist or compose errors.
-# NOTE: could not be booted in the authoring environment (no Docker); verify with
-# `docker compose up` on a Docker-capable machine (closes Story 1.1 AC3).
+#        services use `env_file: .env`, which must exist or compose errors.
+# Healthchecks + `depends_on: condition: service_healthy` (Story 1.2) ensure the
+# app/worker only start once their backing services accept connections.
 
 services:
   app:
@@ -14,9 +14,12 @@ services:
       - "3000:3000"
     env_file: .env
     depends_on:
-      - postgres
-      - redis
-      - minio
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
 
   worker:
     build:
@@ -24,9 +27,12 @@ services:
       dockerfile: Dockerfile.worker
     env_file: .env
     depends_on:
-      - redis
-      - postgres
-      - clamav
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
 
   postgres:
     image: postgres:17-alpine
@@ -38,11 +44,22 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glh -d greenlighthouse"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   minio:
     image: minio/minio:latest
@@ -55,8 +72,16 @@ services:
       - "9001:9001"
     volumes:
       - miniodata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   clamav:
+    # The clamav/clamav image ships its own HEALTHCHECK (clamd readiness); it
+    # reports "starting" until virus DBs load (can take a few minutes), then "healthy".
     image: clamav/clamav:latest
     ports:
       - "3310:3310"

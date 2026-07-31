@@ -8,6 +8,25 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: glh
+          POSTGRES_PASSWORD: glh
+          POSTGRES_DB: greenlighthouse
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U glh -d greenlighthouse"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://glh:glh@localhost:5432/greenlighthouse?schema=public
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -15,6 +34,8 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
+      - run: npx prisma generate
+      - run: npx prisma migrate deploy
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build

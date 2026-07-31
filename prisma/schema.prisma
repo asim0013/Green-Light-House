@@ -1,0 +1,377 @@
+// GREENLIGHTHOUSE — Product Intelligence Database (PID)
+// Story 1.2. Relational source of truth for catalog/search/projects.
+// Conventions (CLAUDE.md / architecture): models PascalCase singular, @@map to
+// snake_case plural; columns snake_case via @map; PK id; FK <entity>_id;
+// created_at/updated_at. Every human-readable field lives in a *_translations
+// table keyed (<entity>_id, locale). NO price anywhere (FR2).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Locale {
+  en
+  tr
+  ru
+}
+
+enum PublishStatus {
+  draft
+  published
+}
+
+enum DocumentType {
+  datasheet
+  certificate
+  catalog
+  manual
+  drawing
+}
+
+enum LeadStatus {
+  new
+  in_review
+  quoted
+  closed
+}
+
+enum LeadSource {
+  project
+  product
+  industry
+  direct
+}
+
+enum MatchType {
+  direct
+  variant
+  alternative
+}
+
+model Industry {
+  id           String                @id @default(cuid())
+  slug         String                @unique
+  createdAt    DateTime              @default(now()) @map("created_at")
+  updatedAt    DateTime              @updatedAt @map("updated_at")
+  translations IndustryTranslation[]
+  products     ProductIndustry[]
+  documents    DocumentIndustry[]
+  services     ServiceIndustry[]
+  projects     Project[]
+
+  @@map("industries")
+}
+
+model IndustryTranslation {
+  id          String   @id @default(cuid())
+  industryId  String   @map("industry_id")
+  locale      Locale
+  name        String
+  description String?
+  industry    Industry @relation(fields: [industryId], references: [id], onDelete: Cascade)
+
+  @@unique([industryId, locale])
+  @@map("industry_translations")
+}
+
+model Manufacturer {
+  id           String                    @id @default(cuid())
+  slug         String                    @unique
+  logoUrl      String?                   @map("logo_url")
+  createdAt    DateTime                  @default(now()) @map("created_at")
+  updatedAt    DateTime                  @updatedAt @map("updated_at")
+  translations ManufacturerTranslation[]
+  series       Series[]
+  products     Product[]
+  documents    Document[]
+
+  @@map("manufacturers")
+}
+
+model ManufacturerTranslation {
+  id             String       @id @default(cuid())
+  manufacturerId String       @map("manufacturer_id")
+  locale         Locale
+  name           String
+  description    String?
+  manufacturer   Manufacturer @relation(fields: [manufacturerId], references: [id], onDelete: Cascade)
+
+  @@unique([manufacturerId, locale])
+  @@map("manufacturer_translations")
+}
+
+model Category {
+  id           String                @id @default(cuid())
+  slug         String                @unique
+  parentId     String?               @map("parent_id")
+  createdAt    DateTime              @default(now()) @map("created_at")
+  updatedAt    DateTime              @updatedAt @map("updated_at")
+  parent       Category?             @relation("CategoryChildren", fields: [parentId], references: [id])
+  children     Category[]            @relation("CategoryChildren")
+  translations CategoryTranslation[]
+  products     Product[]
+
+  @@map("categories")
+}
+
+model CategoryTranslation {
+  id         String   @id @default(cuid())
+  categoryId String   @map("category_id")
+  locale     Locale
+  name       String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, locale])
+  @@map("category_translations")
+}
+
+model Series {
+  id             String              @id @default(cuid())
+  slug           String              @unique
+  manufacturerId String              @map("manufacturer_id")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  manufacturer   Manufacturer        @relation(fields: [manufacturerId], references: [id])
+  translations   SeriesTranslation[]
+  products       Product[]
+
+  @@map("series")
+}
+
+model SeriesTranslation {
+  id       String @id @default(cuid())
+  seriesId String @map("series_id")
+  locale   Locale
+  name     String
+  series   Series @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  @@unique([seriesId, locale])
+  @@map("series_translations")
+}
+
+model Product {
+  id             String        @id @default(cuid())
+  model          String
+  slug           String        @unique
+  manufacturerId String        @map("manufacturer_id")
+  categoryId     String        @map("category_id")
+  seriesId       String?       @map("series_id")
+  status         PublishStatus @default(draft)
+  // Typed technical spec as key/values (JSONB) — flexible for sparse launch + import (Q2).
+  attributes     Json          @default("{}")
+  media          Json          @default("[]")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  // NO price field — GLH never exposes prices (FR2).
+
+  manufacturer    Manufacturer             @relation(fields: [manufacturerId], references: [id])
+  category        Category                 @relation(fields: [categoryId], references: [id])
+  series          Series?                  @relation(fields: [seriesId], references: [id])
+  translations    ProductTranslation[]
+  industries      ProductIndustry[]
+  documents       Document[]
+  projects        ProjectProduct[]
+  accessories     AccessoryCompatibility[] @relation("ProductAccessories")
+  accessoryOf     AccessoryCompatibility[] @relation("AccessoryProduct")
+  crossReferences CrossReference[]
+
+  @@map("products")
+}
+
+model ProductTranslation {
+  id          String  @id @default(cuid())
+  productId   String  @map("product_id")
+  locale      Locale
+  name        String
+  description String?
+  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, locale])
+  @@map("product_translations")
+}
+
+model Document {
+  id             String       @id @default(cuid())
+  slug           String       @unique
+  type           DocumentType
+  // file_key points at the CURRENT version's stored object; the public path (slug)
+  // is stable across replacements (FR25a).
+  fileKey        String       @map("file_key")
+  mime           String?
+  sizeBytes      Int?         @map("size_bytes")
+  version        Int          @default(1)
+  isPublic       Boolean      @default(true) @map("is_public")
+  productId      String?      @map("product_id")
+  manufacturerId String?      @map("manufacturer_id")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  product      Product?              @relation(fields: [productId], references: [id], onDelete: SetNull)
+  manufacturer Manufacturer?         @relation(fields: [manufacturerId], references: [id], onDelete: SetNull)
+  translations DocumentTranslation[]
+  industries   DocumentIndustry[]
+
+  @@map("documents")
+}
+
+model DocumentTranslation {
+  id         String   @id @default(cuid())
+  documentId String   @map("document_id")
+  locale     Locale
+  title      String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, locale])
+  @@map("document_translations")
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  slug        String        @unique
+  industryId  String?       @map("industry_id")
+  status      PublishStatus @default(draft)
+  media       Json          @default("[]")
+  deliveredAt DateTime?     @map("delivered_at")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  industry     Industry?            @relation(fields: [industryId], references: [id], onDelete: SetNull)
+  translations ProjectTranslation[]
+  products     ProjectProduct[]
+
+  @@map("projects")
+}
+
+model ProjectTranslation {
+  id          String  @id @default(cuid())
+  projectId   String  @map("project_id")
+  locale      Locale
+  title       String
+  description String?
+  outcome     String?
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, locale])
+  @@map("project_translations")
+}
+
+model Service {
+  id           String               @id @default(cuid())
+  slug         String               @unique
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+  translations ServiceTranslation[]
+  industries   ServiceIndustry[]
+
+  @@map("services")
+}
+
+model ServiceTranslation {
+  id          String  @id @default(cuid())
+  serviceId   String  @map("service_id")
+  locale      Locale
+  name        String
+  description String?
+  service     Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, locale])
+  @@map("service_translations")
+}
+
+// Written now so the model exists; the RFQ that creates leads is Epic 3,
+// the admin that reads/deletes them is Epic 4. Not built here.
+model Lead {
+  id             String     @id @default(cuid())
+  industry       String?
+  equipment      Json       @default("[]")
+  projectDetails String?    @map("project_details")
+  quantities     String?
+  company        String
+  name           String
+  email          String
+  phone          String?
+  country        String?
+  locale         Locale?
+  attachmentKey  String?    @map("attachment_key")
+  consent        Boolean    @default(false)
+  consentAt      DateTime?  @map("consent_at")
+  status         LeadStatus @default(new)
+  source         LeadSource @default(direct)
+  prefillContext Json       @default("{}") @map("prefill_context")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+
+  @@map("leads")
+}
+
+// --- Many-to-many join models ---
+
+model ProductIndustry {
+  productId  String   @map("product_id")
+  industryId String   @map("industry_id")
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  industry   Industry @relation(fields: [industryId], references: [id], onDelete: Cascade)
+
+  @@id([productId, industryId])
+  @@map("product_industries")
+}
+
+model DocumentIndustry {
+  documentId String   @map("document_id")
+  industryId String   @map("industry_id")
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  industry   Industry @relation(fields: [industryId], references: [id], onDelete: Cascade)
+
+  @@id([documentId, industryId])
+  @@map("document_industries")
+}
+
+model ServiceIndustry {
+  serviceId  String   @map("service_id")
+  industryId String   @map("industry_id")
+  service    Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  industry   Industry @relation(fields: [industryId], references: [id], onDelete: Cascade)
+
+  @@id([serviceId, industryId])
+  @@map("service_industries")
+}
+
+model ProjectProduct {
+  projectId String  @map("project_id")
+  productId String  @map("product_id")
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, productId])
+  @@map("project_products")
+}
+
+// --- Phased relations: tables created now, populated later (FR18 / FR6.3) ---
+
+model AccessoryCompatibility {
+  productId          String  @map("product_id")
+  accessoryProductId String  @map("accessory_product_id")
+  product            Product @relation("ProductAccessories", fields: [productId], references: [id], onDelete: Cascade)
+  accessory          Product @relation("AccessoryProduct", fields: [accessoryProductId], references: [id], onDelete: Cascade)
+
+  @@id([productId, accessoryProductId])
+  @@map("accessory_compatibilities")
+}
+
+model CrossReference {
+  id            String    @id @default(cuid())
+  productId     String    @map("product_id")
+  externalBrand String    @map("external_brand")
+  externalModel String    @map("external_model")
+  matchType     MatchType @map("match_type")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([externalBrand, externalModel])
+  @@map("cross_references")
+}
