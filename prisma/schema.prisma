@@ -372,6 +372,6 @@ model CrossReference {
   createdAt     DateTime  @default(now()) @map("created_at")
   product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  @@unique([externalBrand, externalModel])
+  @@unique([externalBrand, externalModel, productId])
   @@map("cross_references")
 }

@@ -330,7 +330,7 @@ CREATE UNIQUE INDEX "services_slug_key" ON "services"("slug");
 CREATE UNIQUE INDEX "service_translations_service_id_locale_key" ON "service_translations"("service_id", "locale");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "cross_references_external_brand_external_model_key" ON "cross_references"("external_brand", "external_model");
+CREATE UNIQUE INDEX "cross_references_external_brand_external_model_product_id_key" ON "cross_references"("external_brand", "external_model", "product_id");
 
 -- AddForeignKey
 ALTER TABLE "industry_translations" ADD CONSTRAINT "industry_translations_industry_id_fkey" FOREIGN KEY ("industry_id") REFERENCES "industries"("id") ON DELETE CASCADE ON UPDATE CASCADE;

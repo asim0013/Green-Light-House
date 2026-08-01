@@ -13,25 +13,28 @@ const TEST_SLUG = "zzz-int-test-industry";
 let dbReachable = false;
 
 beforeAll(async () => {
+  // The whole setup (connectivity AND schema-dependent seed) must succeed for the
+  // suite to run. If Postgres is unreachable OR reachable-but-unmigrated, any step
+  // here throws and we leave dbReachable=false so the tests skip cleanly rather
+  // than erroring the suite. CI applies migrations first, so it runs for real.
   try {
     await prisma.$queryRaw`SELECT 1`;
+    await prisma.industry.deleteMany({ where: { slug: TEST_SLUG } });
+    await prisma.industry.create({
+      data: {
+        slug: TEST_SLUG,
+        translations: {
+          create: [
+            { locale: "en", name: "Integration EN" },
+            { locale: "tr", name: "Integration TR" },
+          ],
+        },
+      },
+    });
     dbReachable = true;
   } catch {
     dbReachable = false;
-    return;
   }
-  await prisma.industry.deleteMany({ where: { slug: TEST_SLUG } });
-  await prisma.industry.create({
-    data: {
-      slug: TEST_SLUG,
-      translations: {
-        create: [
-          { locale: "en", name: "Integration EN" },
-          { locale: "tr", name: "Integration TR" },
-        ],
-      },
-    },
-  });
 });
 
 afterAll(async () => {
