@@ -5,6 +5,7 @@ import { Inter, Geist_Mono } from "next/font/google";
 import { hasLocale, NextIntlClientProvider, type Locale } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { routing } from "@/i18n/routing";
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 import "../globals.css";
 
 // Inter covers latin + latin-ext (Turkish) + cyrillic (Russian) — required so
@@ -55,7 +56,15 @@ export default async function LocaleLayout(props: {
   return (
     <html lang={locale} className={`${inter.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col">
-        <NextIntlClientProvider>{props.children}</NextIntlClientProvider>
+        <NextIntlClientProvider>
+          {/* TEMPORARY header (Story 1.4) — hosts the language switcher until the
+              real global nav/footer lands in Story 1.6. Minimal styling, no nav
+              links / phone / CTA yet (that's 1.6). */}
+          <header className="flex justify-end border-b border-zinc-200 px-6 py-3 dark:border-zinc-800">
+            <LanguageSwitcher />
+          </header>
+          {props.children}
+        </NextIntlClientProvider>
       </body>
     </html>
   );

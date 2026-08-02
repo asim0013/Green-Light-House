@@ -9,4 +9,7 @@ import { defineRouting } from "next-intl/routing";
 export const routing = defineRouting({
   locales: ["en", "tr", "ru"],
   defaultLocale: "en",
+  // `localeCookie` is enabled by default (`NEXT_LOCALE`): navigating through the
+  // next-intl middleware/navigation APIs remembers the chosen locale, so a later
+  // request to `/` redirects to it (Story 1.4 persistence — do not disable).
 });

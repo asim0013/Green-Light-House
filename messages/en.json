@@ -6,6 +6,9 @@
   "Common": {
     "shownInEnglish": "shown in English"
   },
+  "LanguageSwitcher": {
+    "label": "Language"
+  },
   "Home": {
     "title": "Industries",
     "subtitle": "Localization framework preview — content falls back to English where a translation is missing."

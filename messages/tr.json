@@ -6,6 +6,9 @@
   "Common": {
     "shownInEnglish": "İngilizce gösteriliyor"
   },
+  "LanguageSwitcher": {
+    "label": "Dil"
+  },
   "Home": {
     "title": "Sektörler",
     "subtitle": "Yerelleştirme çerçevesi önizlemesi — çeviri eksik olduğunda içerik İngilizceye döner."
