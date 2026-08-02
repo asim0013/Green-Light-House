@@ -33,18 +33,18 @@ test("switches locale, preserves route, marks active, and persists via cookie", 
   await page.goto("/en");
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Industries");
-  await expect(page.getByRole("link", { name: "English" })).toHaveAttribute("aria-current", "true");
+  await expect(page.getByRole("link", { name: "English" })).toHaveAttribute("aria-current", "page");
 
   // Switch to Turkish via the switcher → same route (home), new locale.
   await page.getByRole("link", { name: "Türkçe" }).click();
   await expect(page).toHaveURL(/\/tr\/?$/);
   await expect(page.locator("html")).toHaveAttribute("lang", "tr");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Sektörler");
-  await expect(page.getByRole("link", { name: "Türkçe" })).toHaveAttribute("aria-current", "true");
+  await expect(page.getByRole("link", { name: "Türkçe" })).toHaveAttribute("aria-current", "page");
   // Previously-active locale is no longer marked.
   await expect(page.getByRole("link", { name: "English" })).not.toHaveAttribute(
     "aria-current",
-    "true",
+    "page",
   );
 
   // Persists across a reload (cookie, not just the URL).
