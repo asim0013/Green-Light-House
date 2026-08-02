@@ -11,8 +11,9 @@ import { routing } from "./i18n/routing";
  *
  * Composition seam: the `/[locale]/admin` Auth.js session guard (Story 4.1)
  * wraps around `handleI18nRouting` here — run i18n routing first, then gate
- * admin routes on the resulting (possibly rewritten) path. Kept as a named
- * `proxy` function for that reason rather than a bare default export.
+ * admin routes on the resulting (possibly rewritten) path. Written as an
+ * explicit (default-exported) `proxy` function so that wrapping is a one-liner,
+ * rather than `export default createMiddleware(routing)` directly.
  */
 const handleI18nRouting = createMiddleware(routing);
 

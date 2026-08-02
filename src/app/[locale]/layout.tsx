@@ -29,6 +29,8 @@ export async function generateMetadata(props: {
   params: Promise<{ locale: Locale }>;
 }): Promise<Metadata> {
   const { locale } = await props.params;
+  // Set the request locale so metadata stays consistent under static rendering.
+  setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: "Meta" });
   return {
     title: t("title"),

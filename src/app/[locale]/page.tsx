@@ -1,5 +1,7 @@
-import type { Locale as PrismaLocale } from "@prisma/client";
-import { getTranslations, setRequestLocale } from "next-intl/server";
+import { hasLocale } from "next-intl";
+import { getTranslations } from "next-intl/server";
+import { notFound } from "next/navigation";
+import { routing } from "@/i18n/routing";
 import { listIndustries } from "@/server/repositories/industry";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 
@@ -19,12 +21,16 @@ export const dynamic = "force-dynamic";
  */
 export default async function LocaleHome(props: { params: Promise<{ locale: string }> }) {
   const { locale } = await props.params;
-  setRequestLocale(locale);
+  // Self-validate the segment rather than relying on the sibling layout's guard
+  // order (App Router renders layout and page concurrently). This also narrows
+  // `locale` to the routing union — assignable to the Prisma enum, so no cast.
+  if (!hasLocale(routing.locales, locale)) {
+    notFound();
+  }
 
-  const t = await getTranslations("Home");
-  // routing.locales are the same three tokens as the Prisma `Locale` enum, and the
-  // layout already validated the segment via `hasLocale`.
-  const industries = await listIndustries(locale as PrismaLocale);
+  // Locale passed explicitly — no `setRequestLocale` needed on a force-dynamic page.
+  const t = await getTranslations({ locale, namespace: "Home" });
+  const industries = await listIndustries(locale);
 
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-16">
