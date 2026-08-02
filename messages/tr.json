@@ -1,0 +1,17 @@
+{
+  "Meta": {
+    "title": "GREENLIGHTHOUSE",
+    "description": "Proje tedariki için endüstriyel ve yangın güvenliği ekipmanları."
+  },
+  "Common": {
+    "shownInEnglish": "İngilizce gösteriliyor"
+  },
+  "Home": {
+    "title": "Sektörler",
+    "subtitle": "Yerelleştirme çerçevesi önizlemesi — çeviri eksik olduğunda içerik İngilizceye döner."
+  },
+  "NotFound": {
+    "title": "Sayfa bulunamadı",
+    "description": "Aradığınız sayfa mevcut değil."
+  }
+}

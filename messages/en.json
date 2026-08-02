@@ -1,0 +1,17 @@
+{
+  "Meta": {
+    "title": "GREENLIGHTHOUSE",
+    "description": "Industrial and fire-safety equipment for project supply."
+  },
+  "Common": {
+    "shownInEnglish": "shown in English"
+  },
+  "Home": {
+    "title": "Industries",
+    "subtitle": "Localization framework preview — content falls back to English where a translation is missing."
+  },
+  "NotFound": {
+    "title": "Page not found",
+    "description": "The page you are looking for does not exist."
+  }
+}
