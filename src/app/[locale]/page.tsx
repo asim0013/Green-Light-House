@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { listIndustries } from "@/server/repositories/industry";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
+import { Kicker, SectionHeader, Button, Chip, DarkBand, TwoColumn } from "@/components/ui";
 
 // SSR per request — this reads live DB content, so it must not be baked into the
 // static build (a build must not require a running Postgres). Real catalog pages
@@ -33,19 +34,65 @@ export default async function LocaleHome(props: { params: Promise<{ locale: stri
   const industries = await listIndustries(locale);
 
   return (
-    <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-16">
-      <h1 className="text-3xl font-semibold tracking-tight">{t("title")}</h1>
-      <p className="mt-2 text-zinc-600 dark:text-zinc-400">{t("subtitle")}</p>
+    <main className="mx-auto w-full max-w-[1240px] flex-1 px-6 py-16">
+      <Kicker>GREENLIGHTHOUSE</Kicker>
+      <h1 className="mt-2 font-heading text-3xl font-bold tracking-tight text-ink md:text-4xl">
+        {t("title")}
+      </h1>
+      <p className="mt-2 text-ink-2">{t("subtitle")}</p>
 
-      <ul className="mt-8 divide-y divide-zinc-200 dark:divide-zinc-800">
+      <ul className="mt-8 border-t border-border-subtle">
         {industries.map((industry) => (
-          <li key={industry.id} className="py-3">
+          <li key={industry.id} className="border-b border-border-subtle py-3 font-body text-ink">
             {/* Mark the fallen-back English content with lang="en" (AC4). */}
             <span lang={industry.isFallback ? "en" : undefined}>{industry.name}</span>
             <FallbackNotice isFallback={industry.isFallback} />
           </li>
         ))}
       </ul>
+
+      {/*
+        Primitive showcase (Story 1.5) — TEMPORARY, non-localized demo content so
+        each base primitive is exercised at least once. Real pages (1.6 nav, 1.7
+        homepage) compose these with next-intl copy and replace this scaffold.
+      */}
+      <section className="mt-16">
+        <SectionHeader
+          kicker="Design system"
+          title="Primitives in use"
+          sub="Temporary showcase — tokens, typography, and base components."
+          action={<Button variant="link">View components</Button>}
+        />
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <Button variant="primary">Primary action</Button>
+          <Button variant="secondary">Secondary</Button>
+          <Chip>ATEX Zone 1</Chip>
+          <Chip variant="outline" cert>
+            ISO 9001
+          </Chip>
+        </div>
+      </section>
+
+      <DarkBand className="mt-8 px-8 py-10">
+        <TwoColumn
+          sideWidth={220}
+          main={
+            <div>
+              <Kicker>Delivered</Kicker>
+              <p className="mt-2 font-heading text-2xl font-bold text-white">Proof over promise.</p>
+              <p className="mt-2 text-on-dark-text">
+                Ink band using the fill-container main + fixed-width side pattern.
+              </p>
+            </div>
+          }
+          side={
+            <div className="flex flex-col gap-2">
+              <Button variant="onDarkPrimary">Get a quote</Button>
+              <Button variant="onDarkSecondary">Call us</Button>
+            </div>
+          }
+        />
+      </DarkBand>
     </main>
   );
 }

@@ -17,7 +17,7 @@ const LOCALE_LABELS: Record<(typeof routing.locales)[number], string> = {
 };
 
 const LINK_BASE =
-  "rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-zinc-900";
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2";
 
 /**
  * Persistent language switcher (Story 1.4). Route-preserving: each entry links to
@@ -51,8 +51,8 @@ export function LanguageSwitcher() {
                 aria-current={isActive ? "page" : undefined}
                 className={`${LINK_BASE} ${
                   isActive
-                    ? "font-semibold text-zinc-900 underline underline-offset-4 dark:text-zinc-50"
-                    : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
+                    ? "font-semibold text-accent underline underline-offset-4"
+                    : "text-ink-2 hover:text-ink"
                 }`}
               >
                 {LOCALE_LABELS[loc]}

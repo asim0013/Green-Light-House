@@ -1,27 +1,60 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/*
+ * GREENLIGHTHOUSE design tokens (Story 1.5) — DESIGN.md is authoritative.
+ * Light-only palette: there is no user dark mode; "dark" is the explicit `ink`
+ * band primitive (DarkBand). Do not add `dark:` variants.
+ */
+@theme {
+  /* Colors — exact hexes from DESIGN.md */
+  --color-surface: #ffffff; /* page background */
+  --color-surface-2: #f5f7fa; /* inset panels, thumbnails, table headers, chips */
+  --color-ink: #14181f; /* primary text + dark credibility/CTA bands */
+  --color-ink-2: #5a6470; /* body copy, secondary text */
+  --color-muted: #8a93a0; /* tertiary labels, meta (LARGE / non-essential only) */
+  --color-accent: #0e2f57; /* deep navy — the single action color */
+  --color-accent-soft: #5c86b5; /* steel — kickers on dark, secondary data accent */
+  --color-brand: #159a5b; /* green — LOGO MARK ONLY + new/success dot */
+  --color-border-subtle: #e6e9ee; /* all hairlines, card & table borders */
+
+  /* On-dark helpers — only inside `ink` bands/panels */
+  --color-on-dark-text: #c2c9d2;
+  --color-on-dark-border: #2a3340;
+  --color-on-dark-panel: #1b222e;
+
+  /* Status palette — admin leads + availability */
+  --color-status-new: #159a5b; /* green */
+  --color-status-review: #c2870b; /* amber */
+  --color-status-quoted: #0e2f57; /* navy (= accent) */
+  --color-status-closed: #8a93a0; /* muted */
+
+  /* Sharp corners everywhere — override Tailwind's radius scale to 0 (DESIGN.md). */
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+  --radius-2xl: 0;
+  --radius-3xl: 0;
+  --radius-4xl: 0;
 }
 
+/*
+ * Font tokens (inline so utilities emit the family stacks directly). Geist and
+ * Geist Mono have NO cyrillic subset, so the heading/mono stacks fall back to
+ * Inter / IBM Plex Mono (both cover cyrillic) — otherwise Russian headings and
+ * mono labels would render as tofu. Families are set on <html> by next/font.
+ */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-inter);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-heading: var(--font-geist), var(--font-inter), system-ui, sans-serif; /* Geist */
+  --font-body: var(--font-inter), system-ui, sans-serif; /* Inter */
+  --font-mono:
+    var(--font-geist-mono), var(--font-ibm-plex-mono), ui-monospace, monospace; /* Geist Mono */
+  --font-data: var(--font-ibm-plex-mono), ui-monospace, monospace; /* IBM Plex Mono */
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  /* Loaded sans (Inter — covers latin/latin-ext/cyrillic) with a system fallback. */
-  font-family: var(--font-sans), system-ui, Arial, sans-serif;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-inter), system-ui, sans-serif;
 }
