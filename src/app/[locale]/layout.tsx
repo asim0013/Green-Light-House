@@ -5,7 +5,8 @@ import { Inter, Geist, Geist_Mono, IBM_Plex_Mono } from "next/font/google";
 import { hasLocale, NextIntlClientProvider, type Locale } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { routing } from "@/i18n/routing";
-import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
+import { SiteHeader } from "@/components/layout/SiteHeader";
+import { SiteFooter } from "@/components/layout/SiteFooter";
 import "../globals.css";
 
 // The four DESIGN.md families (Story 1.5). Geist / Geist Mono have NO cyrillic
@@ -76,13 +77,12 @@ export default async function LocaleLayout(props: {
     >
       <body className="flex min-h-full flex-col">
         <NextIntlClientProvider>
-          {/* TEMPORARY header (Story 1.4) — hosts the language switcher until the
-              real global nav/footer lands in Story 1.6. Minimal styling, no nav
-              links / phone / CTA yet (that's 1.6). */}
-          <header className="flex justify-end border-b border-border-subtle px-6 py-3">
-            <LanguageSwitcher />
-          </header>
-          {props.children}
+          <SiteHeader />
+          {/* Single <main> for the whole locale segment — the skip-link target. */}
+          <main id="main-content" className="flex-1">
+            {props.children}
+          </main>
+          <SiteFooter />
         </NextIntlClientProvider>
       </body>
     </html>

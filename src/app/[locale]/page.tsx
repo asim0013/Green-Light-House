@@ -34,7 +34,7 @@ export default async function LocaleHome(props: { params: Promise<{ locale: stri
   const industries = await listIndustries(locale);
 
   return (
-    <main className="mx-auto w-full max-w-[1240px] flex-1 px-6 py-16">
+    <div className="mx-auto w-full max-w-[1240px] px-6 py-16">
       <h1 className="font-heading text-3xl font-bold tracking-tight text-ink md:text-4xl">
         {t("title")}
       </h1>
@@ -92,6 +92,6 @@ export default async function LocaleHome(props: { params: Promise<{ locale: stri
           }
         />
       </DarkBand>
-    </main>
+    </div>
   );
 }

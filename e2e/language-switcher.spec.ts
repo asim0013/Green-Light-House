@@ -29,20 +29,30 @@ test("switches locale, preserves route, marks active, and persists via cookie", 
 }) => {
   test.skip(!dbReady, "seeded Postgres not reachable");
 
+  // The switcher now appears in both the header and the footer (Story 1.6); scope
+  // to the header so the accessible-name locators resolve to a single element.
+  const header = page.getByRole("banner");
+
   // Start in English; the active locale is marked.
   await page.goto("/en");
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Industries");
-  await expect(page.getByRole("link", { name: "English" })).toHaveAttribute("aria-current", "page");
+  await expect(header.getByRole("link", { name: "English" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
 
   // Switch to Turkish via the switcher → same route (home), new locale.
-  await page.getByRole("link", { name: "Türkçe" }).click();
+  await header.getByRole("link", { name: "Türkçe" }).click();
   await expect(page).toHaveURL(/\/tr\/?$/);
   await expect(page.locator("html")).toHaveAttribute("lang", "tr");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Sektörler");
-  await expect(page.getByRole("link", { name: "Türkçe" })).toHaveAttribute("aria-current", "page");
+  await expect(header.getByRole("link", { name: "Türkçe" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   // Previously-active locale is no longer marked.
-  await expect(page.getByRole("link", { name: "English" })).not.toHaveAttribute(
+  await expect(header.getByRole("link", { name: "English" })).not.toHaveAttribute(
     "aria-current",
     "page",
   );

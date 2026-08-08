@@ -16,5 +16,28 @@
   "NotFound": {
     "title": "Page not found",
     "description": "The page you are looking for does not exist."
+  },
+  "Nav": {
+    "primaryNav": "Primary",
+    "industries": "Industries",
+    "products": "Products",
+    "projects": "Projects",
+    "services": "Services",
+    "about": "About",
+    "requestQuote": "Request Project Quote",
+    "phoneLabel": "Call us",
+    "menu": "Menu",
+    "close": "Close",
+    "skipToContent": "Skip to content"
+  },
+  "Footer": {
+    "tagline": "Industrial and fire-safety equipment for project supply.",
+    "explore": "Explore",
+    "legal": "Legal",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Use",
+    "cookies": "Cookies",
+    "city": "İstanbul",
+    "rights": "All rights reserved"
   }
 }

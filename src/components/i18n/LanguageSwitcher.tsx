@@ -6,9 +6,10 @@ import { Link, usePathname } from "@/i18n/navigation";
 import { routing } from "@/i18n/routing";
 
 /**
- * Endonyms — each language shown in its own name. These are language-neutral
- * literals (English is always "English", etc.), so they are NOT translated per
- * UI locale; the switcher's accessible group label IS localized (via messages).
+ * Endonyms — each language's own name. Used as the accessible name (`aria-label`)
+ * of each entry; the VISIBLE label is the short locale code (DESIGN "switcher mono
+ * 12"). Language-neutral literals, so not translated per UI locale; the switcher's
+ * group label IS localized (via messages).
  */
 const LOCALE_LABELS: Record<(typeof routing.locales)[number], string> = {
   en: "English",
@@ -48,14 +49,13 @@ export function LanguageSwitcher() {
                 href={href}
                 locale={loc}
                 lang={loc}
+                aria-label={LOCALE_LABELS[loc]}
                 aria-current={isActive ? "page" : undefined}
-                className={`${LINK_BASE} ${
-                  isActive
-                    ? "font-semibold text-accent underline underline-offset-4"
-                    : "text-ink-2 hover:text-ink"
+                className={`${LINK_BASE} font-mono text-xs uppercase tracking-wide ${
+                  isActive ? "font-semibold text-accent" : "text-ink-2 hover:text-ink"
                 }`}
               >
-                {LOCALE_LABELS[loc]}
+                {loc.toUpperCase()}
               </Link>
             </li>
           );

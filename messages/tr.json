@@ -16,5 +16,28 @@
   "NotFound": {
     "title": "Sayfa bulunamadı",
     "description": "Aradığınız sayfa mevcut değil."
+  },
+  "Nav": {
+    "primaryNav": "Birincil",
+    "industries": "Sektörler",
+    "products": "Ürünler",
+    "projects": "Projeler",
+    "services": "Hizmetler",
+    "about": "Hakkımızda",
+    "requestQuote": "Proje Teklifi İsteyin",
+    "phoneLabel": "Bizi arayın",
+    "menu": "Menü",
+    "close": "Kapat",
+    "skipToContent": "İçeriğe geç"
+  },
+  "Footer": {
+    "tagline": "Proje tedariki için endüstriyel ve yangın güvenliği ekipmanları.",
+    "explore": "Keşfet",
+    "legal": "Yasal",
+    "privacy": "Gizlilik Politikası",
+    "terms": "Kullanım Koşulları",
+    "cookies": "Çerezler",
+    "city": "İstanbul",
+    "rights": "Tüm hakları saklıdır"
   }
 }
