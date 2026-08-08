@@ -17,7 +17,7 @@ export function FallbackNotice({ isFallback }: { isFallback: boolean }) {
   if (!shouldShowFallbackNotice(isFallback)) return null;
 
   return (
-    <span className="ml-2 align-middle text-xs font-normal text-zinc-500 dark:text-zinc-400">
+    <span className="ml-2 align-middle text-xs font-normal text-ink-2">
       ({t("shownInEnglish")})
     </span>
   );

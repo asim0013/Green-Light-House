@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
 
 /**
- * DarkBand (Story 1.5) — a full-bleed `ink` credibility/CTA band. Inside it,
- * headings are white, kickers `accent-soft`, hairlines `on-dark-border`, and
- * raised panels `on-dark-panel`; buttons use the `onDark*` variants (never navy).
- * Page-level edge-to-edge bleed is composed by the layout in 1.6/1.7 — this
- * primitive provides the surface + on-dark text tokens.
+ * DarkBand (Story 1.5) — an `ink` credibility/CTA band. It provides the dark
+ * surface + on-dark text tokens: inside it, headings are white, kickers
+ * `accent-soft`, hairlines `on-dark-border`, raised panels `on-dark-panel`, and
+ * buttons use the `onDark*` variants (never navy). This primitive does NOT bleed
+ * on its own — edge-to-edge full-bleed is composed by the page layout in 1.6/1.7
+ * (place it outside the max-width container).
  */
 export function DarkBand({
   children,

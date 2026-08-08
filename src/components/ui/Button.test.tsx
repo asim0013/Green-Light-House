@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
 import { buttonClasses } from "./buttonClasses";
+import { Button } from "./Button";
 
 describe("buttonClasses", () => {
   it("primary → accent navy fill, white label", () => {
@@ -40,7 +42,24 @@ describe("buttonClasses", () => {
   });
 
   it("defaults to primary and appends a custom className", () => {
-    expect(buttonClasses()).toBe(buttonClasses("primary"));
     expect(buttonClasses("primary", "mt-4")).toContain("mt-4");
+    expect(buttonClasses()).toBe(buttonClasses("primary"));
+  });
+});
+
+describe("Button", () => {
+  it("defaults to type=button (never auto-submits a form)", () => {
+    const html = renderToStaticMarkup(<Button>Go</Button>);
+    expect(html).toContain('type="button"');
+  });
+
+  it("link variant renders a trailing arrow icon", () => {
+    const html = renderToStaticMarkup(<Button variant="link">More</Button>);
+    expect(html).toContain("<svg");
+  });
+
+  it("non-link variants render no icon", () => {
+    const html = renderToStaticMarkup(<Button variant="primary">Save</Button>);
+    expect(html).not.toContain("<svg");
   });
 });

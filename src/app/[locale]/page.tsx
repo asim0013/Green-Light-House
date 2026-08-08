@@ -35,8 +35,7 @@ export default async function LocaleHome(props: { params: Promise<{ locale: stri
 
   return (
     <main className="mx-auto w-full max-w-[1240px] flex-1 px-6 py-16">
-      <Kicker>GREENLIGHTHOUSE</Kicker>
-      <h1 className="mt-2 font-heading text-3xl font-bold tracking-tight text-ink md:text-4xl">
+      <h1 className="font-heading text-3xl font-bold tracking-tight text-ink md:text-4xl">
         {t("title")}
       </h1>
       <p className="mt-2 text-ink-2">{t("subtitle")}</p>

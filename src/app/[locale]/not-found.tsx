@@ -9,8 +9,8 @@ export default function NotFound() {
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-2 px-6 py-24 text-center">
-      <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-      <p className="text-zinc-600 dark:text-zinc-400">{t("description")}</p>
+      <h1 className="font-heading text-2xl font-bold tracking-tight text-ink">{t("title")}</h1>
+      <p className="text-ink-2">{t("description")}</p>
     </main>
   );
 }
