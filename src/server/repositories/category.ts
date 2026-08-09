@@ -1,5 +1,7 @@
 import type { Locale } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { cached } from "@/lib/cache";
+import { TAGS } from "@/lib/cache-tags";
 import { resolveTranslation } from "@/server/i18n/resolveTranslation";
 
 export interface CategoryListItem {
@@ -18,6 +20,11 @@ export interface CategoryListItem {
  * alongside its own parent as a peer signpost. Child browse is Epic 2's job.
  */
 export async function listTopLevelCategories(locale: Locale): Promise<CategoryListItem[]> {
+  return cached(() => queryTopLevelCategories(locale), ["categories", locale], [TAGS.categories]);
+}
+
+/** Uncached SQL read. Exported for integration tests — see the note in `@/lib/cache`. */
+export async function queryTopLevelCategories(locale: Locale): Promise<CategoryListItem[]> {
   const categories = await prisma.category.findMany({
     where: { parentId: null },
     include: { translations: true },

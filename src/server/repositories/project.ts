@@ -1,5 +1,7 @@
 import type { Locale } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { cached } from "@/lib/cache";
+import { TAGS } from "@/lib/cache-tags";
 import { resolveTranslation } from "@/server/i18n/resolveTranslation";
 
 export interface ProjectListItem {
@@ -73,6 +75,29 @@ export function toProjectListItem(project: ProjectRow, locale: Locale): ProjectL
  *    the bottom; `slug` breaks the remaining ties so the order is deterministic.
  */
 export async function listPublishedProjects(
+  locale: Locale,
+  limit?: number,
+): Promise<ProjectListItem[]> {
+  // `limit` changes the result, so it belongs in the key alongside the locale.
+  const rows = await cached(
+    () => queryPublishedProjects(locale, limit),
+    ["projects", locale, String(limit ?? "all")],
+    [TAGS.projects],
+  );
+
+  // Re-hydrate `deliveredAt`. The cache round-trips values through JSON, so a
+  // `Date` comes back as an ISO STRING — and `format.dateTime` given a string
+  // renders the raw "2024-06-01T00:00:00.000Z" instead of "June 2024". Applied
+  // unconditionally because it is also correct on a cache miss, where the value
+  // is still a real Date.
+  return rows.map((row) => ({
+    ...row,
+    deliveredAt: row.deliveredAt ? new Date(row.deliveredAt) : null,
+  }));
+}
+
+/** Uncached SQL read. Exported for integration tests — see the note in `@/lib/cache`. */
+export async function queryPublishedProjects(
   locale: Locale,
   limit?: number,
 ): Promise<ProjectListItem[]> {

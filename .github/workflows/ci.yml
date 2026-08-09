@@ -24,8 +24,22 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
+      # Backs the incremental cache (Story 1.8). The caching suite asserts entries
+      # actually land in Redis, so this is required, not optional.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     env:
       DATABASE_URL: postgresql://glh:glh@localhost:5432/greenlighthouse?schema=public
+      REDIS_URL: redis://localhost:6379
+      REVALIDATE_SECRET: ci-revalidate-secret
 
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +50,29 @@ jobs:
       - run: npm ci
       - run: npx prisma generate
       - run: npx prisma migrate deploy
+      # The e2e suites assert against seeded content, so the seed is part of the
+      # gate rather than a local convenience.
+      - run: npx prisma db seed
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run build
       - run: npm run test
+
+      # End-to-end. Until Story 1.8 these never ran in CI at all, which meant the
+      # entire homepage could be deleted with the merge gate green (deferred from
+      # the Story 1.7 review). Chromium only — it is the sole configured project.
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      # Separate suite: the caching proof needs a PRODUCTION server, because
+      # `next dev` does not engage the incremental cache handler at all.
+      - run: npm run test:e2e:caching
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

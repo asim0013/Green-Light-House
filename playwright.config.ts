@@ -6,6 +6,10 @@ import { defineConfig, devices } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "./e2e",
+  // The caching proof needs a PRODUCTION server (dev never engages the cache
+  // handler), so it runs from `playwright.caching.config.ts` via
+  // `npm run test:e2e:caching`. Running it here would assert nothing.
+  testIgnore: /caching\.spec\.ts/,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

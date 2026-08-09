@@ -18,7 +18,8 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
-    "db:reset": "prisma migrate reset"
+    "db:reset": "prisma migrate reset",
+    "test:e2e:caching": "playwright test --config=playwright.caching.config.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -29,7 +30,9 @@
     "next": "16.2.12",
     "next-intl": "^4.13.4",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "redis": "^6.2.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",

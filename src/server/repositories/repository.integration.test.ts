@@ -1,9 +1,9 @@
 // @vitest-environment node
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/db";
-import { listIndustries } from "./industry";
-import { listPublishedProjects } from "./project";
-import { listTopLevelCategories } from "./category";
+import { queryIndustries } from "./industry";
+import { queryPublishedProjects } from "./project";
+import { queryTopLevelCategories } from "./category";
 
 /**
  * Integration tests — need a reachable Postgres (DATABASE_URL). They self-seed
@@ -109,14 +109,14 @@ afterAll(async () => {
 describe("industry repository (integration)", () => {
   it("returns the exact locale when present", async (ctx) => {
     if (!dbReachable) return ctx.skip();
-    const found = (await listIndustries("tr")).find((i) => i.slug === TEST_SLUG);
+    const found = (await queryIndustries("tr")).find((i) => i.slug === TEST_SLUG);
     expect(found?.name).toBe("Integration TR");
     expect(found?.isFallback).toBe(false);
   });
 
   it("falls back to EN (flagged) when the locale is missing", async (ctx) => {
     if (!dbReachable) return ctx.skip();
-    const found = (await listIndustries("ru")).find((i) => i.slug === TEST_SLUG);
+    const found = (await queryIndustries("ru")).find((i) => i.slug === TEST_SLUG);
     expect(found?.name).toBe("Integration EN");
     expect(found?.isFallback).toBe(true);
   });
@@ -125,14 +125,14 @@ describe("industry repository (integration)", () => {
 describe("project repository (integration)", () => {
   it("excludes draft projects", async (ctx) => {
     if (!dbReachable) return ctx.skip();
-    const slugs = (await listPublishedProjects("en")).map((p) => p.slug);
+    const slugs = (await queryPublishedProjects("en")).map((p) => p.slug);
     expect(slugs).toContain(`${PROJECT_PREFIX}dated`);
     expect(slugs).not.toContain(`${PROJECT_PREFIX}draft`);
   });
 
   it("ranks a dated project above an undated one (NULLS LAST, not Postgres' default)", async (ctx) => {
     if (!dbReachable) return ctx.skip();
-    const slugs = (await listPublishedProjects("en")).map((p) => p.slug);
+    const slugs = (await queryPublishedProjects("en")).map((p) => p.slug);
     const dated = slugs.indexOf(`${PROJECT_PREFIX}dated`);
     const undated = slugs.indexOf(`${PROJECT_PREFIX}undated`);
     expect(dated).toBeGreaterThanOrEqual(0);
@@ -142,12 +142,12 @@ describe("project repository (integration)", () => {
 
   it("honours the limit", async (ctx) => {
     if (!dbReachable) return ctx.skip();
-    expect(await listPublishedProjects("en", 1)).toHaveLength(1);
+    expect(await queryPublishedProjects("en", 1)).toHaveLength(1);
   });
 
   it("resolves the nested industry name (proves the include is wired)", async (ctx) => {
     if (!dbReachable) return ctx.skip();
-    const found = (await listPublishedProjects("tr")).find(
+    const found = (await queryPublishedProjects("tr")).find(
       (p) => p.slug === `${PROJECT_PREFIX}dated`,
     );
     expect(found?.industry).toEqual({ slug: TEST_SLUG, name: "Integration TR" });
@@ -158,7 +158,7 @@ describe("project repository (integration)", () => {
 
   it("returns a null industry for a project that has none", async (ctx) => {
     if (!dbReachable) return ctx.skip();
-    const found = (await listPublishedProjects("en")).find(
+    const found = (await queryPublishedProjects("en")).find(
       (p) => p.slug === `${PROJECT_PREFIX}undated`,
     );
     expect(found?.industry).toBeNull();
@@ -169,7 +169,7 @@ describe("project repository (integration)", () => {
 describe("category repository (integration)", () => {
   it("lists top-level categories and excludes children", async (ctx) => {
     if (!dbReachable) return ctx.skip();
-    const slugs = (await listTopLevelCategories("en")).map((c) => c.slug);
+    const slugs = (await queryTopLevelCategories("en")).map((c) => c.slug);
     expect(slugs).toContain(`${CATEGORY_PREFIX}parent`);
     expect(slugs).not.toContain(`${CATEGORY_PREFIX}child`);
   });

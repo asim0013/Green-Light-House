@@ -1,5 +1,7 @@
 import type { Locale } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { cached } from "@/lib/cache";
+import { TAGS } from "@/lib/cache-tags";
 import { resolveTranslation } from "@/server/i18n/resolveTranslation";
 
 export interface ManufacturerListItem {
@@ -21,6 +23,11 @@ export interface ManufacturerListItem {
  * Data access lives here, never in components/routes (CLAUDE.md boundary).
  */
 export async function listManufacturers(locale: Locale): Promise<ManufacturerListItem[]> {
+  return cached(() => queryManufacturers(locale), ["manufacturers", locale], [TAGS.manufacturers]);
+}
+
+/** Uncached SQL read. Exported for integration tests — see the note in `@/lib/cache`. */
+export async function queryManufacturers(locale: Locale): Promise<ManufacturerListItem[]> {
   const manufacturers = await prisma.manufacturer.findMany({
     include: { translations: true },
     orderBy: { slug: "asc" },
