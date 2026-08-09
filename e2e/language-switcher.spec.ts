@@ -1,4 +1,5 @@
-import { test, expect, request as pwRequest } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { probeDbReady } from "./dbReady";
 
 /**
  * Story 1.4 — persistent language switcher (end-to-end).
@@ -14,20 +15,17 @@ import { test, expect, request as pwRequest } from "@playwright/test";
 let dbReady = true;
 
 test.beforeAll(async ({ baseURL }) => {
-  try {
-    const ctx = await pwRequest.newContext({ baseURL });
-    const res = await ctx.get("/en");
-    dbReady = res.ok();
-    await ctx.dispose();
-  } catch {
-    dbReady = false;
-  }
+  dbReady = await probeDbReady(baseURL);
 });
 
 test("switches locale, preserves route, marks active, and persists via cookie", async ({
   page,
 }) => {
   test.skip(!dbReady, "seeded Postgres not reachable");
+
+  // Pin the viewport above the xl gate (Playwright's default is exactly 1280, the
+  // breakpoint itself) so the header's desktop switcher is the one under test.
+  await page.setViewportSize({ width: 1440, height: 900 });
 
   // The switcher now appears in both the header and the footer (Story 1.6); scope
   // to the header so the accessible-name locators resolve to a single element.

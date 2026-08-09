@@ -1,4 +1,5 @@
-import { test, expect, request as pwRequest } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { probeDbReady } from "./dbReady";
 
 /**
  * Story 1.3 — localization framework & fallback contract (end-to-end).
@@ -19,14 +20,7 @@ import { test, expect, request as pwRequest } from "@playwright/test";
 let dbReady = true;
 
 test.beforeAll(async ({ baseURL }) => {
-  try {
-    const ctx = await pwRequest.newContext({ baseURL });
-    const res = await ctx.get("/en");
-    dbReady = res.ok(); // a 500 here means the seeded DB isn't reachable
-    await ctx.dispose();
-  } catch {
-    dbReady = false;
-  }
+  dbReady = await probeDbReady(baseURL);
 });
 
 test("`/` redirects to the default locale (`/en`)", async ({ page }) => {

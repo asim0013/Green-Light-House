@@ -5,6 +5,7 @@ import { routing } from "@/i18n/routing";
 import { listIndustries } from "@/server/repositories/industry";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { Kicker, SectionHeader, Button, Chip, DarkBand, TwoColumn } from "@/components/ui";
+import { CONTAINER } from "@/components/layout/container";
 
 // SSR per request — this reads live DB content, so it must not be baked into the
 // static build (a build must not require a running Postgres). Real catalog pages
@@ -34,7 +35,7 @@ export default async function LocaleHome(props: { params: Promise<{ locale: stri
   const industries = await listIndustries(locale);
 
   return (
-    <div className="mx-auto w-full max-w-[1240px] px-6 py-16">
+    <div className={`${CONTAINER} py-16`}>
       <h1 className="font-heading text-3xl font-bold tracking-tight text-ink md:text-4xl">
         {t("title")}
       </h1>

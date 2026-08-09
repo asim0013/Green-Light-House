@@ -11,9 +11,12 @@ import type { ReactNode } from "react";
 export function DarkBand({
   children,
   className = "",
+  as: Tag = "section",
 }: {
   children: ReactNode;
   className?: string;
+  /** Element to render. Use `footer` for the site footer so the `contentinfo` landmark survives. */
+  as?: "section" | "footer" | "div";
 }) {
-  return <section className={`bg-ink text-on-dark-text ${className}`}>{children}</section>;
+  return <Tag className={`bg-ink text-on-dark-text ${className}`}>{children}</Tag>;
 }

@@ -78,8 +78,13 @@ export default async function LocaleLayout(props: {
       <body className="flex min-h-full flex-col">
         <NextIntlClientProvider>
           <SiteHeader />
-          {/* Single <main> for the whole locale segment — the skip-link target. */}
-          <main id="main-content" className="flex-1">
+          {/*
+            Single <main> for the whole locale segment — the skip-link target.
+            `tabIndex={-1}` makes it programmatically focusable so activating the
+            skip link actually MOVES focus (fragment navigation alone doesn't in
+            Safari/Firefox). Flex column so children can claim the free height.
+          */}
+          <main id="main-content" tabIndex={-1} className="flex flex-1 flex-col outline-none">
             {props.children}
           </main>
           <SiteFooter />

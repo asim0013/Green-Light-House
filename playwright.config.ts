@@ -10,6 +10,10 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: "list",
+  // The suite runs against `next dev`, which compiles routes on demand; with
+  // parallel workers hitting cold routes the default 5s assertion timeout is too
+  // tight and produces flaky navigation assertions.
+  expect: { timeout: 15_000 },
   use: {
     baseURL: "http://localhost:3000",
     trace: "on-first-retry",

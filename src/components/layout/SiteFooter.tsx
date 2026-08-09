@@ -1,16 +1,20 @@
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
-import { Kicker } from "@/components/ui";
+import { DarkBand, Kicker } from "@/components/ui";
 import { NAV_ITEMS, FOOTER_LEGAL } from "@/config/site";
+import { CONTAINER } from "./container";
+import { BrandMark } from "./BrandMark";
 
 /**
- * Global footer (Story 1.6). A full-bleed `ink` band (DESIGN "dark bands =
- * authority"; DESIGN has no explicit footer spec, so derived): on-dark tokens,
- * `accent-soft` kickers, `on-dark-border` hairlines, white headings. Shows the
- * brand, İstanbul, explore + legal link columns, the EN/TR/RU switcher, and the
- * copyright. Server component — `useTranslations` reads the request locale set by
- * the layout; the legal routes are built in Story 5.1 (404 until then).
+ * Global footer (Story 1.6). Uses the `DarkBand` primitive for the `ink` surface
+ * (DESIGN "dark bands = authority"; DESIGN has no explicit footer spec, so
+ * derived): on-dark tokens throughout — `accent-soft` kickers, `on-dark-border`
+ * hairlines, white headings, and the switcher in its `onDark` tone (a navy
+ * switcher on ink measures 1.32:1, which is why the tone prop exists).
+ *
+ * Server component — `useTranslations` reads the request locale set by the layout.
+ * Legal routes are built in Story 5.1 (404 until then).
  */
 export function SiteFooter() {
   const tNav = useTranslations("Nav");
@@ -18,21 +22,13 @@ export function SiteFooter() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="bg-ink text-on-dark-text">
-      <div className="mx-auto max-w-[1440px] px-6 py-14 lg:px-[100px]">
+    <DarkBand as="footer">
+      <div className={`${CONTAINER} py-14`}>
         <div className="flex flex-col gap-10 md:flex-row md:justify-between">
           {/* Brand block */}
           <div className="max-w-sm">
             <div className="flex items-center gap-2.5">
-              <span
-                aria-hidden
-                className="flex size-[26px] items-center justify-center bg-brand text-[15px] font-bold text-white"
-              >
-                G
-              </span>
-              <span className="font-heading text-lg font-bold tracking-tight text-white">
-                GREENLIGHTHOUSE
-              </span>
+              <BrandMark tone="onDark" />
             </div>
             <p className="mt-3 text-sm text-on-dark-text">{tFooter("tagline")}</p>
             <p className="mt-4 font-data text-sm text-on-dark-text">{tFooter("city")}</p>
@@ -72,9 +68,14 @@ export function SiteFooter() {
           <p className="font-mono text-xs uppercase tracking-wide text-on-dark-text">
             © {year} GREENLIGHTHOUSE · {tFooter("rights")}
           </p>
-          <LanguageSwitcher />
+          {/*
+            `lg` sizing: the footer switcher is not breakpoint-gated, so on a phone
+            it is the only language control reachable without opening the hamburger
+            — it must meet the ≥44px touch floor.
+          */}
+          <LanguageSwitcher tone="onDark" size="lg" />
         </div>
       </div>
-    </footer>
+    </DarkBand>
   );
 }
