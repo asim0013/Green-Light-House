@@ -1,7 +1,9 @@
+import type { Metadata } from "next";
 import { hasLocale } from "next-intl";
 import { setRequestLocale } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
+import { alternatesFor, robotsFor } from "@/lib/seo";
 import { listIndustries } from "@/server/repositories/industry";
 import { listManufacturers } from "@/server/repositories/manufacturer";
 import { listTopLevelCategories } from "@/server/repositories/category";
@@ -16,6 +18,47 @@ import { HomeCredibility } from "@/components/home/HomeCredibility";
 // static build (a build must not require a running Postgres). Tag-based ISR
 // caching layers onto this same read path in Story 1.8.
 export const dynamic = "force-dynamic";
+
+/**
+ * Per-page SEO metadata (Story 1.9 — FR42, FR42a).
+ *
+ * Canonical and hreflang live HERE rather than in the layout, because they are
+ * per-PATH and the layout does not know which child route is rendering.
+ *
+ * This repeats the page's four reads. That is cheap by construction: every one goes
+ * through `cached()` (Story 1.8), so metadata and body share Redis entries rather
+ * than hitting Postgres twice — and computing indexability from anything other than
+ * the data actually rendered would be guessing.
+ */
+export async function generateMetadata(props: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await props.params;
+  if (!hasLocale(routing.locales, locale)) return {};
+
+  const [projects, industries, categories, manufacturers] = await Promise.all([
+    listPublishedProjects(locale, 1),
+    listIndustries(locale),
+    listTopLevelCategories(locale),
+    listManufacturers(locale),
+  ]);
+
+  // Every translatable thing the homepage shows. `itemCount === 0` means an empty
+  // database, which is genuinely thin; `fallbackFields === totalFields` means not a
+  // single row had content in this locale (FR42a's "fallback-only").
+  const translated = [...projects, ...industries, ...categories, ...manufacturers];
+  const signals = {
+    locale,
+    itemCount: translated.length,
+    fallbackFields: translated.filter((row) => row.isFallback).length,
+    totalFields: translated.length,
+  };
+
+  return {
+    alternates: alternatesFor(locale, "/"),
+    robots: robotsFor(signals),
+  };
+}
 
 /**
  * Projects-first homepage (Story 1.7).

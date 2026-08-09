@@ -36,7 +36,9 @@
   },
   "NotFound": {
     "title": "Sayfa bulunamadı",
-    "description": "Aradığınız sayfa mevcut değil."
+    "description": "Aradığınız sayfa mevcut değil.",
+    "kicker": "Hata 404",
+    "backHome": "Ana sayfaya dön"
   },
   "Nav": {
     "primaryNav": "Birincil",

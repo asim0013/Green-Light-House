@@ -58,7 +58,16 @@ jobs:
       # Listed as a gate by Story 1.8 AC8 but previously missing here, so drift
       # could land on main while the story claimed it was enforced.
       - run: npm run format:check
-      - run: npm run build
+      # AC7 GUARD (Story 1.9): the build must NEVER require a database — a hard
+      # constraint from Story 1.3, re-verified in 1.8, and previously enforced only
+      # by someone remembering to test it by hand. Building against a dead port
+      # makes any reintroduction of build-time DB access fail here instead of in
+      # production. Costs nothing: this replaces the ordinary build rather than
+      # adding a second one.
+      - name: Build (with NO database reachable — AC7 guard)
+        env:
+          DATABASE_URL: postgresql://glh:glh@127.0.0.1:1/greenlighthouse?schema=public
+        run: npm run build
       - run: npm run test
 
       # End-to-end. Until Story 1.8 these never ran in CI at all, which meant the

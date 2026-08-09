@@ -1,16 +1,14 @@
-import { useTranslations } from "next-intl";
+import { NotFoundContent } from "@/components/layout/NotFoundContent";
 
 /**
- * Localized 404 within a locale segment. Rendered inside `[locale]/layout.tsx`,
- * so the next-intl provider and correct `lang` are already in place.
+ * The boundary for an EXPLICIT `notFound()` call inside a locale route — Epic 2's
+ * unknown product/industry slugs will be the first real callers.
+ *
+ * Unmatched URLs do NOT come here; they are handled by `app/global-not-found.tsx`,
+ * because a `not-found` boundary under a top-level dynamic segment renders outside
+ * `[locale]/layout.tsx` (measured in Story 1.9 — see that file's header). Both
+ * render the same `NotFoundContent`, so the two cannot drift.
  */
 export default function NotFound() {
-  const t = useTranslations("NotFound");
-
-  return (
-    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-2 px-6 py-24 text-center">
-      <h1 className="font-heading text-2xl font-bold tracking-tight text-ink">{t("title")}</h1>
-      <p className="text-ink-2">{t("description")}</p>
-    </div>
-  );
+  return <NotFoundContent />;
 }

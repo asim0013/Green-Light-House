@@ -12,6 +12,14 @@ const nextConfig: NextConfig = {
   // Standalone output for the Docker runtime image (Dockerfile runner stage).
   output: "standalone",
 
+  // Enables `app/global-not-found.tsx` (Story 1.9). Still experimental in 16.2.12,
+  // and adopted deliberately: this app's root layout is a TOP-LEVEL DYNAMIC SEGMENT
+  // (`app/[locale]/layout.tsx`), which Next's own docs name as the case where a 404
+  // cannot be composed from `layout.js` + `not-found.js`. Measured here: with a
+  // catch-all instead, the 404 renders in a bare `<html id="__next_error__">` with
+  // no `lang` and no chrome — the WCAG 3.1.1 defect Story 1.9 exists to close.
+  experimental: { globalNotFound: true },
+
   // Redis-backed incremental cache (Story 1.8). `cacheHandler` is the SINGULAR,
   // still-current option that backs `unstable_cache`; the plural `cacheHandlers`
   // is only for `use cache`, which needs `cacheComponents: true` — incompatible

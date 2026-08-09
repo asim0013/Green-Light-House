@@ -1,43 +1,18 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
-import { Inter, Geist, Geist_Mono, IBM_Plex_Mono } from "next/font/google";
 import { hasLocale, NextIntlClientProvider, type Locale } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { routing } from "@/i18n/routing";
+import { siteOrigin } from "@/lib/seo";
+import { HTML_CLASS, BODY_CLASS } from "@/components/layout/fonts";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import "../globals.css";
 
-// The four DESIGN.md families (Story 1.5). Geist / Geist Mono have NO cyrillic
-// subset, so their token stacks in globals.css fall back to Inter / IBM Plex Mono
-// (both cover cyrillic) — see globals.css `--font-heading` / `--font-mono`.
-
-// body voice — full latin/latin-ext/cyrillic; also the cyrillic fallback for headings.
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin", "latin-ext", "cyrillic"],
-});
-
-// heading voice — latin + latin-ext only (no cyrillic subset exists for Geist).
-const geist = Geist({
-  variable: "--font-geist",
-  subsets: ["latin", "latin-ext"],
-});
-
-// mono / label voice (UPPERCASE kickers, chips, table headers) — no cyrillic subset.
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin", "latin-ext"],
-});
-
-// data voice (model numbers, specs, quantities, dates, refs) — covers cyrillic, so
-// it also serves as the cyrillic fallback for the mono/label stack.
-const ibmPlexMono = IBM_Plex_Mono({
-  variable: "--font-ibm-plex-mono",
-  subsets: ["latin", "latin-ext", "cyrillic"],
-  weight: ["400", "500", "600"],
-});
+// The four DESIGN.md families (Story 1.5) now live in `components/layout/fonts.ts`,
+// shared with `app/global-not-found.tsx` — which bypasses layouts and must declare
+// its own document, so the loaders cannot live here alone without drifting.
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
@@ -51,6 +26,10 @@ export async function generateMetadata(props: {
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: "Meta" });
   return {
+    // Required for the per-page `alternates` in child routes to resolve: without it
+    // Next cannot turn a relative metadata URL into an absolute one, and canonical
+    // / hreflang are meaningless relative. Read at request time (see `siteOrigin`).
+    metadataBase: new URL(siteOrigin()),
     title: t("title"),
     description: t("description"),
   };
@@ -71,11 +50,8 @@ export default async function LocaleLayout(props: {
   setRequestLocale(locale);
 
   return (
-    <html
-      lang={locale}
-      className={`${inter.variable} ${geist.variable} ${geistMono.variable} ${ibmPlexMono.variable} h-full antialiased`}
-    >
-      <body className="flex min-h-full flex-col">
+    <html lang={locale} className={HTML_CLASS}>
+      <body className={BODY_CLASS}>
         <NextIntlClientProvider>
           <SiteHeader />
           {/*
