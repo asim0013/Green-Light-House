@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { probeDbReady } from "./dbReady";
+import { probeDbReady, warmUp } from "./dbReady";
 
 /**
  * Story 1.6 — global layout (top nav & footer), end-to-end.
@@ -13,7 +13,8 @@ import { probeDbReady } from "./dbReady";
 let dbReady = true;
 
 test.beforeAll(async ({ baseURL }) => {
-  dbReady = await probeDbReady(baseURL);
+  dbReady = await probeDbReady();
+  await warmUp(baseURL);
 });
 
 test("header shows brand, the 5 nav links, phone, and the RFQ CTA", async ({ page }) => {

@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { SectionHeader } from "@/components/ui";
+import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { CONTAINER } from "@/components/layout/container";
 import type { ManufacturerListItem } from "@/server/repositories/manufacturer";
 
@@ -21,7 +22,8 @@ export function HomeManufacturers({ manufacturers }: { manufacturers: Manufactur
   const t = useTranslations("Home");
 
   return (
-    <section className="border-b border-border-subtle bg-surface">
+    /* No hairline: the credibility band's ink fill is the separator. */
+    <section className="bg-surface">
       <div className={`${CONTAINER} py-12 md:py-16`}>
         <SectionHeader kicker={t("manufacturersKicker")} title={t("manufacturersTitle")} />
 
@@ -34,7 +36,11 @@ export function HomeManufacturers({ manufacturers }: { manufacturers: Manufactur
                 key={manufacturer.id}
                 className="flex h-24 items-center justify-center border border-border-subtle bg-surface px-5"
               >
-                {manufacturer.logoUrl ? (
+                {/* Only a same-origin path is safe to hand to next/image: a remote
+                    URL whose host is absent from `images.remotePatterns` THROWS at
+                    render and would 500 the whole homepage over one bad row. Remote
+                    hosts get configured with the media library (Story 4.5). */}
+                {manufacturer.logoUrl?.startsWith("/") ? (
                   <Image
                     src={manufacturer.logoUrl}
                     alt={manufacturer.name}
@@ -43,8 +49,12 @@ export function HomeManufacturers({ manufacturers }: { manufacturers: Manufactur
                     className="h-10 w-auto object-contain"
                   />
                 ) : (
-                  <span className="text-center font-heading text-base font-semibold tracking-tight text-ink">
+                  <span
+                    lang={manufacturer.isFallback ? "en" : undefined}
+                    className="text-center font-heading text-base font-semibold tracking-tight text-ink"
+                  >
                     {manufacturer.name}
+                    <FallbackNotice isFallback={manufacturer.isFallback} />
                   </span>
                 )}
               </li>

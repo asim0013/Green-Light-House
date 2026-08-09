@@ -46,15 +46,25 @@ const INDUSTRIES: IndustryListItem[] = [
   { id: "i2", slug: "energy", name: "Energy", description: null, isFallback: true },
 ];
 
+// One translated row and one fallen-back row in EVERY fixture, so both the
+// "marks a fallback" and "does not over-mark" directions are representable.
+// (Review finding: an all-`isFallback: false` fixture made the category marking
+// undeletable-by-test — removing the marking left the suite green.)
 const CATEGORIES: CategoryListItem[] = [
   { id: "c1", slug: "fire-gas-detection", name: "Fire & gas detection", isFallback: false },
-  { id: "c2", slug: "ppe", name: "Personal protective equipment", isFallback: false },
+  { id: "c2", slug: "ppe", name: "Personal protective equipment", isFallback: true },
 ];
 
 const MANUFACTURERS: ManufacturerListItem[] = [
   { id: "m1", slug: "sentra-fire", name: "Sentra Fire Systems", logoUrl: null, isFallback: false },
-  { id: "m2", slug: "gastec", name: "Gastec", logoUrl: null, isFallback: false },
+  { id: "m2", slug: "gastec", name: "Gastec", logoUrl: null, isFallback: true },
 ];
+
+/** Count of elements matching `tag` that do NOT carry `attr`. */
+function missingAttr(html: string, tag: string, attr: string): number {
+  return (html.match(new RegExp(`<${tag}\\b[^>]*>`, "g")) ?? []).filter((t) => !t.includes(attr))
+    .length;
+}
 
 describe("HomeIndustries", () => {
   it("renders every industry name", () => {
@@ -68,10 +78,12 @@ describe("HomeIndustries", () => {
     expect(html).not.toContain("<a ");
   });
 
-  it("marks a fallen-back name with lang=en and the notice", () => {
+  it("marks the fallen-back name and does NOT mark the translated one", () => {
     const html = renderToStaticMarkup(<HomeIndustries industries={INDUSTRIES} />);
-    expect(html).toContain('lang="en"');
-    expect(html).toContain("shownInEnglish");
+    // Exactly one of the two fixture rows fell back — a bare `toContain` would
+    // also pass if every row were marked, which is the opposite bug.
+    expect((html.match(/lang="en"/g) ?? []).length).toBe(1);
+    expect((html.match(/shownInEnglish/g) ?? []).length).toBe(1);
   });
 
   it("renders the defined empty state with no rows", () => {
@@ -92,10 +104,20 @@ describe("HomeCategories", () => {
     expect(html).not.toContain("<a ");
   });
 
-  it("hides its decorative thumbnail icons from assistive tech", () => {
+  it("hides EVERY decorative thumbnail icon from assistive tech", () => {
+    // Asserting `toContain("aria-hidden")` would be tautological — lucide-react
+    // adds it by default. This fails if any icon gains an a11y prop (which makes
+    // lucide DROP aria-hidden) or if a future thumbnail is not hidden.
     const html = renderToStaticMarkup(<HomeCategories categories={CATEGORIES} />);
-    expect(html).toContain("aria-hidden");
     expect(html).toContain("<svg");
+    expect(missingAttr(html, "svg", 'aria-hidden="true"')).toBe(0);
+  });
+
+  it("marks a fallen-back category and leaves a translated one unmarked", () => {
+    const html = renderToStaticMarkup(<HomeCategories categories={CATEGORIES} />);
+    // Exactly one of the two fixture rows fell back.
+    expect((html.match(/lang="en"/g) ?? []).length).toBe(1);
+    expect((html.match(/shownInEnglish/g) ?? []).length).toBe(1);
   });
 
   it("renders the defined empty state with no rows", () => {
@@ -122,6 +144,24 @@ describe("HomeManufacturers", () => {
     expect(html).not.toContain("<img");
   });
 
+  it("does not hand a REMOTE logo url to next/image", () => {
+    // An unconfigured host throws at render and 500s the whole homepage; remote
+    // hosts arrive with the media library (Story 4.5), which owns remotePatterns.
+    const html = renderToStaticMarkup(
+      <HomeManufacturers
+        manufacturers={[{ ...MANUFACTURERS[0], logoUrl: "https://cdn.example.com/a.png" }]}
+      />,
+    );
+    expect(html).not.toContain("<img");
+    expect(html).toContain("Sentra Fire Systems");
+  });
+
+  it("marks a fallen-back OEM name and leaves a translated one unmarked (AC6)", () => {
+    const html = renderToStaticMarkup(<HomeManufacturers manufacturers={MANUFACTURERS} />);
+    expect((html.match(/lang="en"/g) ?? []).length).toBe(1);
+    expect((html.match(/shownInEnglish/g) ?? []).length).toBe(1);
+  });
+
   it("renders the defined empty state with no rows", () => {
     const html = renderToStaticMarkup(<HomeManufacturers manufacturers={[]} />);
     expect(html).toContain("manufacturersEmpty");
@@ -142,8 +182,25 @@ describe("HomeCredibility", () => {
 
   it("uses the on-dark button variants for both closing CTAs", () => {
     const html = renderToStaticMarkup(<HomeCredibility />);
-    expect(html).toContain("bg-surface"); // onDarkPrimary = white fill + ink label
-    expect(html).toContain("border-white"); // onDarkSecondary = white hairline
+    // `focus-visible:ring-offset-ink` comes ONLY from buttonClasses' RING_DARK, so
+    // this cannot be satisfied by some other element that happens to share a fill.
+    // (A bare `bg-surface` check passed even with the on-dark variants removed.)
+    expect((html.match(/focus-visible:ring-offset-ink/g) ?? []).length).toBe(2);
+    expect(html).toContain("bg-surface text-ink"); // onDarkPrimary
+    expect(html).toContain("border-white"); // onDarkSecondary
+  });
+
+  it("gives the cert chips an on-dark treatment, not a light fill", () => {
+    // `filled`/`outline` both ship a light surface, which on the ink band renders
+    // as a solid white block — visually a primary button, not a chip.
+    const html = renderToStaticMarkup(<HomeCredibility />);
+    expect(html).toContain("border-on-dark-border");
+    expect(html).toContain("text-on-dark-text");
+    // The light-chip signatures: `filled` is bg-surface-2+text-ink-2, `outline`
+    // adds border-border-subtle. Neither may appear on the ink band. (Not asserting
+    // on `bg-surface-2` alone — onDarkPrimary legitimately uses it as a hover.)
+    expect(html).not.toContain("border-border-subtle");
+    expect(html).not.toContain("text-ink-2");
   });
 
   it("carries the conversion pair: RFQ link and tel: action", () => {

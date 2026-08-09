@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { probeDbReady } from "./dbReady";
+import { probeDbReady, warmUp } from "./dbReady";
 
 /**
  * Story 1.3 — localization framework & fallback contract (end-to-end).
@@ -33,7 +33,8 @@ const H1 = {
 let dbReady = true;
 
 test.beforeAll(async ({ baseURL }) => {
-  dbReady = await probeDbReady(baseURL);
+  dbReady = await probeDbReady();
+  await warmUp(baseURL);
 });
 
 test("`/` redirects to the default locale (`/en`)", async ({ page }) => {
@@ -63,9 +64,11 @@ test("/tr renders Turkish, marks EN fallback where TR is missing", async ({ page
   const energyRow = page.locator("li", { hasText: "Energy" });
   await expect(energyRow.getByText("(İngilizce gösteriliyor)")).toBeVisible();
   // The seeded LNG project HAS a Turkish title, so the hero is unmarked here —
-  // the contrast case for the Russian test below.
+  // the contrast case for the Russian test below. Assert the ABSENCE, otherwise
+  // the comment is the only thing claiming it.
   const hero = page.getByRole("heading", { level: 2 }).first();
   await expect(hero).toContainText("LNG terminali");
+  await expect(hero.getByText("(İngilizce gösteriliyor)")).toHaveCount(0);
 });
 
 test("/ru renders Cyrillic, marks EN fallback where RU is missing", async ({ page }) => {

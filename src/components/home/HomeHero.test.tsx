@@ -12,7 +12,10 @@ import type { ProjectListItem } from "@/server/repositories/project";
  */
 
 vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string) => key,
+  // Echoes the key, and appends interpolated values so placeholder-bearing
+  // messages (e.g. `deliveredOn: "Delivered {date}"`) remain assertable.
+  useTranslations: () => (key: string, values?: Record<string, unknown>) =>
+    values ? `${key} ${Object.values(values).join(" ")}` : key,
   useLocale: () => "en",
   useFormatter: () => ({ dateTime: () => "June 2024" }),
 }));
@@ -75,10 +78,14 @@ describe("HomeHero — always-on chrome", () => {
     expect(tel.match(/aria-label="([^"]*)"/)?.[1] ?? "").toContain("+90");
   });
 
-  it("does not set the SLA line in `muted` (3.1:1 on white — fails AA)", () => {
-    // EXPERIENCE.md: the SLA is load-bearing copy, so it cannot use the
-    // non-essential-only `muted` token. ink-2 on white is 6.0:1.
+  it("renders the SLA and no-prices lines, and not in `muted`", () => {
+    // Positive assertions first: the bare `not.toContain("text-muted")` guard
+    // passed with BOTH copy lines deleted, so it proved nothing on its own.
+    // EXPERIENCE.md: the SLA is load-bearing copy and must be present; `muted` is
+    // 3.10:1 on white and cannot carry it.
     const html = renderToStaticMarkup(<HomeHero project={FULL} />);
+    expect(html).toContain("sla");
+    expect(html).toContain("noPrices");
     expect(html).not.toContain("text-muted");
   });
 });
@@ -98,11 +105,16 @@ describe("HomeHero — proof card", () => {
   });
 
   it("omits the outcome, industry and date rows when those fields are null", () => {
-    const html = renderToStaticMarkup(<HomeHero project={BARE} />);
-    expect(html).toContain("Refinery gas-detection retrofit");
-    expect(html).not.toContain("June 2024");
-    expect(html).not.toContain("deliveredLabel");
-    expect(html).not.toContain("Oil &amp; Gas");
+    const full = renderToStaticMarkup(<HomeHero project={FULL} />);
+    const bare = renderToStaticMarkup(<HomeHero project={BARE} />);
+    expect(bare).toContain("Refinery gas-detection retrofit");
+    // The outcome text must actually be ABSENT — the original test never checked
+    // it, so a card that always rendered the outcome would have passed.
+    expect(full).toContain("142 field devices");
+    expect(bare).not.toContain("142 field devices");
+    expect(bare).not.toContain("June 2024");
+    expect(bare).not.toContain("deliveredOn");
+    expect(bare).not.toContain("Oil &amp; Gas");
   });
 
   it("marks fallen-back project text with lang=en and the shown-in-English notice", () => {

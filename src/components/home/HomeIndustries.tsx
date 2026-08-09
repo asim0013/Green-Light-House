@@ -18,7 +18,9 @@ export function HomeIndustries({ industries }: { industries: IndustryListItem[] 
   const t = useTranslations("Home");
 
   return (
-    <section className="border-b border-border-subtle bg-surface">
+    /* No hairline: the next section changes fill (surface-2), which is the
+       separator. DESIGN.md — hairline OR fill change, never both. */
+    <section className="bg-surface">
       <div className={`${CONTAINER} py-12 md:py-16`}>
         <SectionHeader
           kicker={t("industriesKicker")}

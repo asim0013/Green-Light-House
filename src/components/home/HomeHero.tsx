@@ -35,7 +35,10 @@ export function HomeHero({ project }: { project: ProjectListItem | null }) {
           main={
             <div>
               <Kicker tone="ink">{t("kicker")}</Kicker>
-              <h1 className="mt-3 font-heading text-[34px] font-bold leading-[1.08] tracking-tight text-ink md:text-[44px]">
+              {/* Type steps down at the narrowest widths: at 34px the Russian
+                  "противопожарное" is wider than a 320px column and pushes the
+                  page into horizontal scroll (measured: 8px overflow at 320). */}
+              <h1 className="mt-3 font-heading text-[26px] font-bold leading-[1.1] tracking-tight text-ink sm:text-[34px] md:text-[44px]">
                 {t("title")}
               </h1>
               <p className="mt-5 max-w-[46ch] text-[17px] leading-relaxed text-ink-2">
@@ -105,9 +108,13 @@ function ProofCard({
         <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-border-subtle pt-5">
           {project.industry && <Chip>{project.industry.name}</Chip>}
           {project.deliveredAt && (
+            /* One message with a {date} placeholder, NOT label + date concatenated:
+               the label/date order and punctuation differ per language, and
+               concatenation produced ungrammatical Russian ("Поставлено июнь 2024 г."). */
             <span className="font-data text-xs text-ink-2">
-              {t("deliveredLabel")}{" "}
-              {format.dateTime(project.deliveredAt, { year: "numeric", month: "long" })}
+              {t("deliveredOn", {
+                date: format.dateTime(project.deliveredAt, { year: "numeric", month: "long" }),
+              })}
             </span>
           )}
         </div>

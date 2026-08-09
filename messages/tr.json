@@ -16,7 +16,7 @@
     "sla": "24 saatte teknik değerlendirme · 3 iş gününde şartnameli teklif",
     "noPrices": "Fiyat listesi yok — projeye özel teklif, hızlı.",
     "proofKicker": "Teslim edilen proje",
-    "deliveredLabel": "Teslim",
+    "deliveredOn": "Teslim tarihi: {date}",
     "proofEmpty": "Teslim edilen proje referansları yayımlanıyor. Projenizin ihtiyacını iletin, şartnameli bir teklifle dönelim.",
     "industriesKicker": "Sektörler",
     "industriesTitle": "Sektörünüze göre",

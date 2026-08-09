@@ -20,11 +20,13 @@ export default defineConfig({
   // parallel workers hitting cold routes the default 5s assertion timeout is too
   // tight and produces flaky navigation assertions.
   expect: { timeout: 15_000 },
-  // Same root cause, one level up: on a COLD `.next` all 8 workers pile onto the
+  // Same root cause, one level up: on a COLD `.next` every worker piles onto the
   // first on-demand compile of `/[locale]`, and `page.goto` alone can burn more
   // than the default 30s per-test budget — the whole suite then fails on timing,
   // not on behaviour. Verified: cold run 9 failed / warm run 19 passed, with
   // identical code. 60s absorbs the compile without weakening any assertion.
+  // (Each spec also calls `warmUp()` in beforeAll, bounded to ~49s so it can never
+  // exceed this budget and error the hook instead of running the tests.)
   timeout: 60_000,
   use: {
     baseURL: "http://localhost:3000",

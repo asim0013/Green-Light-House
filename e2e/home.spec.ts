@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { probeDbReady } from "./dbReady";
+import { probeDbReady, warmUp } from "./dbReady";
 
 /**
  * Story 1.7 — projects-first homepage (end-to-end).
@@ -14,11 +14,14 @@ import { probeDbReady } from "./dbReady";
 
 const DESKTOP = { width: 1440, height: 900 };
 const PHONE = { width: 390, height: 844 };
+/** The narrowest viewport worth supporting; Russian is the widest-word locale. */
+const NARROW = { width: 320, height: 844 };
 
 let dbReady = true;
 
 test.beforeAll(async ({ baseURL }) => {
-  dbReady = await probeDbReady(baseURL);
+  dbReady = await probeDbReady();
+  await warmUp(baseURL);
 });
 
 test("hero leads with a delivered project, not a product grid", async ({ page }) => {
@@ -112,8 +115,14 @@ test("shows no price or e-commerce affordance (FR2)", async ({ page }) => {
   for (const forbidden of ["add to cart", "add to basket", "buy now", "checkout"]) {
     expect(body).not.toContain(forbidden);
   }
-  // No currency figures anywhere in the rendered page.
-  expect(await page.locator("body").innerText()).not.toMatch(/[$€₺₽]\s?\d/);
+  // No currency figures anywhere. Both orders matter: EN/US puts the symbol first
+  // ("$1,200") while TR and RU put it last ("1.200 ₺", "1 200 ₽") — the very
+  // locales this site ships — so a symbol-before-number-only guard would miss the
+  // two conventions it exists to catch.
+  const text = await page.locator("body").innerText();
+  expect(text).not.toMatch(/[$€₺₽]\s?\d/);
+  expect(text).not.toMatch(/\d\s?[$€₺₽]/);
+  expect(text).not.toMatch(/\b(?:USD|EUR|TRY|RUB)\b/);
 });
 
 test("hero stacks on a phone with no horizontal overflow", async ({ page }) => {
@@ -135,6 +144,23 @@ test("hero stacks on a phone with no horizontal overflow", async ({ page }) => {
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test("does not scroll sideways at 320px in ANY locale", async ({ page }) => {
+  test.skip(!dbReady, "seeded Postgres not reachable");
+  await page.setViewportSize(NARROW);
+
+  // The 390px check missed this: at 34px the Russian "противопожарное" is wider
+  // than a 320px column and overflowed the document by 8px. Русский is the
+  // longest-word locale, so all three are checked at the narrowest supported width.
+  for (const locale of ["en", "tr", "ru"]) {
+    await page.goto(`/${locale}`);
+    await page.evaluate(() => document.fonts.ready);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow, `horizontal overflow on /${locale} at 320px`).toBeLessThanOrEqual(0);
+  }
 });
 
 test("both CTAs stay reachable on a phone (FR9: desktop AND mobile)", async ({ page }) => {

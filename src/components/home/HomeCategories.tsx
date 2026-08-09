@@ -19,7 +19,6 @@ import type { CategoryListItem } from "@/server/repositories/category";
  */
 const CATEGORY_ICON: Record<string, LucideIcon> = {
   "fire-gas-detection": Flame,
-  "flame-detectors": Flame,
   "fixed-suppression": ShieldCheck,
   "ex-proof": Zap,
   ppe: HardHat,
@@ -29,7 +28,9 @@ export function HomeCategories({ categories }: { categories: CategoryListItem[] 
   const t = useTranslations("Home");
 
   return (
-    <section className="border-b border-border-subtle bg-surface-2">
+    /* Fill change alone separates this section — DESIGN.md says a hairline OR a
+       fill change, not both. */
+    <section className="bg-surface-2">
       <div className={`${CONTAINER} py-12 md:py-16`}>
         <SectionHeader kicker={t("categoriesKicker")} title={t("categoriesTitle")} />
 

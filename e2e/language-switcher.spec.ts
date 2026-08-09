@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { probeDbReady } from "./dbReady";
+import { probeDbReady, warmUp } from "./dbReady";
 
 /**
  * Story 1.4 — persistent language switcher (end-to-end).
@@ -23,7 +23,8 @@ const H1 = {
 let dbReady = true;
 
 test.beforeAll(async ({ baseURL }) => {
-  dbReady = await probeDbReady(baseURL);
+  dbReady = await probeDbReady();
+  await warmUp(baseURL);
 });
 
 test("switches locale, preserves route, marks active, and persists via cookie", async ({

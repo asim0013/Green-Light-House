@@ -54,7 +54,9 @@ export function HomeCredibility() {
                 <Kicker>{t("certsLabel")}</Kicker>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {CERTS.map((cert) => (
-                    <Chip key={cert} variant="outline" cert>
+                    // `onDark`, not `outline`: the light variants ship a light fill,
+                    // which on the ink band reads as a solid white button.
+                    <Chip key={cert} variant="onDark" cert>
                       {cert}
                     </Chip>
                   ))}
