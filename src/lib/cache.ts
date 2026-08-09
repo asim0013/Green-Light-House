@@ -15,12 +15,21 @@ import { unstable_cache } from "next/cache";
 /**
  * Freshness backstop, in seconds.
  *
- * FR5's acceptance criterion is phrased "reachable on the public site within the
- * cache TTL", so this number IS the published contract. 60s is deliberately short:
- * the catalog is sparse and traffic is low at launch, so the database load saved
- * by a longer window is worth less than the guarantee that a MISSED
- * `revalidateTag` self-heals within a minute rather than lingering for hours.
- * Revisit when catalog volume actually makes DB reads expensive.
+ * READ THIS BEFORE QUOTING IT AS A GUARANTEE. `unstable_cache` treats `revalidate`
+ * as a STALE-WHILE-REVALIDATE trigger, not a freshness bound: once an entry is
+ * older than this, the next request is still served the STALE value and the
+ * refresh happens in the background, so the fresh value first appears on the
+ * request AFTER that. On a low-traffic site — this project's stated launch
+ * condition — "the request after" can be a long time.
+ *
+ * So the honest contract is: a *successful* `revalidateTag` is immediate (that is
+ * the mechanism FR5/FR40 actually rely on, and `POST /api/revalidate` is its
+ * trigger), and this TTL is only the backstop for a MISSED one — self-healing on
+ * the second request past 60s rather than lingering indefinitely.
+ *
+ * 60s is deliberately short: the catalog is sparse and traffic is low at launch,
+ * so the database load saved by a longer window is worth less than a prompt
+ * backstop. Revisit when catalog volume actually makes DB reads expensive.
  */
 export const CACHE_TTL_SECONDS = 60;
 

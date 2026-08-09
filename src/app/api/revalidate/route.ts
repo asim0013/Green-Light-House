@@ -69,9 +69,15 @@ export async function POST(request: Request) {
   }
 
   // Next 16.2 requires a cache profile as the second argument (it is typed
-  // `string | CacheLifeConfig`, not optional). "max" is the documented choice for
-  // an on-demand purge: the invalidation is durable rather than expiring on its
-  // own schedule, which is what an admin publish means.
+  // `string | CacheLifeConfig`, not optional).
+  //
+  // Be precise about what `"max"` means, because the obvious reading is wrong: to a
+  // Next-NATIVE handler it marks entries stale immediately and hard-expiring only
+  // much later — i.e. stale-while-revalidate, not a purge. This app gets a true
+  // immediate purge because `cache-handler.js` ignores the profile entirely and
+  // simply stamps the tag, which makes every entry carrying it miss on the next
+  // read. That is the behaviour an admin publish needs; it is a property of OUR
+  // handler, not of the profile name.
   for (const tag of parsed.data.tags) {
     revalidateTag(tag, "max");
   }

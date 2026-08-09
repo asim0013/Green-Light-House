@@ -55,6 +55,9 @@ jobs:
       - run: npx prisma db seed
       - run: npm run lint
       - run: npm run typecheck
+      # Listed as a gate by Story 1.8 AC8 but previously missing here, so drift
+      # could land on main while the story claimed it was enforced.
+      - run: npm run format:check
       - run: npm run build
       - run: npm run test
 

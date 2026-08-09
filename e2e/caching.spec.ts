@@ -15,16 +15,37 @@ import { test, expect, type APIRequestContext } from "@playwright/test";
  * entirely, which is precisely the failure mode Story 1.7's review found (a suite
  * whose green signal was anti-correlated with correctness).
  *
- * RUNS AGAINST A PRODUCTION BUILD, not `next dev` — verified empirically that dev
- * does not engage the cache handler at all (0 Redis keys after a dev request vs 4
- * after a production one). See `playwright.caching.config.ts`.
+ * RUNS AGAINST A PRODUCTION BUILD, not `next dev`. The original reason given here
+ * — "dev does not engage the cache handler at all" — was WRONG, and the Story 1.8
+ * code review disproved it twice: `next dev` hangs when Redis is stopped (so it
+ * calls `get`), and a dev-mode `test:e2e` run against an emptied Redis left 12
+ * `glh:cache:*` keys behind (so it calls `set`). The "0 new keys" reading that
+ * produced the claim was confounded — dev rewrites the SAME keys, so a count taken
+ * against a non-empty Redis shows no delta.
+ *
+ * The separate config is still correct, for the reasons that actually hold: this
+ * suite must exercise the server as deployed (production build, `next start`), it
+ * mutates shared seeded rows so it cannot run in parallel with anything, and it
+ * needs a port of its own. See `playwright.caching.config.ts`.
  *
  * Serial: it mutates shared seeded rows.
  */
 
 test.describe.configure({ mode: "serial" });
 
-const SECRET = process.env.REVALIDATE_SECRET ?? "dev-revalidate-secret";
+// Prefer an explicitly-provided secret (CI sets one at job level); otherwise read
+// the developer's own `.env`, which is what the server under test also reads.
+// It must NOT be a hardcoded literal: `.env.example` now ships a change-me
+// placeholder, so a default baked in here would silently disagree with any real
+// deployment and turn a config error into a confusing 401.
+if (!process.env.REVALIDATE_SECRET) {
+  try {
+    (process as NodeJS.Process & { loadEnvFile?: (p?: string) => void }).loadEnvFile?.(".env");
+  } catch {
+    // No .env file — CI supplies the value directly.
+  }
+}
+const SECRET = process.env.REVALIDATE_SECRET ?? "";
 
 /** A seeded, EN-only industry name that appears on the homepage. */
 const ORIGINAL = "Nuclear";
@@ -121,25 +142,52 @@ test("serves STALE data until the tag is revalidated, then serves fresh (FR5/FR4
   await expect(page.getByText(ORIGINAL, { exact: true }).first()).toBeVisible();
 });
 
-test("cache entries live in Redis, not in process memory (AC1)", async ({ page }) => {
+test("THIS run writes cache entries into Redis, not into process memory (AC1)", async ({
+  page,
+  request,
+}) => {
   // A restart inside Playwright is impractical, so this asserts the property that
-  // restart-survival actually depends on: the entries are in an external store.
-  // `cacheMaxMemorySize: 0` disables the in-process layer, so a hit can only come
-  // from Redis.
-  await page.goto("/en");
-
+  // restart-survival actually depends on: entries are in an external store.
+  //
+  // It must assert that *this run* wrote them. The earlier version scanned the
+  // whole `glh:cache:*` keyspace and asserted `length > 0`, which entries from any
+  // run in the previous 24 hours satisfy (that is the entry TTL) — so on a
+  // developer machine it could not fail even if the handler wrote nothing at all.
+  // Invalidating first forces the next render to MISS, so a passing assertion
+  // requires a genuine write.
   const { createClient } = await import("redis");
   const client = createClient({ url: process.env.REDIS_URL ?? "redis://localhost:6379" });
   client.on("error", () => {});
   await client.connect();
   try {
-    const keys: string[] = [];
-    for await (const key of client.scanIterator({ MATCH: "glh:cache:*", COUNT: 100 })) {
-      keys.push(...(Array.isArray(key) ? key : [key]));
-    }
-    // The homepage issues four cached reads (projects, industries, categories,
-    // manufacturers), so an empty set means caching never engaged.
-    expect(keys.length).toBeGreaterThan(0);
+    const before = Date.now();
+    const purge = await revalidate(request, [
+      "industries",
+      "categories",
+      "manufacturers",
+      "projects",
+    ]);
+    expect(purge.status()).toBe(200);
+
+    await page.goto("/en");
+
+    // The homepage issues four cached reads, all four just invalidated, so a
+    // working handler must have re-written them during this navigation.
+    await expect
+      .poll(
+        async () => {
+          let fresh = 0;
+          for await (const key of client.scanIterator({ MATCH: "glh:cache:*", COUNT: 100 })) {
+            for (const k of Array.isArray(key) ? key : [key]) {
+              const raw = await client.get(k);
+              if (raw && Number(JSON.parse(raw).lastModified ?? 0) >= before) fresh += 1;
+            }
+          }
+          return fresh;
+        },
+        { timeout: 10_000, message: "no cache entry was written to Redis by this run" },
+      )
+      .toBeGreaterThan(0);
   } finally {
     await client.destroy();
   }

@@ -18,10 +18,13 @@ const nextConfig: NextConfig = {
   // with the `force-dynamic` that keeps builds database-free.
   cacheHandler: cacheHandlerPath,
 
-  // Disable the default in-memory layer so every read goes through the handler.
-  // Without this, an in-process LRU answers first and the cache is neither
-  // shared between instances nor observable in Redis — which would make the
-  // story's "cached data survives a restart" proof vacuous.
+  // Belt-and-braces, and INERT on today's code path — kept deliberately.
+  // A configured singular `cacheHandler` replaces `FileSystemCache` outright, so
+  // there is no in-process LRU left for this to disable; entries reach Redis
+  // because the handler IS the only cache, not because of this line. (An earlier
+  // comment here claimed otherwise, and the AC1 "survives a restart" argument was
+  // written as if it rested on this setting. It does not.)
+  // It starts mattering the moment `use cache` is adopted, so it stays at 0.
   cacheMaxMemorySize: 0,
 
   // `output: "standalone"` traces the app bundle; a handler resolved by PATH at

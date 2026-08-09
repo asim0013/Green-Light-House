@@ -6,9 +6,11 @@ import { defineConfig, devices } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "./e2e",
-  // The caching proof needs a PRODUCTION server (dev never engages the cache
-  // handler), so it runs from `playwright.caching.config.ts` via
-  // `npm run test:e2e:caching`. Running it here would assert nothing.
+  // The caching proof must run against the server AS DEPLOYED (production build,
+  // `next start`) and mutates shared seeded rows, so it runs serially from
+  // `playwright.caching.config.ts` via `npm run test:e2e:caching`.
+  // NOT because "dev never engages the cache handler" — that was wrong; dev both
+  // reads and writes through it (Story 1.8 review).
   testIgnore: /caching\.spec\.ts/,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
@@ -19,7 +21,9 @@ export default defineConfig({
   // mid-run with "Protocol error (Runtime.evaluate): session closed" — a resource
   // failure masquerading as assertion failures. 4 is stable and barely slower.
   workers: 4,
-  reporter: "list",
+  // `html` alongside `list` so CI's `playwright-report/` failure artifact is
+  // actually produced; with `list` alone the upload step had nothing to collect.
+  reporter: [["list"], ["html", { open: "never" }]],
   // The suite runs against `next dev`, which compiles routes on demand; with
   // parallel workers hitting cold routes the default 5s assertion timeout is too
   // tight and produces flaky navigation assertions.
