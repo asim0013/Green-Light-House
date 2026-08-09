@@ -10,8 +10,29 @@
     "label": "Dil"
   },
   "Home": {
-    "title": "Sektörler",
-    "subtitle": "Yerelleştirme çerçevesi önizlemesi — çeviri eksik olduğunda içerik İngilizceye döner."
+    "kicker": "Proje tedariki",
+    "title": "Endüstriyel ve yangın güvenliği ekipmanları: şartnameye göre seçilir, teslim edilir.",
+    "lead": "Türkiye–Rusya hattındaki kritik endüstriyel projeler için ekipman seçiyor, sertifikalandırıyor ve tedarik ediyoruz — projenin gerçekten ihtiyaç duyduğu sertifikalar, gümrük işlemleri ve teslim tarihleriyle.",
+    "sla": "24 saatte teknik değerlendirme · 3 iş gününde şartnameli teklif",
+    "noPrices": "Fiyat listesi yok — projeye özel teklif, hızlı.",
+    "proofKicker": "Teslim edilen proje",
+    "deliveredLabel": "Teslim",
+    "proofEmpty": "Teslim edilen proje referansları yayımlanıyor. Projenizin ihtiyacını iletin, şartnameli bir teklifle dönelim.",
+    "industriesKicker": "Sektörler",
+    "industriesTitle": "Sektörünüze göre",
+    "industriesSub": "Sektörünüzün denetlendiği standartlara göre belirlenmiş ekipman, sertifikasyon ve tedarik.",
+    "industriesEmpty": "Sektör bölümleri yayımlanıyor.",
+    "categoriesKicker": "Ekipman",
+    "categoriesTitle": "Neler tedarik ediyoruz",
+    "categoriesEmpty": "Ekipman yelpazesi yayımlanıyor.",
+    "manufacturersKicker": "OEM iş ortakları",
+    "manufacturersTitle": "Tedarik ettiğimiz üreticiler",
+    "manufacturersEmpty": "Üretici iş ortakları yayımlanıyor.",
+    "credibilityKicker": "Yetkinlik",
+    "credibilityTitle": "Denetimde kanıtlanmış şartname disiplini",
+    "capability": "Kalite sürecimiz nükleer sınıf kalite güvence disiplinine göre kurgulanmıştır: belgelenmiş izlenebilirlik, sertifikalı malzemeler ve her kalem için muayene kayıtları. Aynı disiplin tek bir dedektör için de tam proje seti için de geçerlidir.",
+    "certsLabel": "Sertifikasyon",
+    "ctaTitle": "Şartnamenizi bize gönderin."
   },
   "NotFound": {
     "title": "Sayfa bulunamadı",

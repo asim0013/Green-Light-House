@@ -1,25 +1,34 @@
 import { hasLocale } from "next-intl";
-import { getTranslations } from "next-intl/server";
+import { setRequestLocale } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { listIndustries } from "@/server/repositories/industry";
-import { FallbackNotice } from "@/components/i18n/FallbackNotice";
-import { Kicker, SectionHeader, Button, Chip, DarkBand, TwoColumn } from "@/components/ui";
-import { CONTAINER } from "@/components/layout/container";
+import { listManufacturers } from "@/server/repositories/manufacturer";
+import { listTopLevelCategories } from "@/server/repositories/category";
+import { listPublishedProjects } from "@/server/repositories/project";
+import { HomeHero } from "@/components/home/HomeHero";
+import { HomeIndustries } from "@/components/home/HomeIndustries";
+import { HomeCategories } from "@/components/home/HomeCategories";
+import { HomeManufacturers } from "@/components/home/HomeManufacturers";
+import { HomeCredibility } from "@/components/home/HomeCredibility";
 
 // SSR per request — this reads live DB content, so it must not be baked into the
-// static build (a build must not require a running Postgres). Real catalog pages
-// (Epic 2) will layer tag-based ISR caching on top of the same read path.
+// static build (a build must not require a running Postgres). Tag-based ISR
+// caching layers onto this same read path in Story 1.8.
 export const dynamic = "force-dynamic";
 
 /**
- * TEMPORARY proof surface (Story 1.3).
+ * Projects-first homepage (Story 1.7).
  *
- * Demonstrates the localization contract end-to-end: locale routing resolves
- * this page per `[locale]`, UI strings come from `messages/*.json`, and seeded
- * industry names are read through the Story 1.2 repository — rendering the EN
- * value with a "shown in English" marker wherever the requested TR/RU value is
- * missing. Story 1.7 replaces this with the real projects-first homepage.
+ * Proof → discovery → credibility → inquiry, in that order: the hero leads with a
+ * DELIVERED PROJECT rather than a product grid (FR7), the discovery sections carry
+ * the industry-led IA (FR8), and the credibility band sits beneath the hero as a
+ * validation layer rather than the headline (FR10). Both the Request-Quote CTA and
+ * the co-equal phone action appear above the fold and again at the close (FR9).
+ *
+ * The route owns the data reads; the sections are presentational and take resolved
+ * data as props, so each renders correctly with zero rows and stays unit-testable
+ * without a database.
  */
 export default async function LocaleHome(props: { params: Promise<{ locale: string }> }) {
   const { locale } = await props.params;
@@ -30,69 +39,25 @@ export default async function LocaleHome(props: { params: Promise<{ locale: stri
     notFound();
   }
 
-  // Locale passed explicitly — no `setRequestLocale` needed on a force-dynamic page.
-  const t = await getTranslations({ locale, namespace: "Home" });
-  const industries = await listIndustries(locale);
+  // Establish the request locale for this subtree so the sections' `useTranslations`
+  // resolves without threading the locale through every component.
+  setRequestLocale(locale);
+
+  // Independent reads — issue them together rather than serially.
+  const [projects, industries, categories, manufacturers] = await Promise.all([
+    listPublishedProjects(locale, 1),
+    listIndustries(locale),
+    listTopLevelCategories(locale),
+    listManufacturers(locale),
+  ]);
 
   return (
-    <div className={`${CONTAINER} py-16`}>
-      <h1 className="font-heading text-3xl font-bold tracking-tight text-ink md:text-4xl">
-        {t("title")}
-      </h1>
-      <p className="mt-2 text-ink-2">{t("subtitle")}</p>
-
-      <ul className="mt-8 border-t border-border-subtle">
-        {industries.map((industry) => (
-          <li key={industry.id} className="border-b border-border-subtle py-3 font-body text-ink">
-            {/* Mark the fallen-back English content with lang="en" (AC4). */}
-            <span lang={industry.isFallback ? "en" : undefined}>{industry.name}</span>
-            <FallbackNotice isFallback={industry.isFallback} />
-          </li>
-        ))}
-      </ul>
-
-      {/*
-        Primitive showcase (Story 1.5) — TEMPORARY, non-localized demo content so
-        each base primitive is exercised at least once. Real pages (1.6 nav, 1.7
-        homepage) compose these with next-intl copy and replace this scaffold.
-      */}
-      <section className="mt-16">
-        <SectionHeader
-          kicker="Design system"
-          title="Primitives in use"
-          sub="Temporary showcase — tokens, typography, and base components."
-          action={<Button variant="link">View components</Button>}
-        />
-        <div className="mt-5 flex flex-wrap items-center gap-3">
-          <Button variant="primary">Primary action</Button>
-          <Button variant="secondary">Secondary</Button>
-          <Chip>ATEX Zone 1</Chip>
-          <Chip variant="outline" cert>
-            ISO 9001
-          </Chip>
-        </div>
-      </section>
-
-      <DarkBand className="mt-8 px-8 py-10">
-        <TwoColumn
-          sideWidth={220}
-          main={
-            <div>
-              <Kicker>Delivered</Kicker>
-              <p className="mt-2 font-heading text-2xl font-bold text-white">Proof over promise.</p>
-              <p className="mt-2 text-on-dark-text">
-                Ink band using the fill-container main + fixed-width side pattern.
-              </p>
-            </div>
-          }
-          side={
-            <div className="flex flex-col gap-2">
-              <Button variant="onDarkPrimary">Get a quote</Button>
-              <Button variant="onDarkSecondary">Call us</Button>
-            </div>
-          }
-        />
-      </DarkBand>
-    </div>
+    <>
+      <HomeHero project={projects[0] ?? null} />
+      <HomeIndustries industries={industries} />
+      <HomeCategories categories={categories} />
+      <HomeManufacturers manufacturers={manufacturers} />
+      <HomeCredibility />
+    </>
   );
 }

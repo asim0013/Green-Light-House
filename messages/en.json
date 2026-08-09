@@ -10,8 +10,29 @@
     "label": "Language"
   },
   "Home": {
-    "title": "Industries",
-    "subtitle": "Localization framework preview — content falls back to English where a translation is missing."
+    "kicker": "Project supply",
+    "title": "Industrial and fire-safety equipment, specified and delivered.",
+    "lead": "We select, certify and supply equipment for high-stakes industrial projects across the Türkiye–Russia corridor — with the certificates, customs handling and delivery dates the project actually needs.",
+    "sla": "Technical review in 24 h · specced proposal in 3 working days",
+    "noPrices": "No price shown — a project-specced quote, fast.",
+    "proofKicker": "Delivered project",
+    "deliveredLabel": "Delivered",
+    "proofEmpty": "Delivered project references are being published. Tell us what your project needs and we will come back with a specced proposal.",
+    "industriesKicker": "Industries",
+    "industriesTitle": "Built for your sector",
+    "industriesSub": "Equipment, certification and supply scoped to the standards your industry is audited against.",
+    "industriesEmpty": "Industry sections are being published.",
+    "categoriesKicker": "Equipment",
+    "categoriesTitle": "What we supply",
+    "categoriesEmpty": "The equipment range is being published.",
+    "manufacturersKicker": "OEM partners",
+    "manufacturersTitle": "Manufacturers we supply",
+    "manufacturersEmpty": "Manufacturer partners are being published.",
+    "credibilityKicker": "Capability",
+    "credibilityTitle": "Specification discipline, proven under audit",
+    "capability": "Our quality process is built to nuclear-grade QA discipline: documented traceability, certified materials and inspection records on every line item. The same discipline applies to a single detector and to a full project kit.",
+    "certsLabel": "Certification",
+    "ctaTitle": "Send us your specification."
   },
   "NotFound": {
     "title": "Page not found",

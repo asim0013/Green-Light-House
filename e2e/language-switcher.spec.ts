@@ -9,8 +9,16 @@ import { probeDbReady } from "./dbReady";
  * a subsequent `/` visit (the `NEXT_LOCALE` cookie). Each Playwright test gets an
  * isolated browser context, so the cookie set here does not leak into other specs.
  *
- * Reads the seeded proof page for language assertions; skips if Postgres is down.
+ * Reads the seeded homepage for language assertions; skips if Postgres is down.
+ * Story 1.7 re-pointed the h1 expectations at the real homepage copy — the proof
+ * page it previously asserted against no longer exists.
  */
+
+/** Distinctive opening of the localized `Home.title` h1 in each locale. */
+const H1 = {
+  en: "Industrial and fire-safety equipment",
+  tr: "Endüstriyel ve yangın güvenliği",
+} as const;
 
 let dbReady = true;
 
@@ -34,7 +42,7 @@ test("switches locale, preserves route, marks active, and persists via cookie", 
   // Start in English; the active locale is marked.
   await page.goto("/en");
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Industries");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(H1.en);
   await expect(header.getByRole("link", { name: "English" })).toHaveAttribute(
     "aria-current",
     "page",
@@ -44,7 +52,7 @@ test("switches locale, preserves route, marks active, and persists via cookie", 
   await header.getByRole("link", { name: "Türkçe" }).click();
   await expect(page).toHaveURL(/\/tr\/?$/);
   await expect(page.locator("html")).toHaveAttribute("lang", "tr");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Sektörler");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(H1.tr);
   await expect(header.getByRole("link", { name: "Türkçe" })).toHaveAttribute(
     "aria-current",
     "page",
@@ -58,10 +66,10 @@ test("switches locale, preserves route, marks active, and persists via cookie", 
   // Persists across a reload (cookie, not just the URL).
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("lang", "tr");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Sektörler");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(H1.tr);
 
   // Visiting the unprefixed `/` redirects to the remembered locale.
   await page.goto("/");
   await expect(page).toHaveURL(/\/tr\/?$/);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Sektörler");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(H1.tr);
 });

@@ -18,5 +18,10 @@ export default getRequestConfig(async ({ requestLocale }) => {
   return {
     locale,
     messages: (await import(`../../messages/${locale}.json`)).default,
+    // Pin the formatting time zone. Without it next-intl falls back to the SERVER's
+    // zone, which warns and makes a rendered date environment-dependent (a project
+    // delivered "1 June" could render as 31 May on a UTC-behind host). İstanbul
+    // matches where GLH operates and the city shown in the footer.
+    timeZone: "Europe/Istanbul",
   };
 });
