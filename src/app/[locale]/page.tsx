@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { Metadata } from "next";
 import { hasLocale } from "next-intl";
 import { setRequestLocale } from "next-intl/server";
@@ -20,15 +21,39 @@ import { HomeCredibility } from "@/components/home/HomeCredibility";
 export const dynamic = "force-dynamic";
 
 /**
+ * The homepage's four reads, memoised for the REQUEST.
+ *
+ * `generateMetadata` and the page body both need this data — metadata to decide
+ * indexability, the body to render — and Next runs them as separate calls. Story
+ * 1.8's `cached()` makes each read cheap but does NOT deduplicate within a request:
+ * without this wrapper the four reads ran twice, i.e. 8 Redis lookups per page
+ * view, and on a true miss (cold cache, tag invalidation, Redis unavailable) BOTH
+ * callers fell through to Postgres — 8 query-groups instead of 4.
+ *
+ * React's `cache()` is request-scoped, so the second caller gets the first one's
+ * promise. `cached()` still handles the cross-request layer; this handles the
+ * within-request one.
+ */
+// The routing union, NOT next-intl's wider `Locale`: the repositories take Prisma's
+// `Locale` enum, and only the narrowed union is assignable to it.
+const getHomepageData = cache(async (locale: (typeof routing.locales)[number]) => {
+  const [projects, industries, categories, manufacturers] = await Promise.all([
+    listPublishedProjects(locale, 1),
+    listIndustries(locale),
+    listTopLevelCategories(locale),
+    listManufacturers(locale),
+  ]);
+  return { projects, industries, categories, manufacturers };
+});
+
+/**
  * Per-page SEO metadata (Story 1.9 — FR42, FR42a).
  *
  * Canonical and hreflang live HERE rather than in the layout, because they are
  * per-PATH and the layout does not know which child route is rendering.
  *
- * This repeats the page's four reads. That is cheap by construction: every one goes
- * through `cached()` (Story 1.8), so metadata and body share Redis entries rather
- * than hitting Postgres twice — and computing indexability from anything other than
- * the data actually rendered would be guessing.
+ * Indexability is computed from the data actually rendered — anything else would
+ * be guessing — which is why this shares `getHomepageData` with the body.
  */
 export async function generateMetadata(props: {
   params: Promise<{ locale: string }>;
@@ -36,12 +61,7 @@ export async function generateMetadata(props: {
   const { locale } = await props.params;
   if (!hasLocale(routing.locales, locale)) return {};
 
-  const [projects, industries, categories, manufacturers] = await Promise.all([
-    listPublishedProjects(locale, 1),
-    listIndustries(locale),
-    listTopLevelCategories(locale),
-    listManufacturers(locale),
-  ]);
+  const { projects, industries, categories, manufacturers } = await getHomepageData(locale);
 
   // Every translatable thing the homepage shows. `itemCount === 0` means an empty
   // database, which is genuinely thin; `fallbackFields === totalFields` means not a
@@ -86,13 +106,8 @@ export default async function LocaleHome(props: { params: Promise<{ locale: stri
   // resolves without threading the locale through every component.
   setRequestLocale(locale);
 
-  // Independent reads — issue them together rather than serially.
-  const [projects, industries, categories, manufacturers] = await Promise.all([
-    listPublishedProjects(locale, 1),
-    listIndustries(locale),
-    listTopLevelCategories(locale),
-    listManufacturers(locale),
-  ]);
+  // Shared with `generateMetadata` above — one set of reads per request.
+  const { projects, industries, categories, manufacturers } = await getHomepageData(locale);
 
   return (
     <>

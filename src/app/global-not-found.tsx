@@ -23,8 +23,11 @@ import "./globals.css";
  * (e.g. app/[country]/layout.tsx)". That is precisely `app/[locale]/layout.tsx`.
  *
  * It is behind `experimental.globalNotFound` in next.config.ts (16.2.12). The cost
- * is that it bypasses layouts, so it must declare its own document — hence the
- * shared `fonts.ts` and `NotFoundContent`, so nothing can drift from the real shell.
+ * is that it bypasses layouts, so it must declare its own document. The parts most
+ * likely to drift — the font wiring and the 404 body — are SHARED with the real
+ * layout via `fonts.ts` and `NotFoundContent`. The document skeleton itself
+ * (`<html>`/`<body>`/`<main>` + header + footer) is still duplicated here by
+ * necessity: keep it in step with `src/app/[locale]/layout.tsx` by hand.
  */
 
 /**

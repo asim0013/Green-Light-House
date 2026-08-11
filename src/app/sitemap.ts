@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { routing } from "@/i18n/routing";
-import { absoluteUrl, isIndexable } from "@/lib/seo";
+import { absoluteUrl, alternatesFor, isIndexable } from "@/lib/seo";
 import { listIndustries } from "@/server/repositories/industry";
 import { listManufacturers } from "@/server/repositories/manufacturer";
 import { listTopLevelCategories } from "@/server/repositories/category";
@@ -36,35 +36,39 @@ export const dynamic = "force-dynamic";
  * § Architectural Boundaries), and each is cached in Redis by Story 1.8.
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const indexableLocales: string[] = [];
+  // The three locales are independent — read them concurrently rather than
+  // awaiting each in turn, which tripled this route's latency for no reason.
+  const perLocale = await Promise.all(
+    routing.locales.map(async (locale) => {
+      const [projects, industries, categories, manufacturers] = await Promise.all([
+        listPublishedProjects(locale, 1),
+        listIndustries(locale),
+        listTopLevelCategories(locale),
+        listManufacturers(locale),
+      ]);
 
-  for (const locale of routing.locales) {
-    const [projects, industries, categories, manufacturers] = await Promise.all([
-      listPublishedProjects(locale, 1),
-      listIndustries(locale),
-      listTopLevelCategories(locale),
-      listManufacturers(locale),
-    ]);
-
-    const translated = [...projects, ...industries, ...categories, ...manufacturers];
-    const indexable = isIndexable({
-      locale,
-      itemCount: translated.length,
-      fallbackFields: translated.filter((row) => row.isFallback).length,
-      totalFields: translated.length,
-    });
-
-    if (indexable) indexableLocales.push(locale);
-  }
-
-  // Build the alternates map from the indexable locales only: pointing hreflang at
-  // a locale we have just decided to keep out of the index would re-advertise it.
-  const languages = Object.fromEntries(
-    indexableLocales.map((locale) => [locale, absoluteUrl(locale, "/")]),
+      const translated = [...projects, ...industries, ...categories, ...manufacturers];
+      return {
+        locale,
+        indexable: isIndexable({
+          locale,
+          itemCount: translated.length,
+          fallbackFields: translated.filter((row) => row.isFallback).length,
+          totalFields: translated.length,
+        }),
+      };
+    }),
   );
 
-  return indexableLocales.map((locale) => ({
-    url: absoluteUrl(locale, "/"),
-    alternates: { languages },
-  }));
+  // INCLUSION is gated by indexability (FR42a: "the sitemap lists only populated
+  // pages"). The hreflang map is NOT — it comes from the same `alternatesFor`
+  // the page metadata uses, so the two can never advertise different alternate
+  // sets for the same URL. An earlier version built a filtered map here and also
+  // dropped `x-default`, which made page and sitemap disagree.
+  return perLocale
+    .filter((entry) => entry.indexable)
+    .map(({ locale }) => ({
+      url: absoluteUrl(locale, "/"),
+      alternates: { languages: alternatesFor(locale, "/").languages },
+    }));
 }

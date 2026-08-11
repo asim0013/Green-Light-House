@@ -14,12 +14,17 @@ import { probeDbReady, warmUp } from "./dbReady";
  *     `</body>` for JS-executing bots and only injected into `<head>` for
  *     HTML-limited ones. Any assertion scoped to `<head>` would false-fail.
  *
- * Origin-independent by construction: the absolute origin comes from `SITE_URL`,
- * which differs between a developer machine and CI, so these assert the SHAPE of
- * the URLs (absolute, self-canonical, one per locale) rather than a literal host.
+ * Origin-independent by construction: `SITE_URL` is currently set in NEITHER a
+ * developer environment nor CI (so `siteOrigin()` returns its localhost default in
+ * both), but it WILL be set in staging and production, and these assertions should
+ * keep working there. They therefore assert the SHAPE of the URLs — absolute,
+ * self-canonical, one per locale — rather than a literal host.
  */
 
 const LOCALES = ["en", "tr", "ru"] as const;
+
+/** Mirrors `allowsIndexing()` so robots.txt can be asserted in ANY environment. */
+const INDEXING_ALLOWED = process.env.SITE_ALLOW_INDEXING?.trim().toLowerCase() === "true";
 
 let dbReady = true;
 
@@ -87,6 +92,12 @@ test.describe("canonical + hreflang (AC1)", () => {
     if (!dbReady) testInfo.skip();
 
     const html = await (await request.get("/en")).text();
+
+    // POSITIVE assertion, deliberately. The absence check below is not enough on
+    // its own: it also passes when the `robots` metadata is missing entirely, so
+    // `robots: robotsFor(signals)` could be deleted from the page and this test
+    // would stay green — which is the whole of AC5's wiring going unnoticed.
+    expect(html).toMatch(/<meta name="robots" content="index, follow"/i);
     expect(html).not.toMatch(/<meta name="robots" content="[^"]*noindex/i);
   });
 });
@@ -126,11 +137,27 @@ test.describe("sitemap.xml and robots.txt (AC3, AC4)", () => {
     expect(xml).toContain('hreflang="tr"');
   });
 
-  test("robots.txt is served and is a valid robots file", async ({ request }) => {
+  test("robots.txt states the rule this environment should be serving", async ({ request }) => {
     const res = await request.get("/robots.txt");
     expect(res.status()).toBe(200);
     expect(res.headers()["content-type"]).toContain("text/plain");
-    expect(await res.text()).toMatch(/User-Agent: \*/i);
+    const body = await res.text();
+
+    // `User-Agent: *` alone proves nothing — Next emits it in BOTH branches, so an
+    // assertion on it passes just as happily against a catastrophic disallow-all
+    // shipped to production. Assert the actual directive instead.
+    if (INDEXING_ALLOWED) {
+      expect(body).toMatch(/^Allow: \/$/m);
+      expect(body).toMatch(/^Disallow: \/api$/m);
+      expect(body).not.toMatch(/^Disallow: \/$/m);
+    } else {
+      expect(body).toMatch(/^Disallow: \/$/m);
+      expect(body).not.toMatch(/^Allow: \/$/m);
+    }
+
+    // AC4's "references the sitemap" — now true in BOTH branches, so it is
+    // assertable in the configuration the suite actually runs in.
+    expect(body).toMatch(/^Sitemap: https?:\/\/.+\/sitemap\.xml$/m);
   });
 });
 
@@ -142,9 +169,11 @@ test.describe("the localized 404 (AC6)", () => {
   for (const path of UNBUILT) {
     const locale = path.split("/")[1];
 
-    test(`${path} → real 404, lang="${locale}", full chrome`, async ({ request }, testInfo) => {
-      if (!dbReady) testInfo.skip();
-
+    // Deliberately NOT gated on `dbReady`: `global-not-found.tsx` reads no
+    // repository, so this path renders identically with Postgres stopped. Gating it
+    // would mean a broken 404 skips silently on a developer machine — the Story-1.7
+    // lesson about guards that are anti-correlated with correctness.
+    test(`${path} → real 404, lang="${locale}", full chrome`, async ({ request }) => {
       const res = await request.get(path);
       // A soft 404 (200 with 404-looking content) is an SEO defect in its own right.
       expect(res.status()).toBe(404);
@@ -165,6 +194,8 @@ test.describe("the localized 404 (AC6)", () => {
     });
   }
 
+  // This one DOES keep the guard: its final step navigates to the homepage, which
+  // is database-backed. The 404 itself is not.
   test("the 404 renders localized copy and a working way out", async ({ page }, testInfo) => {
     if (!dbReady) testInfo.skip();
 

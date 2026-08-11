@@ -26,9 +26,13 @@ export async function generateMetadata(props: {
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: "Meta" });
   return {
-    // Required for the per-page `alternates` in child routes to resolve: without it
-    // Next cannot turn a relative metadata URL into an absolute one, and canonical
-    // / hreflang are meaningless relative. Read at request time (see `siteOrigin`).
+    // NOT what an earlier comment here claimed. `alternatesFor` already returns
+    // ABSOLUTE URLs, and Next's resolver short-circuits those
+    // ("if we can construct a URL instance from url, ignore metadataBase" —
+    // lib/metadata/resolvers/resolve-url.js), so this does not make canonical or
+    // hreflang resolve. What it actually does: normalises those values through
+    // `new URL().href`, and gives any FUTURE relative metadata — Open Graph and
+    // Twitter images in Story 5.x — a base other than localhost. Kept for that.
     metadataBase: new URL(siteOrigin()),
     title: t("title"),
     description: t("description"),

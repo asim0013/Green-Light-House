@@ -32,7 +32,22 @@ const DEV_ORIGIN = "http://localhost:3000";
 export function siteOrigin(): string {
   const raw = process.env.SITE_URL?.trim();
   if (!raw) return DEV_ORIGIN;
-  return raw.replace(/\/+$/, "");
+
+  const normalized = raw.replace(/\/+$/, "");
+  try {
+    new URL(normalized);
+  } catch {
+    // Deliberately fail LOUD rather than falling back. A silent default would
+    // ship wrong canonical and hreflang URLs across the whole site, which is far
+    // worse and far harder to notice than a boot failure. The bare
+    // `TypeError: Invalid URL` this replaces did not say which variable was at
+    // fault, and it surfaced from the root layout's generateMetadata.
+    throw new Error(
+      `SITE_URL is not a valid absolute URL: ${JSON.stringify(raw)}. ` +
+        `It must include a scheme, e.g. "https://greenlighthouse.example".`,
+    );
+  }
+  return normalized;
 }
 
 /**
@@ -53,6 +68,13 @@ export function absoluteUrl(locale: Locale, href: string): string {
  * Self-canonical per locale is deliberate — FR42a says canonicals are set "per
  * language". Pointing TR/RU at EN would de-index the Turkish and Russian trees,
  * which is the opposite of what hreflang is for.
+ *
+ * The language map is NOT gated by indexability, per the story's recorded Q3
+ * decision: every route renders in all three locales (FR34a forbids rendering
+ * empty), so all three URLs resolve, and `noindex` — not a missing hreflang — is
+ * what keeps a thin one out of the index. `sitemap.ts` reuses THIS function for
+ * exactly that reason: an earlier version built its own filtered map, which made
+ * the page and the sitemap advertise different alternate sets for the same URLs.
  */
 export function alternatesFor(locale: Locale, href: string) {
   const languages: Record<string, string> = {};
@@ -69,7 +91,10 @@ export interface ContentSignals {
   locale: Locale;
   /** Primary content items the page actually renders. Zero ⇒ empty. */
   itemCount: number;
-  /** A route that exists but holds no real content yet (e.g. the catch-all). */
+  /**
+   * A route that exists but holds no real content yet — e.g. an Epic 2 category
+   * page shipped before its products are loaded. No caller passes this today.
+   */
   isPlaceholder?: boolean;
   /** Of the page's primary translatable fields, how many resolved via EN fallback. */
   fallbackFields?: number;
@@ -122,8 +147,15 @@ export function robotsFor(signals: ContentSignals): { index: boolean; follow: bo
  * Fails closed. The deployment target is self-hosted containers across several
  * environments, and the production domain is still an open question upstream — so
  * there is no host string to compare against. An explicit opt-in is the only
- * honest gate: staging inheriting a permissive robots.txt is the standard way a
- * duplicate of the whole site ends up in an index.
+ * honest gate.
+ *
+ * Accepts `true` case-insensitively, after trimming — so `TRUE`, `True` and
+ * `" true "` all opt in. Anything else, including unset, does not.
+ *
+ * NOTE ON WHAT THIS BUYS: a disallow-all robots.txt stops crawling, NOT
+ * indexation. A staging URL that is linked from somewhere public can still be
+ * indexed URL-only (Google may list the bare URL with no snippet). Treat this as
+ * one layer; real isolation is HTTP auth or a network boundary.
  */
 export function allowsIndexing(): boolean {
   return process.env.SITE_ALLOW_INDEXING?.trim().toLowerCase() === "true";
