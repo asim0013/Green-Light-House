@@ -73,9 +73,15 @@ describe("HomeIndustries", () => {
     expect(html).toContain("Energy");
   });
 
-  it("emits no anchors — display-only in v1 (Q1)", () => {
+  it("links each industry to its landing page (wired by Story 2.1)", () => {
+    // Story 1.7 asserted the opposite — no anchors at all — because
+    // `/industries/<slug>` did not exist yet and FR8 forbids an entry point that
+    // resolves to a dead page. That route is built now, so the assertion inverts:
+    // one anchor per industry, each pointing at its own slug.
     const html = renderToStaticMarkup(<HomeIndustries industries={INDUSTRIES} />);
-    expect(html).not.toContain("<a ");
+    expect((html.match(/<a /g) ?? []).length).toBe(INDUSTRIES.length);
+    expect(html).toContain('href="/industries/oil-gas"');
+    expect(html).toContain('href="/industries/energy"');
   });
 
   it("marks the fallen-back name and does NOT mark the translated one", () => {

@@ -103,7 +103,7 @@ test.describe("canonical + hreflang (AC1)", () => {
 });
 
 test.describe("sitemap.xml and robots.txt (AC3, AC4)", () => {
-  test("sitemap lists exactly the three locale homepages, with alternates", async ({
+  test("sitemap lists the locale homepages and the built industry surfaces", async ({
     request,
   }, testInfo) => {
     if (!dbReady) testInfo.skip();
@@ -113,22 +113,27 @@ test.describe("sitemap.xml and robots.txt (AC3, AC4)", () => {
     const xml = await res.text();
 
     const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
-    expect(locs).toHaveLength(LOCALES.length);
     for (const locale of LOCALES) {
       expect(locs.some((u) => u.endsWith(`/${locale}`))).toBe(true);
+      // Story 2.1's surfaces. `/industries` is listed because at least one landing
+      // page is indexable.
+      expect(locs.some((u) => u.endsWith(`/${locale}/industries`))).toBe(true);
+      // oil-gas is the populated fixture — 5 products, 2 projects, 4 services.
+      expect(locs.some((u) => u.endsWith(`/${locale}/industries/oil-gas`))).toBe(true);
     }
 
-    // Scope guard: the nav links to Industries/Products/Projects/Services/About and
-    // /rfq, none of which exist until Epics 2/3/5. A sitemap of 404s is worse than
-    // a small sitemap, so their ABSENCE is the assertion.
-    for (const unbuilt of [
-      "/industries",
-      "/products",
-      "/projects",
-      "/services",
-      "/about",
-      "/rfq",
-    ]) {
+    // FR42a, the NEGATIVE half: an industry whose every block is empty is thin, so
+    // it must be `noindex` AND absent here. Measured on the seed, `construction`,
+    // `manufacturing` and `nuclear` have no products, projects, certificates or
+    // services at all. Without the thin-content gate these would be listed.
+    for (const thin of ["construction", "manufacturing", "nuclear"]) {
+      expect(xml, `sitemap advertises thin industry ${thin}`).not.toContain(`/industries/${thin}<`);
+    }
+
+    // Scope guard: the nav still links to Products/Projects/Services/About and /rfq,
+    // none of which exist until Epics 2/3/5. A sitemap of 404s is worse than a small
+    // sitemap, so their ABSENCE is the assertion.
+    for (const unbuilt of ["/products", "/projects", "/services", "/about", "/rfq"]) {
       expect(xml, `sitemap advertises unbuilt route ${unbuilt}`).not.toContain(`${unbuilt}<`);
     }
 
@@ -162,9 +167,11 @@ test.describe("sitemap.xml and robots.txt (AC3, AC4)", () => {
 });
 
 test.describe("the localized 404 (AC6)", () => {
-  // The routes the header and footer link to on EVERY page, none of which exist
-  // yet. Before this story they served a bare, lang-less, chrome-less 404.
-  const UNBUILT = ["/en/industries", "/en/products", "/tr/about", "/ru/services"];
+  // The routes the header and footer link to on EVERY page that STILL do not exist.
+  // Before Story 1.9 they served a bare, lang-less, chrome-less 404.
+  // `/industries` was removed from this list by Story 2.1, which built it — leaving
+  // it here would have failed as a confusing, unrelated-looking 404 assertion.
+  const UNBUILT = ["/en/products", "/tr/about", "/ru/services"];
 
   for (const path of UNBUILT) {
     const locale = path.split("/")[1];

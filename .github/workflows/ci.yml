@@ -64,9 +64,19 @@ jobs:
       # makes any reintroduction of build-time DB access fail here instead of in
       # production. Costs nothing: this replaces the ordinary build rather than
       # adding a second one.
+      #
+      # REDIS_URL IS BLANKED HERE DELIBERATELY (Story 2.1). Measured: with a WARM
+      # Redis this guard silently passes even when a route reads the database at
+      # build time — a `generateStaticParams` calling `listIndustries()` built
+      # cleanly against a dead Postgres because `cached()` served it from Redis,
+      # and produced 28 prerendered pages while reporting success. Flushing Redis
+      # made the same build fail with "Failed to collect page data". Today CI's
+      # Redis happens to be cold at this point, so the guard works by step ORDER
+      # alone; blanking the URL means no future reordering can mask it.
       - name: Build (with NO database reachable — AC7 guard)
         env:
           DATABASE_URL: postgresql://glh:glh@127.0.0.1:1/greenlighthouse?schema=public
+          REDIS_URL: ""
         run: npm run build
       - run: npm run test
 

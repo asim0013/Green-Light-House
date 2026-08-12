@@ -54,21 +54,48 @@ export async function probeDbReady(): Promise<boolean> {
 }
 
 /**
- * Wait for the dev server to finish its on-demand compile of `/[locale]`.
+ * Wait for the dev server to finish its on-demand compile of the routes a spec
+ * needs.
  *
  * Separate from the readiness question on purpose: this only absorbs first-hit
  * compile latency, and it NEVER reports failure — the tests themselves decide
  * whether the page is correct. Bounded well inside the per-test budget so it can
  * never blow the `beforeAll` hook (the old probe could burn ~249s against a 60s
  * hook budget and error the whole spec file).
+ *
+ * WHY `paths` EXISTS (Story 2.1). It used to warm `/en` only, which was enough
+ * while `/[locale]` was the single route. With `/industries` and
+ * `/industries/[slug]` added, the FIRST hit on each still paid the compile inside a
+ * test: measured on a cold `.next`, `/en/industries/oil-gas` took 19.7s to serve
+ * while four workers piled onto it, against a 15s assertion timeout — three tests
+ * failed on latency with no defect present, and passed on a warm re-run with
+ * identical code. Each spec now warms what it actually navigates to.
+ *
+ * Requests go out CONCURRENTLY so adding paths costs no extra wall clock, and the
+ * whole call stays inside the hook budget (3 attempts × (12s + 2s) = 42s < 60s).
  */
-export async function warmUp(baseURL: string | undefined, attempts = 3): Promise<void> {
+export async function warmUp(
+  baseURL: string | undefined,
+  paths: readonly string[] = ["/en"],
+  attempts = 3,
+): Promise<void> {
   for (let i = 0; i < attempts; i++) {
     try {
       const ctx = await pwRequest.newContext({ baseURL });
-      const res = await ctx.get("/en", { timeout: 15_000 });
+      const statuses = await Promise.all(
+        paths.map((path) =>
+          ctx
+            .get(path, { timeout: 12_000 })
+            .then((res) => res.status())
+            // 599 is a local sentinel for "did not answer in time", not a real
+            // status — it just has to be >= 500 so this attempt does not count as
+            // warm.
+            .catch(() => 599),
+        ),
+      );
       await ctx.dispose();
-      if (res.status() < 500) return; // compiled and serving (2xx/3xx/4xx all count)
+      // 2xx/3xx/4xx all count as compiled and serving.
+      if (statuses.every((status) => status < 500)) return;
     } catch {
       // server not accepting connections yet — retry
     }

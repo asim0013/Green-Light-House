@@ -17,15 +17,28 @@ describe("collection tags", () => {
     expect(TAGS.projects).toBe("projects");
   });
 
-  it("names the extensions this story added", () => {
+  it("names the extensions Story 1.8 added", () => {
     expect(TAGS.industries).toBe("industries");
     expect(TAGS.categories).toBe("categories");
     expect(TAGS.manufacturers).toBe("manufacturers");
   });
 
+  it("names the extensions Story 2.1 added for the industry landing blocks", () => {
+    expect(TAGS.services).toBe("services");
+    expect(TAGS.documents).toBe("documents");
+  });
+
   it("lists every collection tag in ALL_COLLECTION_TAGS", () => {
     expect([...ALL_COLLECTION_TAGS].sort()).toEqual(
-      ["catalog", "categories", "industries", "manufacturers", "projects"].sort(),
+      [
+        "catalog",
+        "categories",
+        "documents",
+        "industries",
+        "manufacturers",
+        "projects",
+        "services",
+      ].sort(),
     );
   });
 });

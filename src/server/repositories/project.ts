@@ -85,24 +85,61 @@ export async function listPublishedProjects(
     [TAGS.projects],
   );
 
-  // Re-hydrate `deliveredAt`. The cache round-trips values through JSON, so a
-  // `Date` comes back as an ISO STRING — and `format.dateTime` given a string
-  // renders the raw "2024-06-01T00:00:00.000Z" instead of "June 2024". Applied
-  // unconditionally because it is also correct on a cache miss, where the value
-  // is still a real Date.
+  return rehydrateDates(rows);
+}
+
+/**
+ * Published projects delivered into `industrySlug`, for the Delivered-projects
+ * block (Story 2.1). Same ordering, same mapper, same date contract as the
+ * unfiltered list — only the `where` narrows.
+ */
+export async function listProjectsByIndustry(
+  industrySlug: string,
+  locale: Locale,
+  limit?: number,
+): Promise<ProjectListItem[]> {
+  const rows = await cached(
+    () => queryPublishedProjects(locale, limit, industrySlug),
+    ["projects-by-industry", industrySlug, locale, String(limit ?? "all")],
+    [TAGS.projects, TAGS.industry(industrySlug)],
+  );
+
+  return rehydrateDates(rows);
+}
+
+/**
+ * Re-hydrate `deliveredAt`. The cache round-trips values through JSON, so a `Date`
+ * comes back as an ISO STRING — and `format.dateTime` given a string renders the
+ * raw "2024-06-01T00:00:00.000Z" instead of "June 2024". Applied unconditionally
+ * because it is also correct on a cache miss, where the value is still a real Date.
+ *
+ * Shared by every cached project read: the bug is silent (a date that renders as a
+ * timestamp, not a crash), so a second read that forgot this would ship unnoticed.
+ */
+function rehydrateDates(rows: readonly ProjectListItem[]): ProjectListItem[] {
   return rows.map((row) => ({
     ...row,
     deliveredAt: row.deliveredAt ? new Date(row.deliveredAt) : null,
   }));
 }
 
-/** Uncached SQL read. Exported for integration tests — see the note in `@/lib/cache`. */
+/**
+ * Uncached SQL read. Exported for integration tests — see the note in `@/lib/cache`.
+ *
+ * `industrySlug` narrows to one industry via the nullable `industry_id` FK; omitted,
+ * the read is the whole published set. It is the LAST parameter so that Story 1.7's
+ * existing call sites keep working unchanged.
+ */
 export async function queryPublishedProjects(
   locale: Locale,
   limit?: number,
+  industrySlug?: string,
 ): Promise<ProjectListItem[]> {
   const projects = await prisma.project.findMany({
-    where: { status: "published" },
+    where: {
+      status: "published",
+      ...(industrySlug ? { industry: { slug: industrySlug } } : {}),
+    },
     include: { translations: true, industry: { include: { translations: true } } },
     orderBy: [{ deliveredAt: { sort: "desc", nulls: "last" } }, { slug: "asc" }],
     take: limit,

@@ -1,4 +1,5 @@
 import { useTranslations } from "next-intl";
+import { Link } from "@/i18n/navigation";
 import { SectionHeader } from "@/components/ui";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { CONTAINER } from "@/components/layout/container";
@@ -8,11 +9,11 @@ import type { IndustryListItem } from "@/server/repositories/industry";
  * Industry entry points (Story 1.7, FR8) — the industry-led IA made visible on the
  * homepage.
  *
- * DISPLAY-ONLY in v1 (decision Q1): the industry landing pages are Story 2.1, and
- * FR8's AC forbids a homepage entry point that resolves to a dead page. The 1.6
- * review escalated the bare-404 problem to Story 1.9 precisely because links to
- * unbuilt routes had multiplied — this section does not add more. Epic 2 wires the
- * hrefs when the targets exist.
+ * LINKED as of Story 2.1. These were deliberately display-only in v1: FR8's AC
+ * forbids a homepage entry point that resolves to a dead page, and the 1.6 review
+ * escalated the bare-404 problem precisely because links to unbuilt routes had
+ * multiplied. `/industries/<slug>` now exists for every seeded industry, so the
+ * hrefs are wired — which is what this section was waiting for.
  */
 export function HomeIndustries({ industries }: { industries: IndustryListItem[] }) {
   const t = useTranslations("Home");
@@ -33,14 +34,16 @@ export function HomeIndustries({ industries }: { industries: IndustryListItem[] 
         ) : (
           <ul className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {industries.map((industry) => (
-              <li key={industry.id} className="border border-border-subtle bg-surface p-5">
-                <span
-                  lang={industry.isFallback ? "en" : undefined}
-                  className="font-heading text-base font-semibold text-ink"
+              <li key={industry.id}>
+                <Link
+                  href={`/industries/${industry.slug}`}
+                  className="flex h-full flex-col border border-border-subtle bg-surface p-5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
                 >
-                  {industry.name}
-                </span>
-                <FallbackNotice isFallback={industry.isFallback} />
+                  <span className="font-heading text-base font-semibold text-ink">
+                    <span lang={industry.isFallback ? "en" : undefined}>{industry.name}</span>
+                    <FallbackNotice isFallback={industry.isFallback} />
+                  </span>
+                </Link>
               </li>
             ))}
           </ul>

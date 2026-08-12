@@ -21,7 +21,10 @@ let dbReady = true;
 
 test.beforeAll(async ({ baseURL }) => {
   dbReady = await probeDbReady();
-  await warmUp(baseURL);
+  // `/en/industries/<slug>` was added to this spec by Story 2.1 (the homepage
+  // industry cards are wired now), so its compile must be paid here rather than
+  // inside a test's assertion timeout.
+  await warmUp(baseURL, ["/en", "/en/industries/oil-gas"]);
 });
 
 test("hero leads with a delivered project, not a product grid", async ({ page }) => {
@@ -72,22 +75,52 @@ test("discovery sections render industries, categories and manufacturers", async
   await expect(main.getByText("Flame detectors")).toHaveCount(0);
 });
 
-test("discovery items are display-only — no links to unbuilt routes (Q1/FR8)", async ({ page }) => {
+test("discovery items link only to routes that EXIST (FR8)", async ({ page }) => {
   test.skip(!dbReady, "seeded Postgres not reachable");
   await page.setViewportSize(DESKTOP);
   await page.goto("/en");
 
-  // The nav already links these routes; the homepage body must not multiply them
-  // while they 404 (FR8's AC + the escalated bare-404 defer to Story 1.9).
+  // Story 1.7 asserted the stricter "no discovery links at all", because every
+  // target 404ed at the time. Story 2.1 BUILT `/industries/<slug>`, so the industry
+  // cards are now wired — and the invariant that actually matters survives intact:
+  // the homepage body must never link to a route that does not exist (FR8's AC, and
+  // the bare-404 problem the 1.6 review escalated).
   const main = page.getByRole("main");
-  for (const route of ["/industries", "/products", "/projects", "/manufacturers"]) {
+
+  // Still unbuilt — Products is Story 2.2, Projects is Epic 3, manufacturer pages
+  // are phased (FR20).
+  for (const route of ["/products", "/projects", "/manufacturers"]) {
     await expect(main.locator(`a[href*="${route}"]`)).toHaveCount(0);
   }
-  // The only navigational elements in the body are the RFQ CTA and the phone.
+
+  // The industry cards now resolve. Six seeded industries, six links.
+  await expect(main.locator('a[href^="/en/industries/"]')).toHaveCount(6);
+
   const hrefs = await main
     .locator("a")
     .evaluateAll((els) => els.map((el) => el.getAttribute("href") ?? ""));
-  expect(hrefs.every((h) => h.includes("/rfq") || h.startsWith("tel:"))).toBe(true);
+  expect(
+    hrefs.every((h) => h.includes("/rfq") || h.startsWith("tel:") || h.includes("/industries/")),
+  ).toBe(true);
+});
+
+test("every homepage industry link actually resolves (no new 404s)", async ({ page, request }) => {
+  test.skip(!dbReady, "seeded Postgres not reachable");
+  await page.goto("/en");
+
+  // The negative proof for the change above: it is not enough that the hrefs exist,
+  // they must not 404. This is the assertion Story 1.7 could not make, which is why
+  // it removed the links instead.
+  const hrefs = await page
+    .getByRole("main")
+    .locator('a[href^="/en/industries/"]')
+    .evaluateAll((els) => els.map((el) => el.getAttribute("href") ?? ""));
+
+  expect(hrefs.length).toBeGreaterThan(0);
+  for (const href of hrefs) {
+    const res = await request.get(href);
+    expect(res.status(), `${href} did not resolve`).toBe(200);
+  }
 });
 
 test("credibility band sits beneath the hero and names no client", async ({ page }) => {

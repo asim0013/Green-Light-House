@@ -14,7 +14,10 @@ let dbReady = true;
 
 test.beforeAll(async ({ baseURL }) => {
   dbReady = await probeDbReady();
-  await warmUp(baseURL);
+  // `/tr` as well as `/en`: the mobile-menu locale switch NAVIGATES to `/tr`, and on
+  // a cold `.next` that compile ran inside the test's 15s assertion budget and timed
+  // out with no defect present (measured twice during Story 2.1).
+  await warmUp(baseURL, ["/en", "/tr"]);
 });
 
 test("header shows brand, the 5 nav links, phone, and the RFQ CTA", async ({ page }) => {

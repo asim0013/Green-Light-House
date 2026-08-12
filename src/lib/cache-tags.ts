@@ -8,9 +8,12 @@
  *
  * `catalog`, `projects`, `product:{id}`, `industry:{slug}` and `manufacturer:{id}`
  * come from the architecture (§ Implementation Patterns → Process). The remaining
- * collection tags (`industries`, `categories`, `manufacturers`) are extensions
- * this story adds, because the homepage reads those collections and needs
- * something to invalidate them by; they follow the same shape.
+ * collection tags (`industries`, `categories`, `manufacturers` in Story 1.8;
+ * `services`, `documents` in Story 2.1) are extensions, because the pages read
+ * those collections and need something to invalidate them by; they follow the
+ * same shape. Extending the typed helper is deliberate: reusing `catalog` for
+ * services and certificates would make an admin's service edit require a
+ * catalog-wide flush, and would put tag strings outside this file.
  */
 
 /** Tags covering a whole collection. */
@@ -25,6 +28,10 @@ export const COLLECTION_TAGS = {
   categories: "categories",
   /** Extension — the homepage OEM marks. */
   manufacturers: "manufacturers",
+  /** Extension (Story 2.1) — the services block on an industry landing page. */
+  services: "services",
+  /** Extension (Story 2.1) — the certificates block; documents are `Document` rows. */
+  documents: "documents",
 } as const;
 
 export type CollectionTag = (typeof COLLECTION_TAGS)[keyof typeof COLLECTION_TAGS];
