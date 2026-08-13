@@ -49,3 +49,11 @@ next-env.d.ts
 /test-results/
 /playwright-report/
 /playwright/.cache/
+
+# BMAD workspace — planning artifacts, story files, skills and resolver config.
+# Local-only by decision (2026-08-13), when GreenLighthouse was separated from the
+# shared C:\AL workspace it used to share with LogiSupp. CLAUDE.md still points at
+# these paths; they simply live inside the repo folder now instead of one level up.
+/_bmad-output/
+/_bmad/
+/.claude/

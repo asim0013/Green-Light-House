@@ -1,0 +1,9 @@
+# Normalize line endings (added 2026-08-13).
+#
+# WHY: this repo had no .gitattributes and the machine has core.autocrlf=true, so
+# every checkout wrote CRLF while Prettier writes LF — leaving `format:check`
+# failing and `git status` showing scores of files as modified with ZERO content
+# difference. It cost time in several stories and made one full-repo restore look
+# like a 105-file change. `eol=lf` makes the working tree match what Prettier and
+# CI expect, on every platform.
+* text=auto eol=lf

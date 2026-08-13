@@ -2,8 +2,10 @@
 
 B2B product-intelligence website (industrial + fire-rescue/protective equipment). **Not a store** — no prices, no cart, no checkout. North star = qualified project inquiries (RFQs). Runs EN/TR/RU; single-admin CMS. Everything public is generated from one **Product Intelligence Database (PID)**.
 
-**Source of truth for planning** (in the `_bmad-output` workspace, not this repo):
-`planning-artifacts/prds/prd-GLH-2026-07-27/`, `architecture/architecture-GLH-2026-07-27.md`, `ux-designs/ux-GLH-2026-07-27/{DESIGN,EXPERIENCE}.md`, `epics-GLH-2026-07-28.md`. Stories: `implementation-artifacts/GLH/`.
+**Source of truth for planning** — in `_bmad-output/` at the repo root, **gitignored** (present on disk, never committed):
+`_bmad-output/planning-artifacts/prds/prd-GLH-2026-07-27/`, `.../architecture/architecture-GLH-2026-07-27.md`, `.../ux-designs/ux-GLH-2026-07-27/{DESIGN,EXPERIENCE}.md`, `.../epics-GLH-2026-07-28.md`. Stories: `_bmad-output/implementation-artifacts/GLH/`.
+
+These moved here on 2026-08-13, when this project was separated from the shared `C:\AL` workspace it used to share with LogiSupp — the artifacts were split by owner and each project got its own `_bmad/` config and `.claude/skills/`. **This repo is now self-contained**: open the folder on its own and every BMAD skill resolves. `_bmad-output/`, `_bmad/` and `.claude/` are all gitignored, so a clone gets code only.
 
 ## Stack (locked)
 
