@@ -11,13 +11,31 @@ import { shouldShowFallbackNotice } from "./fallback";
  * announce the language switch (AC4) — this component only renders the honest
  * "fallback happened" hint next to it.
  */
-export function FallbackNotice({ isFallback }: { isFallback: boolean }) {
+export type FallbackNoticeTone = "light" | "onDark";
+
+export function FallbackNotice({
+  isFallback,
+  tone = "light",
+}: {
+  isFallback: boolean;
+  /**
+   * Must match the surface. The default `ink-2` is a LIGHT-surface token: on the
+   * `ink` band it measures 2.96:1, an AA failure — on the one string UJ3's whole
+   * "fallback is honest" promise rests on. `onDark` uses `on-dark-text` (10.66:1),
+   * the same token DarkBand sets for body copy.
+   */
+  tone?: FallbackNoticeTone;
+}) {
   const t = useTranslations("Common");
 
   if (!shouldShowFallbackNotice(isFallback)) return null;
 
   return (
-    <span className="ml-2 align-middle text-xs font-normal text-ink-2">
+    <span
+      className={`ml-2 align-middle text-xs font-normal ${
+        tone === "onDark" ? "text-on-dark-text" : "text-ink-2"
+      }`}
+    >
       ({t("shownInEnglish")})
     </span>
   );

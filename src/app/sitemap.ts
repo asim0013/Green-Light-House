@@ -5,7 +5,12 @@ import { listIndustries } from "@/server/repositories/industry";
 import { listManufacturers } from "@/server/repositories/manufacturer";
 import { listTopLevelCategories } from "@/server/repositories/category";
 import { listPublishedProjects } from "@/server/repositories/project";
-import { getIndustryPageData, industrySignals } from "@/server/industry-page";
+import {
+  getIndustryPageData,
+  industrySignals,
+  industriesIndexSignals,
+  industryHref,
+} from "@/server/industry-page";
 
 /**
  * `/sitemap.xml` (Story 1.9 — FR42, FR42a).
@@ -73,9 +78,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       return {
         locale,
         collectionsIndexable,
-        // `/industries` is a signpost onto the landing pages: it earns a place only
-        // when at least one of them does, otherwise the sitemap advertises an index
-        // of pages it is itself refusing to list.
+        // The `/industries` index is gated by the index page's OWN predicate — the
+        // same function its generateMetadata calls — not by whether the landing
+        // pages happen to be indexable. Those are different surfaces: an index
+        // listing six sectors is real content even when every sector page is thin.
+        // Gating it on the landing pages made the page say `index, follow` while
+        // the sitemap silently omitted it.
+        indexIndexable: isIndexable(industriesIndexSignals(locale, industries)),
         indexableIndustrySlugs: industrySlugs.filter((slug): slug is string => slug !== null),
       };
     }),
@@ -91,9 +100,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     alternates: { languages: alternatesFor(locale, href).languages },
   });
 
-  return perLocale.flatMap(({ locale, collectionsIndexable, indexableIndustrySlugs }) => [
-    ...(collectionsIndexable ? [entry(locale, "/")] : []),
-    ...(indexableIndustrySlugs.length > 0 ? [entry(locale, "/industries")] : []),
-    ...indexableIndustrySlugs.map((slug) => entry(locale, `/industries/${slug}`)),
-  ]);
+  return perLocale.flatMap(
+    ({ locale, collectionsIndexable, indexIndexable, indexableIndustrySlugs }) => [
+      ...(collectionsIndexable ? [entry(locale, "/")] : []),
+      ...(indexIndexable ? [entry(locale, "/industries")] : []),
+      // `industryHref`, not a template literal: Next does NOT escape sitemap URLs,
+      // so an unencoded `&` or `<` in a slug makes the WHOLE FILE malformed XML.
+      ...indexableIndustrySlugs.map((slug) => entry(locale, industryHref(slug))),
+    ],
+  );
 }

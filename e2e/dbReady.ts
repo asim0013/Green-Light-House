@@ -71,13 +71,20 @@ export async function probeDbReady(): Promise<boolean> {
  * failed on latency with no defect present, and passed on a warm re-run with
  * identical code. Each spec now warms what it actually navigates to.
  *
- * Requests go out CONCURRENTLY so adding paths costs no extra wall clock, and the
- * whole call stays inside the hook budget (3 attempts × (12s + 2s) = 42s < 60s).
+ * Requests go out CONCURRENTLY, so adding paths costs little extra wall clock — but
+ * NOT zero: the slowest path sets the pace, and cold compiles are not free.
+ *
+ * THE PER-REQUEST TIMEOUT MUST EXCEED THE COMPILE IT ABSORBS. It was briefly 12s,
+ * which was below the 19.7s this docstring itself records — so on the cold run it
+ * was meant to fix, every attempt would abort mid-compile and the warm-up degraded
+ * to "hit the route three times and give up". 25s clears the measured figure with
+ * headroom; attempts drop to 2 to stay inside the 60s beforeAll budget
+ * (2 × (25s + 2s) = 54s).
  */
 export async function warmUp(
   baseURL: string | undefined,
   paths: readonly string[] = ["/en"],
-  attempts = 3,
+  attempts = 2,
 ): Promise<void> {
   for (let i = 0; i < attempts; i++) {
     try {
@@ -85,7 +92,7 @@ export async function warmUp(
       const statuses = await Promise.all(
         paths.map((path) =>
           ctx
-            .get(path, { timeout: 12_000 })
+            .get(path, { timeout: 25_000 })
             .then((res) => res.status())
             // 599 is a local sentinel for "did not answer in time", not a real
             // status — it just has to be >= 500 so this attempt does not count as

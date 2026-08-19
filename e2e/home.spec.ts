@@ -1,6 +1,18 @@
 import { test, expect } from "@playwright/test";
 import { probeDbReady, warmUp } from "./dbReady";
 
+/** The rendered text of the first <h1>, tags stripped. */
+function headingOf(html: string): string {
+  const inner = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? "";
+  return inner
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** The h1 the industry not-found body renders (messages/en.json Industry.notFoundTitle). */
+const NOT_FOUND_HEADING = "We do not have a page for that sector";
+
 /**
  * Story 1.7 — projects-first homepage (end-to-end).
  *
@@ -109,8 +121,13 @@ test("every homepage industry link actually resolves (no new 404s)", async ({ pa
   await page.goto("/en");
 
   // The negative proof for the change above: it is not enough that the hrefs exist,
-  // they must not 404. This is the assertion Story 1.7 could not make, which is why
-  // it removed the links instead.
+  // they must land on a REAL industry page.
+  //
+  // ASSERTING status 200 WOULD BE VACUOUS HERE, and that is the whole point of this
+  // comment. Story 2.1 made `/[locale]/industries/<anything>` return 200 — a
+  // deliberate soft 404 — so a status check passes for `/en/industries/qwertyuiop`
+  // just as happily as for a real sector. The assertion has to discriminate on
+  // CONTENT: a real page renders the section stack, the not-found body does not.
   const hrefs = await page
     .getByRole("main")
     .locator('a[href^="/en/industries/"]')
@@ -120,7 +137,22 @@ test("every homepage industry link actually resolves (no new 404s)", async ({ pa
   for (const href of hrefs) {
     const res = await request.get(href);
     expect(res.status(), `${href} did not resolve`).toBe(200);
+
+    // Assert on the RENDERED <h1>, not on the raw body. next-intl serializes the
+    // whole `Industry` namespace into every page for the client provider, so the
+    // not-found copy is present in the HTML of a perfectly good page — a
+    // `toContain` check here passes and fails for the wrong reasons. (Same trap as
+    // `textContent` including <script>, which bit the price assertion.)
+    expect(headingOf(await res.text()), `${href} rendered the not-found body`).not.toBe(
+      NOT_FOUND_HEADING,
+    );
   }
+
+  // The control that proves the assertion above can actually fail: a slug that does
+  // NOT exist must render the not-found body while still returning 200.
+  const bogus = await request.get("/en/industries/qwertyuiop-not-real");
+  expect(bogus.status()).toBe(200);
+  expect(headingOf(await bogus.text())).toBe(NOT_FOUND_HEADING);
 });
 
 test("credibility band sits beneath the hero and names no client", async ({ page }) => {

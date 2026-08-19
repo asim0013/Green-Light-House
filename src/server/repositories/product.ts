@@ -12,7 +12,14 @@ export interface ProductCardItem {
   model: string;
   name: string;
   isFallback: boolean;
-  manufacturer: { slug: string; name: string };
+  /**
+   * `isFallback` is per-field: a product can be translated while its manufacturer
+   * is not, and vice versa. Carrying the manufacturer's own flag is what lets the
+   * card mark ONLY the string that actually fell back (FR34a / AC6). An earlier
+   * version resolved this and threw the flag away, so a fallen-back OEM name
+   * rendered with no `lang="en"` and no visible notice.
+   */
+  manufacturer: { slug: string; name: string; isFallback: boolean };
   /** At most two label/value rows, already derived from the JSONB attributes. */
   specs: readonly { label: string; value: string }[];
 }
@@ -30,12 +37,19 @@ const CARD_SPEC_ROWS = 2;
  * in `messages/` — inventing message keys for content-defined columns would mean a
  * CI failure every time an admin adds an attribute.
  *
- * KEYS ARE SORTED, and that is not cosmetic. Postgres `jsonb` does NOT preserve key
- * insertion order (it orders by key length, then bytewise), so "the first two
- * attributes" would otherwise be decided by storage internals — measured: a row
- * written as `{detection, response, enclosure}` reads back as `{response, detection,
- * enclosure}`. Sorting here makes the choice OURS and identical whatever the
- * attributes came from.
+ * KEYS ARE SORTED BY CODE POINT, and that is not cosmetic. Postgres `jsonb` does NOT
+ * preserve key insertion order (it orders by key length, then bytewise), so "the
+ * first two attributes" would otherwise be decided by storage internals — measured:
+ * a row written as `{detection, response, enclosure}` reads back as `{response,
+ * detection, enclosure}`. Sorting here makes the choice OURS.
+ *
+ * It is a plain `<` comparison, NOT `localeCompare`. `localeCompare` without a
+ * locale argument uses the runtime's default collation, and the result genuinely
+ * varies: across en/tr/ru/sv/de-phonebk the same key set produced THREE different
+ * orderings, and the default also differs from code-point order on case. Since this
+ * output is written into a SHARED Redis cache, two servers with different ICU
+ * defaults could disagree about which two rows a card shows — defeating the very
+ * determinism the sort exists for.
  *
  * KNOWN LIMITATION, deliberately not solved here: there is no "featured spec"
  * concept in the schema, so an editor cannot choose WHICH two rows the card shows.
@@ -49,22 +63,53 @@ export function toSpecRows(
 
   const rows: { label: string; value: string }[] = [];
   const entries = Object.entries(attributes as Record<string, unknown>).sort(([a], [b]) =>
-    a.localeCompare(b),
+    a < b ? -1 : a > b ? 1 : 0,
   );
   for (const [key, value] of entries) {
     if (rows.length >= max) break;
-    if (typeof value !== "string" && typeof value !== "number") continue;
+    // A card has only two slots, so a blank or non-finite value must not consume
+    // one. `typeof` alone lets "", "   ", NaN and Infinity through — and the CSV
+    // import named in Story 4.10 is exactly the source that produces empty cells.
+    if (typeof value === "number") {
+      if (!Number.isFinite(value)) continue;
+    } else if (typeof value === "string") {
+      if (value.trim() === "") continue;
+    } else {
+      continue;
+    }
     rows.push({ label: humanizeSpecKey(key), value: String(value) });
   }
   return rows;
 }
 
-/** `hazArea` → `Haz area`. Splits camelCase; leaves already-spaced keys alone. */
+/**
+ * `hazArea` → `Haz area`. Splits camelCase and treats `_`/`-` as word breaks.
+ *
+ * CAPITALISATION IS PRESERVED, not normalised. This is an industrial equipment
+ * catalogue: `IP66`, `ATEX`, `IECEx`, `SIL2` and `DN` are the labels that carry the
+ * meaning, and an earlier version lower-cased everything after the first character
+ * — rendering `Ip66`, `Atex`, `Iecex` and `Sil2` on public product cards. So only a
+ * fully-lower-case first word is capitalised; anything the author already cased is
+ * left exactly as written.
+ */
 export function humanizeSpecKey(key: string): string {
   const spaced = key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ");
   const trimmed = spaced.trim();
   if (!trimmed) return key;
-  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+
+  // An ACRONYM is any word carrying two or more capitals (`IP66`, `ATEX`, `IECEx`,
+  // `SIL2`). Those are left exactly as authored. An ordinary word carries at most
+  // one capital — which the camelCase split just introduced — so it is lower-cased
+  // back down, keeping `hazArea` reading as "Haz area" rather than "Haz Area".
+  const isAcronym = (word: string) => (word.match(/[A-Z]/g) ?? []).length >= 2;
+
+  const words = trimmed.split(" ").map((word, index) => {
+    if (isAcronym(word)) return word;
+    const lowered = word.toLowerCase();
+    return index === 0 ? lowered.charAt(0).toUpperCase() + lowered.slice(1) : lowered;
+  });
+
+  return words.join(" ");
 }
 
 export interface ProductDetail {
@@ -148,6 +193,8 @@ export async function queryProductsByIndustry(
       manufacturer: {
         slug: product.manufacturer.slug,
         name: mt?.value.name ?? product.manufacturer.slug,
+        // Resolved INDEPENDENTLY of the product's own flag — see ProductCardItem.
+        isFallback: mt?.isFallback ?? false,
       },
       specs: toSpecRows(product.attributes),
     };

@@ -51,10 +51,14 @@ export function IndustryHero({ industry }: { industry: IndustryDetail }) {
               {/* DESIGN.md's `display` step (40–46), stepped down at narrow widths
                   for the same reason as the homepage hero: Russian sector names are
                   long and overflow a 320px column at full size. */}
+              {/* The notice sits INSIDE the h1, as it does at every other call site.
+                  Outside it, it rendered as an orphan line and was absent from the
+                  heading's accessible name. `onDark` because this is an ink band —
+                  the default light token measures 2.96:1 here. */}
               <h1 className="mt-3 font-heading text-[28px] font-bold leading-[1.1] tracking-tight text-white sm:text-[36px] md:text-[46px]">
                 <span lang={lang}>{industry.name}</span>
+                <FallbackNotice isFallback={industry.isFallback} tone="onDark" />
               </h1>
-              <FallbackNotice isFallback={industry.isFallback} />
 
               {industry.description && (
                 <p

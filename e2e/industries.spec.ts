@@ -137,8 +137,9 @@ test.describe("a populated industry landing page (AC1)", () => {
 
     await page.goto(`/en/industries/${POPULATED}`);
 
-    // 4 published products (capped from 5), 2 projects, 4 services.
-    await expect(page.locator("article")).toHaveCount(4);
+    // 3 published products (capped from 5 by PRODUCT_LIMIT, which matches the
+    // 3-column grid EXPERIENCE.md specifies), 2 projects, 4 services.
+    await expect(page.locator("article")).toHaveCount(3);
     await expect(page.getByText("Technical selection")).toBeVisible();
 
     // A model designation is machine data and must be rendered.
@@ -248,7 +249,14 @@ test.describe("an unknown slug (AC4)", () => {
   for (const locale of LOCALES) {
     test(`/${locale}/industries/<unknown> keeps lang="${locale}" and full chrome`, async ({
       request,
-    }) => {
+    }, testInfo) => {
+      // GUARDED, unlike the equivalent tests in seo.spec.ts. Those hit
+      // `global-not-found.tsx`, which reads no repository and so renders identically
+      // with Postgres stopped. THIS route does not: an unknown slug still goes
+      // through `getIndustryBySlug` → Prisma, so with no database the page 500s and
+      // these assertions fail for a reason that has nothing to do with the 404.
+      if (!dbReady) testInfo.skip();
+
       const res = await request.get(`/${locale}/industries/does-not-exist-xyz`);
       const html = await res.text();
 

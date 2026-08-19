@@ -76,8 +76,21 @@ export async function queryIndustries(locale: Locale): Promise<IndustryListItem[
  * detail reads, which would otherwise keep serving a deleted industry for the
  * cache's whole TTL.
  *
- * `slug` is attacker-controlled — it comes straight from the URL — so it lands in
- * the cache KEY, never in a hand-built tag string.
+ * `slug` IS attacker-controlled — it comes straight from the URL — and it reaches
+ * BOTH the cache key and the `industry:{slug}` tag. (An earlier version of this
+ * comment claimed the tag was safe from it. That was simply false, and the same
+ * pattern is repeated in the five block reads.)
+ *
+ * Measured exposure, so the next reader does not have to re-derive it: the cache
+ * handler embeds tags inside the entry PAYLOAD and only writes `glh:tag:*` keys from
+ * `revalidateTag`, so an unknown slug creates NO tag key — verified against a live
+ * Redis, which held only the four collection tags. What it does create is one cache
+ * ENTRY per unknown slug per locale, at the handler's 24h TTL. `getIndustryPageData`
+ * short-circuits on a null industry, so it is one entry and not six.
+ *
+ * That is bounded but not free, and it is the same unvalidated-slug pattern already
+ * deferred from the Story 1.8 review for `getProductBySlug`. Both want one slug
+ * allowlist or existence check; see deferred-work.md.
  */
 export async function getIndustryBySlug(
   slug: string,

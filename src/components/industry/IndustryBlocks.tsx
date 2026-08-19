@@ -85,8 +85,15 @@ export function IndustryCertificates({ certificates }: { certificates: Certifica
       <ul className="flex flex-wrap gap-3">
         {certificates.map((certificate) => (
           <li key={certificate.id}>
-            <Chip variant="outline" cert>
+            {/* `filled` (surface-2), not `outline`: this section's fill is `surface`,
+                and the outline variant is white-on-white with a border-subtle edge
+                measuring 1.22:1 — an invisible box. */}
+            <Chip cert>
               <span lang={certificate.isFallback ? "en" : undefined}>{certificate.title}</span>
+              {/* The other four blocks all carry the visible marker; this one only
+                  set `lang`, so a fallen-back certificate title was silently
+                  English with nothing saying so (AC6). */}
+              <FallbackNotice isFallback={certificate.isFallback} />
             </Chip>
           </li>
         ))}
@@ -140,7 +147,9 @@ export function IndustryProducts({ products }: { products: ProductCardItem[] }) 
       emptyCopy={t("productsEmpty")}
       isEmpty={products.length === 0}
     >
-      <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      {/* 3 -> 2 -> 1, per EXPERIENCE.md § Responsive & Platform. It was
+          `lg:grid-cols-4`, one column above the specified maximum. */}
+      <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {products.map((product) => (
           <li key={product.id} className="flex">
             <div className="flex w-full">
@@ -166,7 +175,8 @@ export function IndustryProjects({ projects }: { projects: ProjectListItem[] }) 
       isEmpty={projects.length === 0}
       fill="surface-2"
     >
-      <ul className="grid gap-5 lg:grid-cols-3">
+      {/* Same 3 -> 2 -> 1 ladder; this one skipped the 2-col step. */}
+      <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {projects.map((project) => (
           <li key={project.id} className="border border-border-subtle bg-surface p-5">
             <h3 className="font-heading text-base font-semibold leading-snug text-ink">

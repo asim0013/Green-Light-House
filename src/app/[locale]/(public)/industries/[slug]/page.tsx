@@ -4,7 +4,7 @@ import { setRequestLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { alternatesFor, robotsFor } from "@/lib/seo";
-import { getIndustryPageData, industrySignals } from "@/server/industry-page";
+import { getIndustryPageData, industrySignals, industryHref } from "@/server/industry-page";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
 import { IndustryHero } from "@/components/industry/IndustryHero";
 import { IndustryCta } from "@/components/industry/IndustryCta";
@@ -58,7 +58,8 @@ export async function generateMetadata(props: {
   return {
     title: data.industry.name,
     description: data.industry.description ?? undefined,
-    alternates: alternatesFor(locale, `/industries/${slug}`),
+    // Same helper the sitemap uses, so canonical and sitemap can never disagree.
+    alternates: alternatesFor(locale, industryHref(slug)),
     robots: robotsFor(industrySignals(locale, data)),
   };
 }
@@ -119,7 +120,7 @@ export default async function IndustryPage(props: {
       <IndustryServices services={services} />
       <IndustryProducts products={products} />
       <IndustryProjects projects={projects} />
-      <IndustryCta industryName={industry.name} />
+      <IndustryCta industryName={industry.name} isFallback={industry.isFallback} />
     </>
   );
 }

@@ -331,7 +331,24 @@ describe("products by industry (integration)", () => {
     const found = (await queryProductsByIndustry(TEST_SLUG, "en")).find(
       (p) => p.slug === `${PRODUCT_PREFIX}published`,
     );
-    expect(found?.manufacturer).toEqual({ slug: MANUFACTURER_SLUG, name: "Integration OEM" });
+    expect(found?.manufacturer).toEqual({
+      slug: MANUFACTURER_SLUG,
+      name: "Integration OEM",
+      isFallback: false,
+    });
+  });
+
+  it("carries the manufacturer's OWN fallback flag, independent of the product's", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    // The fixture manufacturer has an EN translation only, so in Turkish its name
+    // falls back — and the card must mark THAT string, not the product's. An earlier
+    // version resolved this flag and discarded it, so a fallen-back OEM name rendered
+    // with no lang="en" and no visible notice (FR34a / AC6).
+    const found = (await queryProductsByIndustry(TEST_SLUG, "tr")).find(
+      (p) => p.slug === `${PRODUCT_PREFIX}published`,
+    );
+    expect(found?.manufacturer.isFallback).toBe(true);
+    expect(found?.manufacturer.name).toBe("Integration OEM");
   });
 
   it("derives at most two spec rows, key-sorted, from the JSONB attributes", async (ctx) => {

@@ -20,7 +20,18 @@ import { SITE } from "@/config/site";
  * The SLA numbers are identical to every other surface that promises them, which is
  * why they live in `messages` rather than being written per page.
  */
-export function IndustryCta({ industryName }: { industryName: string }) {
+export function IndustryCta({
+  industryName,
+  isFallback = false,
+}: {
+  industryName: string;
+  /**
+   * The sector name is interpolated into a heading, so it needs the same honest
+   * marking every other rendering of it gets: without this, an untranslated English
+   * name landed unmarked inside a Russian h2 (FR34a / AC6).
+   */
+  isFallback?: boolean;
+}) {
   const t = useTranslations("Industry");
   const tNav = useTranslations("Nav");
 
@@ -32,7 +43,13 @@ export function IndustryCta({ industryName }: { industryName: string }) {
           main={
             <div>
               <Kicker>{t("ctaKicker")}</Kicker>
-              <h2 className="mt-3 font-heading text-2xl font-bold tracking-tight text-white md:text-[28px]">
+              <h2
+                className="mt-3 font-heading text-2xl font-bold tracking-tight text-white md:text-[28px]"
+                // The whole heading carries the marking, because the fallen-back
+                // fragment is interpolated INSIDE the sentence and cannot be wrapped
+                // separately without breaking the per-locale word order.
+                lang={isFallback ? "en" : undefined}
+              >
                 {/* The sector name is interpolated, not concatenated: word order
                     around it differs across EN/TR/RU. */}
                 {t("ctaTitle", { industry: industryName })}

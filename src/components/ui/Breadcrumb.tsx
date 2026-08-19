@@ -32,7 +32,10 @@ export function Breadcrumb({ items }: { items: readonly Crumb[] }) {
   if (items.length === 0) return null;
 
   return (
-    <nav aria-label={t("breadcrumb")} className="border-b border-border-subtle bg-surface-2">
+    // No bottom hairline: the strip already separates itself by a FILL change
+    // (surface-2). DESIGN.md § Layout allows a hairline OR a fill change, never
+    // both — and on the slug route that hairline landed against the ink hero.
+    <nav aria-label={t("breadcrumb")} className="bg-surface-2">
       <ol className={`${CONTAINER} flex flex-wrap items-center gap-2 py-3.5 font-mono text-xs`}>
         {items.map((item, index) => {
           const isLast = index === items.length - 1;
@@ -43,7 +46,7 @@ export function Breadcrumb({ items }: { items: readonly Crumb[] }) {
                   <Link
                     href={item.href}
                     lang={item.isFallback ? "en" : undefined}
-                    className="text-ink-2 hover:text-ink hover:underline underline-offset-4"
+                    className="text-ink-2 underline-offset-4 hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
                   >
                     {item.label}
                   </Link>

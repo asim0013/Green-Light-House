@@ -36,8 +36,14 @@ export function ProductCard({ product }: { product: ProductCardItem }) {
       </div>
 
       <div className="flex flex-1 flex-col gap-2 p-5">
+        {/* The manufacturer name falls back INDEPENDENTLY of the product name, so it
+            carries its own `lang` and its own notice — marking only the string that
+            actually fell back (FR34a / AC6). */}
         <span className="font-mono text-[11px] uppercase tracking-[0.15em] text-ink-2">
-          {product.manufacturer.name}
+          <span lang={product.manufacturer.isFallback ? "en" : undefined}>
+            {product.manufacturer.name}
+          </span>
+          <FallbackNotice isFallback={product.manufacturer.isFallback} />
         </span>
 
         <h3 className="font-heading text-base font-semibold text-ink">
@@ -51,9 +57,11 @@ export function ProductCard({ product }: { product: ProductCardItem }) {
 
         {product.specs.length > 0 && (
           <dl className="mt-2 flex flex-col">
-            {product.specs.map((spec) => (
+            {product.specs.map((spec, index) => (
               <div
-                key={spec.label}
+                // Index, not label: `hazArea`, `haz_area` and `haz-area` all humanize to
+                // "Haz area", so distinct attributes can collide on the same key.
+                key={`${spec.label}-${index}`}
                 className="flex items-baseline justify-between gap-3 border-b border-border-subtle py-1.5 last:border-b-0"
               >
                 <dt className="text-[13px] text-ink-2">{spec.label}</dt>

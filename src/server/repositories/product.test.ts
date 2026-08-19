@@ -60,6 +60,23 @@ describe("toSpecRows", () => {
     ]);
   });
 
+  it("skips EMPTY and whitespace-only strings — a card has only two slots", () => {
+    // A CSV import (Story 4.10) is named in the source as an input, and empty cells
+    // are what CSVs are made of. A blank row would consume half the card.
+    expect(toSpecRows({ blank: "", spaces: "   ", ok: "yes" })).toEqual([
+      { label: "Ok", value: "yes" },
+    ]);
+  });
+
+  it("skips non-finite numbers rather than rendering NaN or Infinity", () => {
+    expect(toSpecRows({ bad: NaN, worse: Infinity, ok: 4 })).toEqual([{ label: "Ok", value: "4" }]);
+  });
+
+  it("keeps zero, which is a legitimate spec value", () => {
+    // The falsy-check trap: `if (!value) continue` would drop this.
+    expect(toSpecRows({ offset: 0 })).toEqual([{ label: "Offset", value: "0" }]);
+  });
+
   it("returns an empty array for the schema default, null, and a non-object", () => {
     expect(toSpecRows({})).toEqual([]);
     expect(toSpecRows(null)).toEqual([]);
@@ -92,6 +109,23 @@ describe("humanizeSpecKey", () => {
 
   it("handles digit-to-letter boundaries", () => {
     expect(humanizeSpecKey("ip66Rating")).toBe("Ip66 rating");
+  });
+
+  it("PRESERVES acronyms — this is an industrial catalogue, not prose", () => {
+    // An earlier version lower-cased everything after the first character and shipped
+    // `Atex`, `Iecex`, `Sil2` and `Ip66` onto public product cards. These are the
+    // labels that carry the engineering meaning.
+    expect(humanizeSpecKey("ATEX")).toBe("ATEX");
+    expect(humanizeSpecKey("IECEx")).toBe("IECEx");
+    expect(humanizeSpecKey("SIL2")).toBe("SIL2");
+    expect(humanizeSpecKey("IP66Rating")).toBe("IP66 rating");
+  });
+
+  it("lower-cases a NON-acronym word the camelCase split just capitalized", () => {
+    // The other half of the same rule: `Area` carries one capital, which this
+    // function introduced, so it must not be mistaken for an acronym.
+    expect(humanizeSpecKey("hazArea")).toBe("Haz area");
+    expect(humanizeSpecKey("nominalBoreDiameter")).toBe("Nominal bore diameter");
   });
 
   it("returns the original key when it would humanize to nothing", () => {

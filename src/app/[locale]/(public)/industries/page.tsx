@@ -5,6 +5,7 @@ import { setRequestLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { alternatesFor, robotsFor } from "@/lib/seo";
+import { industriesIndexSignals } from "@/server/industry-page";
 import { listIndustries } from "@/server/repositories/industry";
 import { Link } from "@/i18n/navigation";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
@@ -35,12 +36,9 @@ export async function generateMetadata(props: {
     title: t("indexTitle"),
     description: t("indexLead"),
     alternates: alternatesFor(locale, "/industries"),
-    robots: robotsFor({
-      locale,
-      itemCount: industries.length,
-      fallbackFields: industries.filter((row) => row.isFallback).length,
-      totalFields: industries.length,
-    }),
+    // Shared with sitemap.ts so the page's robots tag and the sitemap's inclusion
+    // rule can never disagree about this URL.
+    robots: robotsFor(industriesIndexSignals(locale, industries)),
   };
 }
 

@@ -20,8 +20,35 @@ import type { ContentSignals } from "@/lib/seo";
  * sides call one function; this keeps that property for Epic 2's first surface.
  */
 
+/**
+ * The canonical path for an industry landing page.
+ *
+ * `encodeURIComponent` is NOT decoration. `getPathname` does not encode, and Next
+ * does not escape sitemap URLs either — measured against
+ * `next/dist/build/webpack/loaders/metadata/resolve-route-data.js`, which emits
+ * `<loc>${item.url}</loc>` with no escaping whatsoever. So a slug containing `&`,
+ * `<` or `"` produces MALFORMED XML and breaks `/sitemap.xml` for every locale at
+ * once, not just its own entry.
+ *
+ * Story 2.1 is the first change to interpolate a DATABASE-derived string into that
+ * file — before it the sitemap held three fixed locale homepages — and nothing in
+ * the schema constrains `Industry.slug` beyond `@unique`, so Epic 4's admin can
+ * store anything a human types. Encoding here is a no-op for a well-formed slug
+ * (lowercase ASCII + hyphens, per the Story 2.1 slug rule) and contains the damage
+ * for anything else.
+ *
+ * Used by BOTH `sitemap.ts` and the page's `alternatesFor`, so the canonical URL and
+ * the sitemap URL can never disagree about the same page.
+ */
+export function industryHref(slug: string): string {
+  return `/industries/${encodeURIComponent(slug)}`;
+}
+
 /** How many rows each block shows. No `featured` column exists; ordering is by slug. */
-export const PRODUCT_LIMIT = 4;
+// 3, matching the 3-column grid EXPERIENCE.md § Responsive specifies. It was 4,
+// which came from the missing Pencil mock rather than the spines and left a single
+// orphan card on a second row once the grid was corrected.
+export const PRODUCT_LIMIT = 3;
 export const PROJECT_LIMIT = 3;
 export const CERTIFICATE_LIMIT = 6;
 export const SERVICE_LIMIT = 4;
@@ -58,7 +85,35 @@ export const getIndustryPageData = cache(async (slug: string, locale: Locale) =>
 export type IndustryPageData = NonNullable<Awaited<ReturnType<typeof getIndustryPageData>>>;
 
 /**
- * FR42a's thin-content signals for one industry page.
+ * FR42a's signals for the `/industries` INDEX page.
+ *
+ * Separate from `industrySignals` because the index is a different surface with
+ * different content: it lists the industry set, so it is thin only when there are no
+ * industries at all — NOT when the landing pages it points to happen to be thin. An
+ * index of six sectors is a real page even if every sector page is empty.
+ *
+ * It exists as a shared function for the same reason `industrySignals` does: the
+ * page's `robots` metadata and the sitemap's inclusion rule MUST come from one
+ * predicate. They previously did not — the page indexed on `industries.length > 0`
+ * while the sitemap gated on "at least one landing page is indexable", so six thin
+ * industries produced a page saying `index, follow` that the sitemap refused to
+ * list. Harmless in direction (the dangerous case, `noindex` + advertised, could not
+ * occur) but the docstring claiming one source of truth was simply untrue.
+ */
+export function industriesIndexSignals(
+  locale: Locale,
+  industries: readonly { isFallback: boolean }[],
+): ContentSignals {
+  return {
+    locale,
+    itemCount: industries.length,
+    fallbackFields: industries.filter((row) => row.isFallback).length,
+    totalFields: industries.length,
+  };
+}
+
+/**
+ * FR42a's thin-content signals for one industry LANDING page.
  *
  * `itemCount` counts BLOCK rows only, never the industry itself — otherwise every
  * industry that exists would score at least 1 and no page could ever be thin, which
