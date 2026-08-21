@@ -1,5 +1,7 @@
 import { Package } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
+import { formatDocMeta } from "@/lib/doc-meta";
 import type { ProductCardItem } from "@/server/repositories/product";
 
 /**
@@ -14,13 +16,14 @@ import type { ProductCardItem } from "@/server/repositories/product";
  * Sharp corners, flat, no shadow. **No price anywhere** (FR2) — there is no price
  * field in the schema to render even by accident.
  *
- * THE FOOTER IS DELIBERATELY ABSENT. DESIGN.md specifies a footer with an ungated
- * "Datasheet ↓" and an "Add to inquiry" outline button, but ungated document
- * download is Story 2.3 and the RFQ is Epic 3. DP-12 forbids linking to a page that
- * does not exist yet, and Story 1.6's review escalated exactly this problem after
- * links to unbuilt routes multiplied. The footer lands with its targets.
+ * THE FOOTER IS HALF-DELIVERED, BY DESIGN. DESIGN.md's `gf9DY` footer carries an
+ * ungated "Datasheet ↓" and an "Add to inquiry" outline button. Story 2.3 landed
+ * the datasheet link (rendered only when the product HAS a public datasheet);
+ * "Add to inquiry" still waits for Epic 3's RFQ (DP-12 — never link a page that
+ * does not exist). The download href is the /api route — a plain <a>, NOT the
+ * next-intl Link: /api URLs carry no locale segment.
  *
- * The card is also not itself a link: product detail is Story 2.4.
+ * The card is still not itself a link: product detail is Story 2.4.
  *
  * Presentational only — it takes resolved data, so it renders with zero specs and
  * stays unit-testable without a database.
@@ -74,6 +77,33 @@ export function ProductCard({ product }: { product: ProductCardItem }) {
           </dl>
         )}
       </div>
+
+      {product.datasheet && <CardFooter datasheet={product.datasheet} />}
     </article>
+  );
+}
+
+/**
+ * The half-footer (Story 2.3, decision Q1): hairline top per `gf9DY`, the
+ * "Datasheet ↓" inline text-CTA left-aligned, format+size beside it in the data
+ * font (the a11y floor's "state format + size in text" — inside the link, so the
+ * accessible name carries it too). `mt-auto` pins it to the card's bottom edge so
+ * grids of mixed-height cards keep a level footer line.
+ */
+function CardFooter({ datasheet }: { datasheet: NonNullable<ProductCardItem["datasheet"]> }) {
+  const t = useTranslations("Catalog");
+  const meta = formatDocMeta(datasheet.mime, datasheet.sizeBytes);
+
+  return (
+    <div className="mt-auto border-t border-border-subtle px-5 py-3">
+      <a
+        href={`/api/documents/${datasheet.slug}`}
+        className="inline-flex min-h-11 items-center gap-2 text-[14px] font-semibold text-accent hover:underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 sm:min-h-0"
+      >
+        {t("datasheet")}
+        <span aria-hidden>↓</span>
+        {meta && <span className="font-data text-xs font-normal text-ink-2">{meta}</span>}
+      </a>
+    </div>
   );
 }

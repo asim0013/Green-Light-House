@@ -30,12 +30,10 @@ import type { ContentSignals } from "@/lib/seo";
  * `?category` value is attacker-controlled, and 2.1's review measured both the
  * unbounded-entry exposure and the >247-char tag log-amplification this bounds.
  */
-const SLUG_MAX_LENGTH = 64;
-const SLUG_SHAPE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-
-export function isValidSlug(value: string): boolean {
-  return value.length <= SLUG_MAX_LENGTH && SLUG_SHAPE.test(value);
-}
+// Lifted to src/lib/slug.ts in Story 2.3 (the download handler gates on the same
+// rule); re-exported here so existing imports and tests keep working.
+export { isValidSlug } from "@/lib/slug";
+import { isValidSlug } from "@/lib/slug";
 
 /**
  * Normalize the raw `?category` searchParam. Next 16 types the value as

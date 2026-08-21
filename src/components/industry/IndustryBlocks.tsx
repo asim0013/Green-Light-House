@@ -1,7 +1,8 @@
+import { BadgeCheck } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
-import { Chip } from "@/components/ui";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
+import { formatDocMeta } from "@/lib/doc-meta";
 import { ProductCard } from "@/components/catalog/ProductCard";
 import { IndustrySection } from "./IndustrySection";
 import type { CategoryListItem } from "@/server/repositories/category";
@@ -68,16 +69,21 @@ export function IndustrySupplies({ categories }: { categories: CategoryListItem[
 }
 
 /**
- * Applicable certificates.
+ * Applicable certificates — DOWNLOADABLE as of Story 2.3 (the whole chip is the
+ * link, decision Q3: one target, full hit area). The green `badge-check` stays —
+ * the one non-logo use of `brand` green DESIGN.md permits (UX-DR10). Format+size
+ * text rides inside the link in the data font, so the accessible name states it
+ * (EXPERIENCE.md a11y floor).
  *
- * LISTS ONLY — ungated download with version-stable URLs is Story 2.3, so there is
- * no link here yet. The green `badge-check` on the cert chip is the one non-logo
- * use of `brand` green that DESIGN.md permits.
+ * Plain `<a>`, NOT the next-intl Link: `/api` URLs carry no locale segment. The
+ * chip look is inlined (the `Chip` primitive is a non-interactive `<span>`, and
+ * wrapping it in an anchor would put the focus ring on the wrong box — the same
+ * reason CategoryChips has its own ChipLink). `filled` treatment retained from
+ * the 2.1 review's contrast fix.
  *
- * On the current seed this block is EMPTY FOR EVERY INDUSTRY: the seed attaches its
- * two documents to a product, never to an industry, so `document_industries` has no
- * rows. The populated path is proven by the repository integration tests rather
- * than by any fixture on the page.
+ * As of the 2.3 seed, oil-gas and fire-safety carry the EN 54 certificate — the
+ * first POPULATED page fixture for this block; the other industries still render
+ * the empty state.
  */
 export function IndustryCertificates({ certificates }: { certificates: CertificateListItem[] }) {
   const t = useTranslations("Industry");
@@ -90,20 +96,23 @@ export function IndustryCertificates({ certificates }: { certificates: Certifica
       isEmpty={certificates.length === 0}
     >
       <ul className="flex flex-wrap gap-3">
-        {certificates.map((certificate) => (
-          <li key={certificate.id}>
-            {/* `filled` (surface-2), not `outline`: this section's fill is `surface`,
-                and the outline variant is white-on-white with a border-subtle edge
-                measuring 1.22:1 — an invisible box. */}
-            <Chip cert>
-              <span lang={certificate.isFallback ? "en" : undefined}>{certificate.title}</span>
-              {/* The other four blocks all carry the visible marker; this one only
-                  set `lang`, so a fallen-back certificate title was silently
-                  English with nothing saying so (AC6). */}
-              <FallbackNotice isFallback={certificate.isFallback} />
-            </Chip>
-          </li>
-        ))}
+        {certificates.map((certificate) => {
+          const meta = formatDocMeta(certificate.mime, certificate.sizeBytes);
+          return (
+            <li key={certificate.id}>
+              <a
+                href={`/api/documents/${certificate.slug}`}
+                className="inline-flex min-h-11 items-center gap-1.5 bg-surface-2 px-2 py-1 font-mono text-[11px] uppercase tracking-wide text-ink-2 transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 sm:min-h-0"
+              >
+                <BadgeCheck size={13} className="text-brand" aria-hidden />
+                <span lang={certificate.isFallback ? "en" : undefined}>{certificate.title}</span>
+                <FallbackNotice isFallback={certificate.isFallback} />
+                <span aria-hidden>↓</span>
+                {meta && <span className="font-data normal-case text-ink-2">{meta}</span>}
+              </a>
+            </li>
+          );
+        })}
       </ul>
     </IndustrySection>
   );

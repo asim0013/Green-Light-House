@@ -1,4 +1,4 @@
-import type { Locale } from "@prisma/client";
+import type { Locale, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { cached } from "@/lib/cache";
 import { TAGS } from "@/lib/cache-tags";
@@ -22,6 +22,13 @@ export interface ProductCardItem {
   manufacturer: { slug: string; name: string; isFallback: boolean };
   /** At most two label/value rows, already derived from the JSONB attributes. */
   specs: readonly { label: string; value: string }[];
+  /**
+   * The card footer's ungated download (Story 2.3) — the newest PUBLIC
+   * datasheet-type document, or null (the footer renders only when real).
+   * Newest `version` then slug is the deterministic pick; it binds 2.4's
+   * Documents section (2.3 decision Q2).
+   */
+  datasheet: { slug: string; mime: string | null; sizeBytes: number | null } | null;
 }
 
 /** How many spec rows the card shows — EXPERIENCE.md § Component Patterns: "two spec lines". */
@@ -181,12 +188,15 @@ export interface ProductCardRow {
     slug: string;
     translations: readonly { locale: Locale; name: string; description: string | null }[];
   };
+  /** The (already filtered+ordered) datasheet documents — CARD_INCLUDE takes 1. */
+  documents?: readonly { slug: string; mime: string | null; sizeBytes: number | null }[];
 }
 
 /** Resolve one product row into the card shape for `locale` (EN fallback, FR34a). */
 export function toProductCardItem(product: ProductCardRow, locale: Locale): ProductCardItem {
   const t = resolveTranslation(product.translations, locale);
   const mt = resolveTranslation(product.manufacturer.translations, locale);
+  const datasheet = product.documents?.[0] ?? null;
   return {
     id: product.id,
     slug: product.slug,
@@ -200,14 +210,28 @@ export function toProductCardItem(product: ProductCardRow, locale: Locale): Prod
       isFallback: mt?.isFallback ?? false,
     },
     specs: toSpecRows(product.attributes),
+    datasheet: datasheet
+      ? { slug: datasheet.slug, mime: datasheet.mime, sizeBytes: datasheet.sizeBytes }
+      : null,
   };
 }
 
-/** The Prisma `include` every card-producing read uses. */
+/**
+ * The Prisma `include` every card-producing read uses. The documents relation is
+ * FILTERED AND ORDERED IN THE QUERY (public datasheets, newest version first,
+ * slug tiebreak, take 1) so the mapper's `[0]` pick is deterministic by
+ * construction — no in-memory sorting to drift.
+ */
 const CARD_INCLUDE = {
   translations: true,
   manufacturer: { include: { translations: true } },
-} as const;
+  documents: {
+    where: { type: "datasheet", isPublic: true },
+    orderBy: [{ version: "desc" }, { slug: "asc" }],
+    take: 1,
+    select: { slug: true, mime: true, sizeBytes: true },
+  },
+} satisfies Prisma.ProductInclude;
 
 /** Uncached SQL read. Exported for integration tests — see the note in `@/lib/cache`. */
 export async function queryProductsByIndustry(

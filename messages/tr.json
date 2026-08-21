@@ -77,7 +77,8 @@
     "emptyCta": "İhtiyacınızı iletin",
     "emptyCatalogLead": "Katalog yayımlanacak. Model numarası veya şartname gönderin, tedarik edelim.",
     "countNoun": "{count, plural, other {ürün}}",
-    "countTail": "fiyat yok, tam teknik özellikler"
+    "countTail": "fiyat yok, tam teknik özellikler",
+    "datasheet": "Veri sayfası"
   },
   "NotFound": {
     "title": "Sayfa bulunamadı",

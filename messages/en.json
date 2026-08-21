@@ -77,7 +77,8 @@
     "emptyCta": "Request what you need",
     "emptyCatalogLead": "The catalog is being published. Send a model number or a specification and we will source it.",
     "countNoun": "{count, plural, one {product} other {products}}",
-    "countTail": "no prices, full specs"
+    "countTail": "no prices, full specs",
+    "datasheet": "Datasheet"
   },
   "NotFound": {
     "title": "Page not found",

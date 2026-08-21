@@ -106,6 +106,7 @@ describe("toProductCardItem", () => {
         slug: "sentra-fire",
         translations: [{ locale: "en", name: "Sentra Fire Systems", description: null }],
       },
+      documents: [],
       ...overrides,
     };
   }
@@ -134,6 +135,25 @@ describe("toProductCardItem", () => {
     expect(item.isFallback).toBe(false);
     expect(item.manufacturer.isFallback).toBe(true);
     expect(item.manufacturer.name).toBe("Sentra Fire Systems");
+  });
+
+  it("carries the datasheet when the (pre-filtered) documents include one", () => {
+    // CARD_INCLUDE filters+orders in the QUERY (public datasheets, newest version,
+    // take 1) — the mapper just takes [0]. Null when the relation came back empty.
+    const withDoc = toProductCardItem(
+      cardRow({
+        documents: [{ slug: "fd-9500-datasheet", mime: "application/pdf", sizeBytes: 602 }],
+      }),
+      "en",
+    );
+    expect(withDoc.datasheet).toEqual({
+      slug: "fd-9500-datasheet",
+      mime: "application/pdf",
+      sizeBytes: 602,
+    });
+    expect(toProductCardItem(cardRow(), "en").datasheet).toBeNull();
+    // Tolerates rows without the field at all (older callers).
+    expect(toProductCardItem(cardRow({ documents: undefined }), "en").datasheet).toBeNull();
   });
 
   it("derives spec rows through toSpecRows (sorted, capped at two)", () => {

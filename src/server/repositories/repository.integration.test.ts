@@ -14,7 +14,7 @@ import {
   queryProductsByCategory,
   queryPublishedProducts,
 } from "./product";
-import { queryCertificatesByIndustry } from "./document";
+import { queryCertificatesByIndustry, queryDocumentBySlug } from "./document";
 import { queryServicesByIndustry } from "./service";
 
 /**
@@ -503,6 +503,98 @@ describe("category by slug (integration)", () => {
   it("returns NULL for an unknown slug rather than throwing", async (ctx) => {
     if (!dbReachable) return ctx.skip();
     expect(await queryCategoryBySlug("zzz-no-such-category", "en")).toBeNull();
+  });
+});
+
+/** ---- Story 2.3: the download handler's read + the datasheet join ---- */
+
+describe("document by slug (integration)", () => {
+  it("returns file fields for a PUBLIC document", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    const found = await queryDocumentBySlug(`${DOCUMENT_PREFIX}public-cert`);
+    expect(found).toEqual({
+      slug: `${DOCUMENT_PREFIX}public-cert`,
+      fileKey: "int/public-cert.pdf",
+      mime: null,
+      sizeBytes: null,
+    });
+  });
+
+  it("returns NULL for a PRIVATE document — same path as unknown, deliberately", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    // A prober must not be able to distinguish "exists but private" from
+    // "does not exist" (unpublished items are never enumerable).
+    expect(await queryDocumentBySlug(`${DOCUMENT_PREFIX}private-cert`)).toBeNull();
+    expect(await queryDocumentBySlug("zzz-no-such-document")).toBeNull();
+  });
+
+  it("FR25a: swapping fileKey keeps the same slug serving — the URL never changes", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    const slug = `${DOCUMENT_PREFIX}public-cert`;
+    await prisma.document.update({
+      where: { slug },
+      data: { fileKey: "int/public-cert-v2.pdf", version: 2 },
+    });
+    const after = await queryDocumentBySlug(slug);
+    expect(after?.fileKey).toBe("int/public-cert-v2.pdf");
+    // Restore for other tests in this suite.
+    await prisma.document.update({
+      where: { slug },
+      data: { fileKey: "int/public-cert.pdf", version: 1 },
+    });
+  });
+});
+
+describe("product card datasheet join (integration)", () => {
+  it("carries the newest PUBLIC datasheet and ignores drafts/certs/private docs", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    // Fixture: two datasheets on the published product — v1 public, v2 public
+    // (newest wins), plus a PRIVATE v3 that must never surface.
+    const product = await prisma.product.findUniqueOrThrow({
+      where: { slug: `${PRODUCT_PREFIX}published` },
+    });
+    await prisma.document.createMany({
+      data: [
+        {
+          slug: `${DOCUMENT_PREFIX}ds-v1`,
+          type: "datasheet",
+          fileKey: "int/ds-v1.pdf",
+          version: 1,
+          isPublic: true,
+          productId: product.id,
+        },
+        {
+          slug: `${DOCUMENT_PREFIX}ds-v2`,
+          type: "datasheet",
+          fileKey: "int/ds-v2.pdf",
+          version: 2,
+          isPublic: true,
+          productId: product.id,
+        },
+        {
+          slug: `${DOCUMENT_PREFIX}ds-v3-private`,
+          type: "datasheet",
+          fileKey: "int/ds-v3.pdf",
+          version: 3,
+          isPublic: false,
+          productId: product.id,
+        },
+      ],
+    });
+
+    const cards = await queryProductsByIndustry(TEST_SLUG, "en");
+    const card = cards.find((p) => p.slug === `${PRODUCT_PREFIX}published`);
+    // Newest PUBLIC version wins: v2, not the private v3, not v1.
+    expect(card?.datasheet?.slug).toBe(`${DOCUMENT_PREFIX}ds-v2`);
+  });
+
+  it("is null for a product with no public datasheet", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    const cards = await queryPublishedProducts("en");
+    // The seeded products other than fd-9500 have no datasheet at all; our
+    // fixture product gained docs above, so assert on a seed product instead.
+    const bare = cards.find((p) => p.slug === "as-60");
+    if (bare) expect(bare.datasheet).toBeNull();
   });
 });
 

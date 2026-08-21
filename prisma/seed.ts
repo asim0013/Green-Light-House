@@ -178,34 +178,60 @@ async function main() {
   }
 
   // --- Documents (ungated; attached to FD-9500) ---
+  //
+  // Story 2.3 backfilled `mime` + `sizeBytes` (both were NULL, which collided
+  // with the "doc links state format + size" a11y rule) and added the FIRST
+  // `DocumentIndustry` rows — before that, `document_industries` had zero rows
+  // and the industry-page certificates block had no populated fixture anywhere
+  // (the 2.1 defer this closes). The sizes match what `scripts/seed-storage.ts`
+  // actually uploads; the `update` branch keeps re-seeding idempotent AND
+  // repairs pre-2.3 rows.
   const fd9500 = await prisma.product.findUniqueOrThrow({ where: { slug: "fd-9500" } });
   const documents = [
     {
       slug: "fd-9500-datasheet",
       type: DocumentType.datasheet,
       fileKey: "docs/fd-9500-datasheet-v1.pdf",
+      mime: "application/pdf",
+      sizeBytes: 602,
+      industries: [] as string[],
       tr: [{ locale: Locale.en, title: "FD-9500 Datasheet" }],
     },
     {
       slug: "fd-9500-en54",
       type: DocumentType.certificate,
       fileKey: "docs/fd-9500-en54-v1.pdf",
+      mime: "application/pdf",
+      sizeBytes: 610,
+      // The EN 54 certificate applies to the sectors that audit against it —
+      // this populates the industry-page certificates block (FR12).
+      industries: ["oil-gas", "fire-safety"],
       tr: [{ locale: Locale.en, title: "EN 54-10 Certificate" }],
     },
   ];
   for (const d of documents) {
-    await prisma.document.upsert({
+    const doc = await prisma.document.upsert({
       where: { slug: d.slug },
-      update: {},
+      update: { mime: d.mime, sizeBytes: d.sizeBytes },
       create: {
         slug: d.slug,
         type: d.type,
         fileKey: d.fileKey,
+        mime: d.mime,
+        sizeBytes: d.sizeBytes,
         isPublic: true,
         product: { connect: { id: fd9500.id } },
         translations: { create: d.tr },
       },
     });
+    for (const industrySlug of d.industries) {
+      const industry = await prisma.industry.findUniqueOrThrow({ where: { slug: industrySlug } });
+      await prisma.documentIndustry.upsert({
+        where: { documentId_industryId: { documentId: doc.id, industryId: industry.id } },
+        update: {},
+        create: { documentId: doc.id, industryId: industry.id },
+      });
+    }
   }
 
   // --- Projects (LNG terminal carries TR; links products) ---

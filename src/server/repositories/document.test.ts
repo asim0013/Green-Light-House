@@ -38,7 +38,17 @@ describe("toCertificateListItem", () => {
     );
   });
 
-  it("preserves the slug, which Story 2.3 will build the download URL from", () => {
+  it("preserves the slug the download URL is built from (Story 2.3 delivered it)", () => {
     expect(toCertificateListItem(row(), "en").slug).toBe("atex-type-examination");
+  });
+
+  it("carries mime and sizeBytes for the format+size text, null-graceful", () => {
+    const item = toCertificateListItem(row({ mime: "application/pdf", sizeBytes: 610 }), "en");
+    expect(item.mime).toBe("application/pdf");
+    expect(item.sizeBytes).toBe(610);
+    // Rows without the fields (pre-2.3 fixtures) resolve to null, not undefined.
+    const bare = toCertificateListItem(row(), "en");
+    expect(bare.mime).toBeNull();
+    expect(bare.sizeBytes).toBeNull();
   });
 });

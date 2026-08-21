@@ -82,25 +82,24 @@ test.describe("the catalog page (AC1)", () => {
     expect(visible.toLowerCase()).not.toContain("add to basket");
   });
 
-  test("cards carry no product-detail links and no footer (2.4/2.3 boundaries)", async ({
+  test("cards carry ONLY the datasheet link — 2.4's detail link and Epic 3's inquiry stay absent", async ({
     page,
   }, testInfo) => {
     if (!dbReady) testInfo.skip();
 
+    // Story 2.3 INVERTED half of this test (the 2.1/2.2 pattern): the card footer
+    // now carries its ungated "Datasheet ↓" — for the ONE seeded product with a
+    // public datasheet (fd-9500). What must still be absent: product-DETAIL links
+    // (2.4 — the card itself is not a link) and "Add to inquiry" (Epic 3, DP-12).
     await page.goto("/en/products");
-    // The card is an <article>; nothing inside it links to /products/<slug>.
     await expect(page.locator('article a[href*="/products/"]')).toHaveCount(0);
-    // Scoped to the CARDS: the page's own subhead legitimately says "datasheets"
-    // (the mock's copy), so a page-wide word check would collide with real copy.
-    // What must be absent is the card FOOTER's affordances (2.3's "Datasheet ↓",
-    // Epic 3's "Add to inquiry") — inside <article>, not anywhere.
+    await expect(page.locator('article a[href^="/api/documents/"]')).toHaveCount(1);
     for (const card of await page.locator("article").all()) {
       const cardText = (await card.innerText()).toLowerCase();
-      expect(cardText).not.toContain("datasheet");
       expect(cardText).not.toContain("add to inquiry");
     }
-    // And no card contains ANY interactive element at all yet.
-    await expect(page.locator("article a, article button")).toHaveCount(0);
+    // The datasheet link is the ONLY interactive element any card carries.
+    await expect(page.locator("article a, article button")).toHaveCount(1);
   });
 });
 
