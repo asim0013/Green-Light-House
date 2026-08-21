@@ -99,3 +99,150 @@ export function toCategoryListItem(category: CategoryRow, locale: Locale): Categ
     isFallback: t?.isFallback ?? false,
   };
 }
+
+/**
+ * Every category read takes an explicit ceiling (Story 2.2 — closes the row-cap
+ * defer the 2.1 review aimed at this story). Far above the seeded 5; a catalogue
+ * with more than 200 categories has outgrown this page design anyway.
+ */
+export const CATEGORY_READ_CAP = 200;
+
+/** A category with its DIRECT published-product count (no child roll-up — Task 0). */
+export interface CategoryCount extends CategoryListItem {
+  publishedCount: number;
+}
+
+/** A node in the category tree: itself + its children, depth-agnostic. */
+export interface CategoryTreeNode extends CategoryCount {
+  children: CategoryTreeNode[];
+}
+
+/** One category view's worth of context: the node, its parent, its children. */
+export interface CategoryDetail extends CategoryCount {
+  parent: CategoryListItem | null;
+  children: CategoryCount[];
+}
+
+/**
+ * The minimum shape the tree assembler consumes — plain rows with a parent id,
+ * so the assembly logic is unit-testable without Prisma.
+ */
+export interface FlatCategoryRow extends CategoryRow {
+  parentId: string | null;
+  publishedCount: number;
+}
+
+/**
+ * Assemble a parent-linked flat list into a forest, DEPTH-AGNOSTIC even though
+ * today's seed is exactly two levels. A row whose parentId matches no row in the
+ * list (data corruption, or a cap that cut the parent) is promoted to a root
+ * rather than silently dropped — an invisible category is worse than a
+ * mis-nested one.
+ */
+export function assembleCategoryTree(
+  rows: readonly FlatCategoryRow[],
+  locale: Locale,
+): CategoryTreeNode[] {
+  const nodes = new Map<string, CategoryTreeNode>();
+  for (const row of rows) {
+    nodes.set(row.id, {
+      ...toCategoryListItem(row, locale),
+      publishedCount: row.publishedCount,
+      children: [],
+    });
+  }
+
+  const roots: CategoryTreeNode[] = [];
+  for (const row of rows) {
+    const node = nodes.get(row.id)!;
+    const parent = row.parentId ? nodes.get(row.parentId) : undefined;
+    if (parent) parent.children.push(node);
+    else roots.push(node);
+  }
+  return roots;
+}
+
+/**
+ * The whole category tree with per-node DIRECT published-product counts
+ * (Story 2.2, FR13). One capped query + in-memory assembly, not a recursive
+ * fetch — depth-agnostic and a single round trip.
+ */
+export async function listCategoryTree(locale: Locale): Promise<CategoryTreeNode[]> {
+  return cached(() => queryCategoryTree(locale), ["category-tree", locale], [TAGS.categories]);
+}
+
+/** Uncached SQL read. Exported for integration tests — see the note in `@/lib/cache`. */
+export async function queryCategoryTree(locale: Locale): Promise<CategoryTreeNode[]> {
+  const categories = await prisma.category.findMany({
+    include: {
+      translations: true,
+      // Filtered relation count — Prisma emits one query; `status: published`
+      // keeps the count honest with what the grid will actually render.
+      _count: { select: { products: { where: { status: "published" } } } },
+    },
+    orderBy: { slug: "asc" },
+    take: CATEGORY_READ_CAP,
+  });
+
+  return assembleCategoryTree(
+    categories.map((category) => ({
+      id: category.id,
+      slug: category.slug,
+      parentId: category.parentId,
+      translations: category.translations,
+      publishedCount: category._count.products,
+    })),
+    locale,
+  );
+}
+
+/**
+ * One category by slug with its parent (for the breadcrumb trail) and children
+ * (for the tiles), or `null` when it does not exist (Story 2.2). The caller has
+ * already slug-validated the input — this read still caches on it, so the
+ * validation gate in the page is what bounds the key space.
+ */
+export async function getCategoryBySlug(
+  slug: string,
+  locale: Locale,
+): Promise<CategoryDetail | null> {
+  return cached(
+    () => queryCategoryBySlug(slug, locale),
+    ["category", slug, locale],
+    [TAGS.categories],
+  );
+}
+
+/** Uncached SQL read. Exported for integration tests — see the note in `@/lib/cache`. */
+export async function queryCategoryBySlug(
+  slug: string,
+  locale: Locale,
+): Promise<CategoryDetail | null> {
+  const category = await prisma.category.findUnique({
+    where: { slug },
+    include: {
+      translations: true,
+      parent: { include: { translations: true } },
+      children: {
+        include: {
+          translations: true,
+          _count: { select: { products: { where: { status: "published" } } } },
+        },
+        orderBy: { slug: "asc" },
+        take: CATEGORY_READ_CAP,
+      },
+      _count: { select: { products: { where: { status: "published" } } } },
+    },
+  });
+  if (!category) return null;
+
+  return {
+    ...toCategoryListItem(category, locale),
+    publishedCount: category._count.products,
+    parent: category.parent ? toCategoryListItem(category.parent, locale) : null,
+    children: category.children.map((child) => ({
+      ...toCategoryListItem(child, locale),
+      publishedCount: child._count.products,
+    })),
+  };
+}

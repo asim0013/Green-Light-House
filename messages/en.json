@@ -66,6 +66,18 @@
     "notFoundLead": "The address may be mistyped, or the sector page may not be published yet. Browse the sectors we supply, or call us — we supply well beyond what is listed here.",
     "notFoundBackToIndustries": "Browse industries"
   },
+  "Catalog": {
+    "title": "Product catalog",
+    "subhead": "No prices — full specs and datasheets.",
+    "countLine": "{count, plural, one {# product} other {# products}} · no prices, full specs",
+    "categoriesLabel": "Categories",
+    "allProducts": "All products",
+    "childrenLabel": "In this category",
+    "emptyTitle": "Range expanding",
+    "emptyLead": "We do not list products under this category yet — the range is expanding. Tell us what the project needs and we will spec and supply it.",
+    "emptyCta": "Request what you need",
+    "emptyCatalogLead": "The catalog will be published. Send a model number or a specification and we will source it."
+  },
   "NotFound": {
     "title": "Page not found",
     "description": "The page you are looking for does not exist.",

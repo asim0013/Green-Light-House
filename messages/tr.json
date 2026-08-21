@@ -66,6 +66,18 @@
     "notFoundLead": "Adres hatalı yazılmış olabilir veya sektör sayfası henüz yayımlanmamış olabilir. Tedarik ettiğimiz sektörlere göz atın ya da bizi arayın — burada listelenenin çok ötesinde tedarik yapıyoruz.",
     "notFoundBackToIndustries": "Sektörlere göz atın"
   },
+  "Catalog": {
+    "title": "Ürün kataloğu",
+    "subhead": "Fiyat yok — tam teknik özellikler ve veri sayfaları.",
+    "countLine": "{count, plural, other {# ürün}} · fiyat yok, tam teknik özellikler",
+    "categoriesLabel": "Kategoriler",
+    "allProducts": "Tüm ürünler",
+    "childrenLabel": "Bu kategoride",
+    "emptyTitle": "Ürün yelpazemiz genişliyor",
+    "emptyLead": "Bu kategoride henüz ürün listelemiyoruz — yelpazemiz genişliyor. Projenin ihtiyacını iletin, şartnameye göre temin edelim.",
+    "emptyCta": "İhtiyacınızı iletin",
+    "emptyCatalogLead": "Katalog yayımlanacak. Model numarası veya şartname gönderin, tedarik edelim."
+  },
   "NotFound": {
     "title": "Sayfa bulunamadı",
     "description": "Aradığınız sayfa mevcut değil.",

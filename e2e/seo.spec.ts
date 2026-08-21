@@ -120,6 +120,9 @@ test.describe("sitemap.xml and robots.txt (AC3, AC4)", () => {
       expect(locs.some((u) => u.endsWith(`/${locale}/industries`))).toBe(true);
       // oil-gas is the populated fixture — 5 products, 2 projects, 4 services.
       expect(locs.some((u) => u.endsWith(`/${locale}/industries/oil-gas`))).toBe(true);
+      // Story 2.2: the catalog — never per-category entries (filter views
+      // canonical to clean /products).
+      expect(xml).not.toContain("category=");
     }
 
     // FR42a, the NEGATIVE half: an industry whose every block is empty is thin, so
@@ -133,9 +136,20 @@ test.describe("sitemap.xml and robots.txt (AC3, AC4)", () => {
     // Scope guard: the nav still links to Products/Projects/Services/About and /rfq,
     // none of which exist until Epics 2/3/5. A sitemap of 404s is worse than a small
     // sitemap, so their ABSENCE is the assertion.
-    for (const unbuilt of ["/products", "/projects", "/services", "/about", "/rfq"]) {
+    for (const unbuilt of ["/projects", "/services", "/about", "/rfq"]) {
       expect(xml, `sitemap advertises unbuilt route ${unbuilt}`).not.toContain(`${unbuilt}<`);
     }
+
+    // Story 2.2: the catalog appears for EN and TR — and is correctly ABSENT for
+    // RU, where no category has a translation, so every rendered string falls
+    // back and FR42a rates the page fallback-only. The page itself serves
+    // noindex for /ru/products (verified live), so page and sitemap agree — the
+    // one-predicate rule demonstrated across a real locale, as /ru/industries/
+    // energy demonstrated it in 2.1.
+    for (const locale of ["en", "tr"]) {
+      expect(locs.some((u) => u.endsWith(`/${locale}/products`))).toBe(true);
+    }
+    expect(locs.some((u) => u.endsWith("/ru/products"))).toBe(false);
 
     // i18n sitemaps carry per-locale alternates.
     expect(xml).toContain('rel="alternate"');
@@ -171,7 +185,8 @@ test.describe("the localized 404 (AC6)", () => {
   // Before Story 1.9 they served a bare, lang-less, chrome-less 404.
   // `/industries` was removed from this list by Story 2.1, which built it — leaving
   // it here would have failed as a confusing, unrelated-looking 404 assertion.
-  const UNBUILT = ["/en/products", "/tr/about", "/ru/services"];
+  // `/products` was removed by Story 2.2, which built it (as `/industries` was by 2.1).
+  const UNBUILT = ["/tr/about", "/ru/services"];
 
   for (const path of UNBUILT) {
     const locale = path.split("/")[1];

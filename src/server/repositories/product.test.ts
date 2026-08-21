@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toSpecRows, humanizeSpecKey } from "./product";
+import { toSpecRows, humanizeSpecKey, toProductCardItem, type ProductCardRow } from "./product";
 
 /**
  * Spec-row derivation for the Product Card (Story 2.1).
@@ -89,6 +89,59 @@ describe("toSpecRows", () => {
     // `typeof [] === "object"` — without the Array.isArray guard this would emit
     // rows labelled "0", "1", "2".
     expect(toSpecRows([{ a: 1 }])).toEqual([]);
+  });
+});
+
+describe("toProductCardItem", () => {
+  const EN = { locale: "en" as const, name: "Triple-IR Flame Detector", description: null };
+
+  function cardRow(overrides: Partial<ProductCardRow> = {}): ProductCardRow {
+    return {
+      id: "p1",
+      slug: "fd-9500",
+      model: "FD-9500",
+      attributes: { detection: "Triple-IR", response: "< 5 s" },
+      translations: [EN],
+      manufacturer: {
+        slug: "sentra-fire",
+        translations: [{ locale: "en", name: "Sentra Fire Systems", description: null }],
+      },
+      ...overrides,
+    };
+  }
+
+  it("resolves the requested locale without flagging fallback", () => {
+    const item = toProductCardItem(
+      cardRow({ translations: [EN, { locale: "tr", name: "Alev Dedektörü", description: null }] }),
+      "tr",
+    );
+    expect(item.name).toBe("Alev Dedektörü");
+    expect(item.isFallback).toBe(false);
+  });
+
+  it("falls back to EN and flags it; the MODEL is the last resort, never empty", () => {
+    const item = toProductCardItem(cardRow({ translations: [] }), "ru");
+    expect(item.name).toBe("FD-9500");
+    expect(item.isFallback).toBe(false);
+  });
+
+  it("resolves the manufacturer's fallback flag INDEPENDENTLY of the product's", () => {
+    // The AC6 defect class the 2.1 review caught: this flag was once discarded.
+    const item = toProductCardItem(
+      cardRow({ translations: [EN, { locale: "ru", name: "Извещатель", description: null }] }),
+      "ru",
+    );
+    expect(item.isFallback).toBe(false);
+    expect(item.manufacturer.isFallback).toBe(true);
+    expect(item.manufacturer.name).toBe("Sentra Fire Systems");
+  });
+
+  it("derives spec rows through toSpecRows (sorted, capped at two)", () => {
+    const item = toProductCardItem(cardRow(), "en");
+    expect(item.specs).toEqual([
+      { label: "Detection", value: "Triple-IR" },
+      { label: "Response", value: "< 5 s" },
+    ]);
   });
 });
 

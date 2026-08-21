@@ -105,9 +105,15 @@ describe("HomeCategories", () => {
     expect(html).toContain("Personal protective equipment");
   });
 
-  it("emits no anchors — display-only in v1 (Q1)", () => {
+  it("links each category to its catalog view (wired by Story 2.2)", () => {
+    // Story 1.7 asserted the opposite — no anchors — because the catalog did not
+    // exist and FR8 forbids an entry point that resolves to a dead page. /products
+    // exists now, so the assertion inverts, exactly as HomeIndustries did in 2.1:
+    // one anchor per category, each carrying the filter-view URL shape.
     const html = renderToStaticMarkup(<HomeCategories categories={CATEGORIES} />);
-    expect(html).not.toContain("<a ");
+    expect((html.match(/<a /g) ?? []).length).toBe(CATEGORIES.length);
+    expect(html).toContain(String.raw`href="/products?category=fire-gas-detection"`);
+    expect(html).toContain(String.raw`href="/products?category=ppe"`);
   });
 
   it("hides EVERY decorative thumbnail icon from assistive tech", () => {

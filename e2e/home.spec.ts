@@ -99,20 +99,29 @@ test("discovery items link only to routes that EXIST (FR8)", async ({ page }) =>
   // the bare-404 problem the 1.6 review escalated).
   const main = page.getByRole("main");
 
-  // Still unbuilt — Products is Story 2.2, Projects is Epic 3, manufacturer pages
-  // are phased (FR20).
-  for (const route of ["/products", "/projects", "/manufacturers"]) {
+  // Still unbuilt — Projects is Epic 3, manufacturer pages are phased (FR20).
+  // (/products left this list in Story 2.2, which built the catalog and wired the
+  // category tiles to it.)
+  for (const route of ["/projects", "/manufacturers"]) {
     await expect(main.locator(`a[href*="${route}"]`)).toHaveCount(0);
   }
 
   // The industry cards now resolve. Six seeded industries, six links.
   await expect(main.locator('a[href^="/en/industries/"]')).toHaveCount(6);
+  // And the category tiles (Story 2.2): one filter-view link per top-level category.
+  await expect(main.locator('a[href^="/en/products?category="]')).toHaveCount(4);
 
   const hrefs = await main
     .locator("a")
     .evaluateAll((els) => els.map((el) => el.getAttribute("href") ?? ""));
   expect(
-    hrefs.every((h) => h.includes("/rfq") || h.startsWith("tel:") || h.includes("/industries/")),
+    hrefs.every(
+      (h) =>
+        h.includes("/rfq") ||
+        h.startsWith("tel:") ||
+        h.includes("/industries/") ||
+        h.includes("/products?category="),
+    ),
   ).toBe(true);
 });
 

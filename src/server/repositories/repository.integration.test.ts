@@ -3,8 +3,17 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/db";
 import { queryIndustries, queryIndustryBySlug } from "./industry";
 import { queryPublishedProjects } from "./project";
-import { queryTopLevelCategories, queryCategoriesByIndustry } from "./category";
-import { queryProductsByIndustry } from "./product";
+import {
+  queryTopLevelCategories,
+  queryCategoriesByIndustry,
+  queryCategoryTree,
+  queryCategoryBySlug,
+} from "./category";
+import {
+  queryProductsByIndustry,
+  queryProductsByCategory,
+  queryPublishedProducts,
+} from "./product";
 import { queryCertificatesByIndustry } from "./document";
 import { queryServicesByIndustry } from "./service";
 
@@ -423,6 +432,77 @@ describe("projects by industry (integration)", () => {
     const slugs = (await queryPublishedProjects("en")).map((p) => p.slug);
     expect(slugs).toContain(`${PROJECT_PREFIX}dated`);
     expect(slugs).toContain(`${PROJECT_PREFIX}undated`);
+  });
+});
+
+/** ---- Story 2.2: the catalog's reads ---- */
+
+describe("products by category (integration)", () => {
+  it("lists the published product of a category and EXCLUDES the draft one", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    // The two fixture categories split the cases: `published-only` holds the
+    // published product, `draft-only` holds ONLY the draft.
+    const published = (await queryProductsByCategory(`${CATEGORY_PREFIX}published-only`, "en")).map(
+      (p) => p.slug,
+    );
+    expect(published).toContain(`${PRODUCT_PREFIX}published`);
+
+    const draftOnly = await queryProductsByCategory(`${CATEGORY_PREFIX}draft-only`, "en");
+    expect(draftOnly).toEqual([]);
+  });
+
+  it("returns an empty list for an unknown category slug", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    expect(await queryProductsByCategory("zzz-no-such-category", "en")).toEqual([]);
+  });
+});
+
+describe("published products (integration)", () => {
+  it("lists published products and never the draft", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    const slugs = (await queryPublishedProducts("en")).map((p) => p.slug);
+    expect(slugs).toContain(`${PRODUCT_PREFIX}published`);
+    expect(slugs).not.toContain(`${PRODUCT_PREFIX}draft`);
+  });
+
+  it("honours the cap", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    expect(await queryPublishedProducts("en", 1)).toHaveLength(1);
+  });
+});
+
+describe("category tree (integration)", () => {
+  it("nests the child under its parent with per-node DIRECT published counts", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    const roots = await queryCategoryTree("en");
+    const parent = roots.find((r) => r.slug === `${CATEGORY_PREFIX}parent`);
+    expect(parent).toBeDefined();
+    expect(parent!.children.map((c) => c.slug)).toContain(`${CATEGORY_PREFIX}child`);
+
+    // The filtered _count is wired: `published-only` counts 1, `draft-only` 0 —
+    // a draft never inflates a tile count (AC4's count-level half).
+    const flat = (nodes: typeof roots): typeof roots =>
+      nodes.flatMap((n) => [n, ...flat(n.children)]);
+    const all = flat(roots);
+    expect(all.find((n) => n.slug === `${CATEGORY_PREFIX}published-only`)!.publishedCount).toBe(1);
+    expect(all.find((n) => n.slug === `${CATEGORY_PREFIX}draft-only`)!.publishedCount).toBe(0);
+  });
+});
+
+describe("category by slug (integration)", () => {
+  it("returns the category with its parent and children", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    const child = await queryCategoryBySlug(`${CATEGORY_PREFIX}child`, "en");
+    expect(child?.parent?.slug).toBe(`${CATEGORY_PREFIX}parent`);
+
+    const parent = await queryCategoryBySlug(`${CATEGORY_PREFIX}parent`, "en");
+    expect(parent?.parent).toBeNull();
+    expect(parent?.children.map((c) => c.slug)).toContain(`${CATEGORY_PREFIX}child`);
+  });
+
+  it("returns NULL for an unknown slug rather than throwing", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    expect(await queryCategoryBySlug("zzz-no-such-category", "en")).toBeNull();
   });
 });
 

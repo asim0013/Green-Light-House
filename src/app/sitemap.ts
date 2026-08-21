@@ -11,6 +11,8 @@ import {
   industriesIndexSignals,
   industryHref,
 } from "@/server/industry-page";
+import { listCategoryTree } from "@/server/repositories/category";
+import { catalogSignals } from "@/server/catalog-page";
 
 /**
  * `/sitemap.xml` (Story 1.9 — FR42, FR42a).
@@ -50,11 +52,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // awaiting each in turn, which tripled this route's latency for no reason.
   const perLocale = await Promise.all(
     routing.locales.map(async (locale) => {
-      const [projects, industries, categories, manufacturers] = await Promise.all([
+      const [projects, industries, categories, manufacturers, categoryTree] = await Promise.all([
         listPublishedProjects(locale, 1),
         listIndustries(locale),
         listTopLevelCategories(locale),
         listManufacturers(locale),
+        // One tree read is the WHOLE catalog gate (Story 2.2): catalogSignals is
+        // deliberately tree-only, so /products costs no per-product reads here.
+        listCategoryTree(locale),
       ]);
 
       const translated = [...projects, ...industries, ...categories, ...manufacturers];
@@ -85,6 +90,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         // Gating it on the landing pages made the page say `index, follow` while
         // the sitemap silently omitted it.
         indexIndexable: isIndexable(industriesIndexSignals(locale, industries)),
+        // The catalog gate — the SAME function /products generateMetadata calls
+        // (one predicate per surface). Category-filtered views canonical to clean
+        // /products, so the sitemap grows by exactly this one URL per locale.
+        catalogIndexable: isIndexable(catalogSignals(locale, categoryTree)),
         indexableIndustrySlugs: industrySlugs.filter((slug): slug is string => slug !== null),
       };
     }),
@@ -101,9 +110,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   });
 
   return perLocale.flatMap(
-    ({ locale, collectionsIndexable, indexIndexable, indexableIndustrySlugs }) => [
+    ({
+      locale,
+      collectionsIndexable,
+      indexIndexable,
+      catalogIndexable,
+      indexableIndustrySlugs,
+    }) => [
       ...(collectionsIndexable ? [entry(locale, "/")] : []),
       ...(indexIndexable ? [entry(locale, "/industries")] : []),
+      ...(catalogIndexable ? [entry(locale, "/products")] : []),
       // `industryHref`, not a template literal: Next does NOT escape sitemap URLs,
       // so an unencoded `&` or `<` in a slug makes the WHOLE FILE malformed XML.
       ...indexableIndustrySlugs.map((slug) => entry(locale, industryHref(slug))),

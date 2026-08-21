@@ -165,6 +165,50 @@ export async function listProductsByIndustry(
   );
 }
 
+/**
+ * The minimum structural shape `toProductCardItem` consumes — narrower than
+ * Prisma's row type so the mapper is unit-testable with plain objects, and shared
+ * by every card-producing read so the three of them cannot drift on how a card
+ * resolves (Story 2.2 extracted this from `queryProductsByIndustry`'s inline map).
+ */
+export interface ProductCardRow {
+  id: string;
+  slug: string;
+  model: string;
+  attributes: unknown;
+  translations: readonly { locale: Locale; name: string; description: string | null }[];
+  manufacturer: {
+    slug: string;
+    translations: readonly { locale: Locale; name: string; description: string | null }[];
+  };
+}
+
+/** Resolve one product row into the card shape for `locale` (EN fallback, FR34a). */
+export function toProductCardItem(product: ProductCardRow, locale: Locale): ProductCardItem {
+  const t = resolveTranslation(product.translations, locale);
+  const mt = resolveTranslation(product.manufacturer.translations, locale);
+  return {
+    id: product.id,
+    slug: product.slug,
+    model: product.model,
+    name: t?.value.name ?? product.model,
+    isFallback: t?.isFallback ?? false,
+    manufacturer: {
+      slug: product.manufacturer.slug,
+      name: mt?.value.name ?? product.manufacturer.slug,
+      // Resolved INDEPENDENTLY of the product's own flag — see ProductCardItem.
+      isFallback: mt?.isFallback ?? false,
+    },
+    specs: toSpecRows(product.attributes),
+  };
+}
+
+/** The Prisma `include` every card-producing read uses. */
+const CARD_INCLUDE = {
+  translations: true,
+  manufacturer: { include: { translations: true } },
+} as const;
+
 /** Uncached SQL read. Exported for integration tests — see the note in `@/lib/cache`. */
 export async function queryProductsByIndustry(
   industrySlug: string,
@@ -176,29 +220,88 @@ export async function queryProductsByIndustry(
       status: "published",
       industries: { some: { industry: { slug: industrySlug } } },
     },
-    include: { translations: true, manufacturer: { include: { translations: true } } },
+    include: CARD_INCLUDE,
     orderBy: { slug: "asc" },
     take: limit,
   });
 
-  return products.map((product) => {
-    const t = resolveTranslation(product.translations, locale);
-    const mt = resolveTranslation(product.manufacturer.translations, locale);
-    return {
-      id: product.id,
-      slug: product.slug,
-      model: product.model,
-      name: t?.value.name ?? product.model,
-      isFallback: t?.isFallback ?? false,
-      manufacturer: {
-        slug: product.manufacturer.slug,
-        name: mt?.value.name ?? product.manufacturer.slug,
-        // Resolved INDEPENDENTLY of the product's own flag — see ProductCardItem.
-        isFallback: mt?.isFallback ?? false,
-      },
-      specs: toSpecRows(product.attributes),
-    };
+  return products.map((product) => toProductCardItem(product, locale));
+}
+
+/**
+ * The catalog cap (Story 2.2). There is no pagination anywhere in the planning
+ * documents — the architecture defers it entirely — so the unfiltered grid takes an
+ * explicit ceiling instead of an unbounded read. 60 is far above the seeded 5 and
+ * far below anything that would hurt; revisit when the bulk-import ramp (FR6)
+ * makes the catalog big enough to page.
+ */
+export const CATALOG_PRODUCT_CAP = 60;
+
+/**
+ * Every published product, for the unfiltered `/products` grid (Story 2.2).
+ * Published-only for the same non-negotiable reason as the industry read.
+ */
+export async function listPublishedProducts(
+  locale: Locale,
+  limit: number = CATALOG_PRODUCT_CAP,
+): Promise<ProductCardItem[]> {
+  return cached(
+    () => queryPublishedProducts(locale, limit),
+    ["products-all", locale, String(limit)],
+    [TAGS.catalog],
+  );
+}
+
+/** Uncached SQL read. Exported for integration tests — see the note in `@/lib/cache`. */
+export async function queryPublishedProducts(
+  locale: Locale,
+  limit: number = CATALOG_PRODUCT_CAP,
+): Promise<ProductCardItem[]> {
+  const products = await prisma.product.findMany({
+    where: { status: "published" },
+    include: CARD_INCLUDE,
+    orderBy: { slug: "asc" },
+    take: limit,
   });
+
+  return products.map((product) => toProductCardItem(product, locale));
+}
+
+/**
+ * Published products directly attached to `categorySlug` (Story 2.2).
+ *
+ * DIRECT attachment only — `Product.categoryId` is a single FK, and the Task 0
+ * decision is NO roll-up of child-category products into a parent's view: the
+ * parent page shows its child tiles and its own products, so counts never lie.
+ * (Measured: `gd-410` sits directly on the parent `fire-gas-detection`, proving
+ * direct attachment is a real case, not an anomaly.)
+ */
+export async function listProductsByCategory(
+  categorySlug: string,
+  locale: Locale,
+  limit: number = CATALOG_PRODUCT_CAP,
+): Promise<ProductCardItem[]> {
+  return cached(
+    () => queryProductsByCategory(categorySlug, locale, limit),
+    ["products-by-category", categorySlug, locale, String(limit)],
+    [TAGS.catalog, TAGS.categories],
+  );
+}
+
+/** Uncached SQL read. Exported for integration tests — see the note in `@/lib/cache`. */
+export async function queryProductsByCategory(
+  categorySlug: string,
+  locale: Locale,
+  limit: number = CATALOG_PRODUCT_CAP,
+): Promise<ProductCardItem[]> {
+  const products = await prisma.product.findMany({
+    where: { status: "published", category: { slug: categorySlug } },
+    include: CARD_INCLUDE,
+    orderBy: { slug: "asc" },
+    take: limit,
+  });
+
+  return products.map((product) => toProductCardItem(product, locale));
 }
 
 /** Uncached SQL read. Exported for integration tests — see the note in `@/lib/cache`. */

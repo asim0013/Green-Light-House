@@ -1,4 +1,5 @@
 import { useFormatter, useTranslations } from "next-intl";
+import { Link } from "@/i18n/navigation";
 import { Chip } from "@/components/ui";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { ProductCard } from "@/components/catalog/ProductCard";
@@ -25,12 +26,11 @@ import type { ProjectListItem } from "@/server/repositories/project";
  * "What we supply" — the equipment categories GLH actually supplies into this
  * sector.
  *
- * The labels are NOT LINKS, deliberately. EXPERIENCE.md points them at the
- * industry-filtered catalog, which is Story 2.2 and does not exist; DP-12 forbids
- * linking to a phased page, and Story 1.6's review escalated exactly this after
- * links to unbuilt routes multiplied. `HomeIndustries` set the precedent by
- * rendering industry names with no href while waiting for THIS story. 2.2 wires
- * these the same way.
+ * LINKED as of Story 2.2: each label opens its CATEGORY view of the catalog
+ * (`/products?category=<slug>`). Category-only deliberately (2.2's Q1): an
+ * `industry` param the catalog ignores would be a silent lie, and industry
+ * filtering is Story 2.5 facet territory. Until 2.2 these rendered unlinked for
+ * the DP-12 reason (never link a page that does not exist).
  */
 export function IndustrySupplies({ categories }: { categories: CategoryListItem[] }) {
   const t = useTranslations("Industry");
@@ -45,14 +45,19 @@ export function IndustrySupplies({ categories }: { categories: CategoryListItem[
     >
       <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {categories.map((category) => (
-          <li key={category.id} className="border border-border-subtle bg-surface p-5">
-            <span
-              lang={category.isFallback ? "en" : undefined}
-              className="font-heading text-base font-semibold text-ink"
+          <li key={category.id}>
+            <Link
+              href={`/products?category=${category.slug}`}
+              className="block h-full border border-border-subtle bg-surface p-5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
             >
-              {category.name}
-            </span>
-            <FallbackNotice isFallback={category.isFallback} />
+              <span
+                lang={category.isFallback ? "en" : undefined}
+                className="font-heading text-base font-semibold text-ink"
+              >
+                {category.name}
+              </span>
+              <FallbackNotice isFallback={category.isFallback} />
+            </Link>
           </li>
         ))}
       </ul>
