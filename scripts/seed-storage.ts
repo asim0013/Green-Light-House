@@ -4,49 +4,45 @@ import {
   PutObjectCommand,
   HeadBucketCommand,
 } from "@aws-sdk/client-s3";
+import { DOC_FIXTURES, tinyPdf } from "./doc-fixtures";
 
 /**
  * Storage fixture seeder (Story 2.3) — `npx tsx scripts/seed-storage.ts`.
  *
- * Creates the `S3_BUCKET` bucket if absent and uploads two SMALL, REAL PDFs at
- * the keys the Prisma seed's Document rows point to. Idempotent: re-running
+ * Creates the `S3_BUCKET` bucket if absent and uploads a SMALL, REAL PDF at each
+ * key the Prisma seed's Document rows point to. Idempotent: re-running
  * overwrites the same keys.
  *
  * SCOPE: a dev/e2e fixture enabler ONLY. The full media-library bucket bootstrap
  * (policies, lifecycle, media paths) remains Story 4.5's — see the 1.1 defer in
  * deferred-work.md. The PDFs are GENERATED here, not checked into git: a minimal
  * one-page PDF is a few hundred bytes of plain text.
+ *
+ * The fixture list and the PDF generator live in `./doc-fixtures.ts` because
+ * `prisma/seed.ts` derives `sizeBytes` from the very same bytes — see that file
+ * for why hand-copied sizes were a latent lie.
  */
 
-/** A minimal but valid one-page PDF displaying `label`. */
-function tinyPdf(label: string): Buffer {
-  const content = `BT /F1 18 Tf 72 720 Td (${label}) Tj ET`;
-  const objects = [
-    "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
-    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-  ];
-  let body = "%PDF-1.4\n";
-  const offsets: number[] = [];
-  objects.forEach((obj, i) => {
-    offsets.push(body.length);
-    body += `${i + 1} 0 obj\n${obj}\nendobj\n`;
-  });
-  const xrefStart = body.length;
-  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  for (const off of offsets) body += `${String(off).padStart(10, "0")} 00000 n \n`;
-  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`;
-  return Buffer.from(body, "latin1");
+/**
+ * Load `.env` for standalone runs. `prisma db seed` gets this for free from the
+ * Prisma CLI; `npx tsx scripts/seed-storage.ts` does not, so the documented
+ * command failed with "S3_BUCKET is not set" on a machine whose .env was
+ * perfectly correct (2.3 review).
+ *
+ * AMBIENT ENVIRONMENT WINS: only consulted when the vars are absent, so CI's
+ * job-level `env:` block is never overridden by a stray committed .env.
+ */
+function loadEnv(): void {
+  if (process.env.S3_BUCKET) return;
+  try {
+    (process as NodeJS.Process & { loadEnvFile?: (path?: string) => void }).loadEnvFile?.(".env");
+  } catch {
+    // No .env — the S3_* vars may still come from the ambient environment.
+  }
 }
 
-const FIXTURES = [
-  { key: "docs/fd-9500-datasheet-v1.pdf", label: "FD-9500 Datasheet (fixture)" },
-  { key: "docs/fd-9500-en54-v1.pdf", label: "FD-9500 EN 54 Certificate (fixture)" },
-];
-
 async function main() {
+  loadEnv();
   const bucket = process.env.S3_BUCKET;
   if (!bucket) throw new Error("S3_BUCKET is not set — copy .env.example to .env first.");
 
@@ -60,15 +56,31 @@ async function main() {
     },
   });
 
+  // HeadBucket answers 404 for "absent" and 401/403 for "your credentials are
+  // wrong" — collapsing both into "create it" turned an auth failure into a
+  // confusing CreateBucket error (2.3 review). Only a genuine absence creates.
+  let exists = false;
   try {
     await s3.send(new HeadBucketCommand({ Bucket: bucket }));
+    exists = true;
+  } catch (error) {
+    const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+    if (status !== 404 && status !== undefined) {
+      throw new Error(
+        `Cannot reach bucket "${bucket}" (HTTP ${status}). Check S3_ENDPOINT and credentials.`,
+        { cause: error },
+      );
+    }
+  }
+
+  if (exists) {
     console.log(`bucket ${bucket}: exists`);
-  } catch {
+  } else {
     await s3.send(new CreateBucketCommand({ Bucket: bucket }));
     console.log(`bucket ${bucket}: created`);
   }
 
-  for (const { key, label } of FIXTURES) {
+  for (const { key, label } of DOC_FIXTURES) {
     const pdf = tinyPdf(label);
     await s3.send(
       new PutObjectCommand({

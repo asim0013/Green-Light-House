@@ -1,6 +1,10 @@
 /**
  * The "format + size" text for document links (Story 2.3) — EXPERIENCE.md's a11y
- * floor: "datasheet links state format + size in text". `PDF · 0.6 KB`.
+ * floor: "datasheet links state format + size in text". `PDF · 1.2 MB`.
+ *
+ * The unit floor is BYTES, not KB: `formatDocMeta("application/pdf", 602)` is
+ * `PDF · 602 B` (the 2.3 fixtures are ~600-byte PDFs). The docstring used to
+ * advertise `0.6 KB`, a string this function cannot produce.
  *
  * Both inputs are NULLABLE columns, and the rule is GRACEFUL OMISSION: render
  * whatever is real, never fake a size (the seeded rows had NULL metadata for two
@@ -24,6 +28,9 @@ export function formatDocMeta(mime: string | null, sizeBytes: number | null): st
 }
 
 function humanSize(bytes: number): string {
+  // GB before MB: without this branch a multi-gigabyte file renders as
+  // "2560.0 MB" — technically true, unreadable (2.3 review).
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${bytes} B`;

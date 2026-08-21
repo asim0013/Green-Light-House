@@ -1,4 +1,5 @@
 import { PrismaClient, Locale, PublishStatus, DocumentType } from "@prisma/client";
+import { fixtureSize } from "../scripts/doc-fixtures";
 
 const prisma = new PrismaClient();
 
@@ -183,9 +184,12 @@ async function main() {
   // with the "doc links state format + size" a11y rule) and added the FIRST
   // `DocumentIndustry` rows — before that, `document_industries` had zero rows
   // and the industry-page certificates block had no populated fixture anywhere
-  // (the 2.1 defer this closes). The sizes match what `scripts/seed-storage.ts`
-  // actually uploads; the `update` branch keeps re-seeding idempotent AND
-  // repairs pre-2.3 rows.
+  // (the 2.1 defer this closes). The `update` branch keeps re-seeding idempotent
+  // AND repairs pre-2.3 rows.
+  //
+  // `sizeBytes` is DERIVED from the same generator that writes the objects
+  // (`fixtureSize`), never transcribed. Hand-copied numbers silently became lies
+  // the moment a fixture label changed — see scripts/doc-fixtures.ts.
   const fd9500 = await prisma.product.findUniqueOrThrow({ where: { slug: "fd-9500" } });
   const documents = [
     {
@@ -193,7 +197,8 @@ async function main() {
       type: DocumentType.datasheet,
       fileKey: "docs/fd-9500-datasheet-v1.pdf",
       mime: "application/pdf",
-      sizeBytes: 602,
+      version: 1,
+      isPublic: true,
       industries: [] as string[],
       tr: [{ locale: Locale.en, title: "FD-9500 Datasheet" }],
     },
@@ -202,24 +207,46 @@ async function main() {
       type: DocumentType.certificate,
       fileKey: "docs/fd-9500-en54-v1.pdf",
       mime: "application/pdf",
-      sizeBytes: 610,
+      version: 1,
+      isPublic: true,
       // The EN 54 certificate applies to the sectors that audit against it —
       // this populates the industry-page certificates block (FR12).
       industries: ["oil-gas", "fire-safety"],
       tr: [{ locale: Locale.en, title: "EN 54-10 Certificate" }],
     },
+    {
+      // THE PRIVATE FIXTURE (2.3 review). Two properties had no end-to-end proof
+      // because no private row existed anywhere outside the integration suite:
+      //   1. a private slug must 404 EXACTLY like an unknown one, so private
+      //      documents cannot be enumerated over HTTP;
+      //   2. the datasheet pick must ignore private rows — this one carries the
+      //      HIGHEST version, so if the `isPublic` filter ever broke it would win
+      //      the pick and surface on the product card.
+      // Its fileKey points at the REAL datasheet object on purpose: the 404 must
+      // come from `isPublic`, not from a conveniently missing file.
+      slug: "fd-9500-datasheet-internal",
+      type: DocumentType.datasheet,
+      fileKey: "docs/fd-9500-datasheet-v1.pdf",
+      mime: "application/pdf",
+      version: 2,
+      isPublic: false,
+      industries: [] as string[],
+      tr: [{ locale: Locale.en, title: "FD-9500 Datasheet (internal draft)" }],
+    },
   ];
   for (const d of documents) {
+    const sizeBytes = fixtureSize(d.fileKey);
     const doc = await prisma.document.upsert({
       where: { slug: d.slug },
-      update: { mime: d.mime, sizeBytes: d.sizeBytes },
+      update: { mime: d.mime, sizeBytes, isPublic: d.isPublic, version: d.version },
       create: {
         slug: d.slug,
         type: d.type,
         fileKey: d.fileKey,
         mime: d.mime,
-        sizeBytes: d.sizeBytes,
-        isPublic: true,
+        sizeBytes,
+        version: d.version,
+        isPublic: d.isPublic,
         product: { connect: { id: fd9500.id } },
         translations: { create: d.tr },
       },

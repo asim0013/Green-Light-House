@@ -11,10 +11,19 @@ describe("formatDocMeta", () => {
     expect(formatDocMeta("application/pdf", 602)).toBe("PDF · 602 B");
   });
 
-  it("scales units: bytes, KB, MB", () => {
+  it("scales units: bytes, KB, MB, GB", () => {
     expect(formatDocMeta("application/pdf", 512)).toBe("PDF · 512 B");
     expect(formatDocMeta("application/pdf", 204800)).toBe("PDF · 200.0 KB");
     expect(formatDocMeta("application/pdf", 3 * 1024 * 1024)).toBe("PDF · 3.0 MB");
+    // Without a GB branch this rendered "2560.0 MB" (2.3 review).
+    expect(formatDocMeta("application/pdf", 2.5 * 1024 * 1024 * 1024)).toBe("PDF · 2.5 GB");
+  });
+
+  it("holds each unit right up to its boundary", () => {
+    expect(formatDocMeta(null, 1023)).toBe("1023 B");
+    expect(formatDocMeta(null, 1024)).toBe("1.0 KB");
+    expect(formatDocMeta(null, 1024 * 1024 - 1)).toBe("1024.0 KB");
+    expect(formatDocMeta(null, 1024 * 1024)).toBe("1.0 MB");
   });
 
   it("omits the size gracefully when unknown — never fakes one", () => {

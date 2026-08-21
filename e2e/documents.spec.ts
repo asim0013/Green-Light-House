@@ -1,20 +1,25 @@
-import { test, expect, request as pwRequest } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import { probeDbReady, warmUp } from "./dbReady";
+import { probeStorageReady } from "./storageReady";
 
 /**
  * Story 2.3 — ungated, versioned document downloads, end to end.
  *
  * FIXTURES (the 2.3 seed + seed-storage): fd-9500-datasheet (datasheet, 602 B)
  * and fd-9500-en54 (certificate, 610 B, linked to oil-gas + fire-safety), both
- * public PDFs whose objects exist in MinIO under docs/*-v1.pdf.
+ * public PDFs whose objects exist in MinIO under docs/*-v1.pdf — plus
+ * fd-9500-datasheet-internal, a PRIVATE datasheet (version 2) pointing at the
+ * real datasheet object, so "private is indistinguishable from unknown" and
+ * "the datasheet pick ignores private rows" both have HTTP-level proof.
  *
  * ALL download assertions go through `request.get` — NEVER `page.goto` on a
  * download URL (browsers open a save dialog, not a document). The response IS
  * the file: status, headers, and bytes are the whole contract.
  *
- * Storage gating follows the dbReady philosophy: probe the ENVIRONMENT (can the
- * endpoint serve the known-good fixture?), never the code under test — but the
- * probe result gates only, it asserts nothing; the tests do the asserting.
+ * Storage gating follows the dbReady philosophy and asks MINIO DIRECTLY (see
+ * ./storageReady.ts). It deliberately does NOT probe the endpoint: the original
+ * version did, which let any handler bug skip the download test with a message
+ * blaming the fixtures. The probe gates only; the tests do the asserting.
  */
 
 let dbReady = true;
@@ -22,18 +27,10 @@ let storageReady = true;
 
 test.beforeAll(async ({ baseURL }) => {
   dbReady = await probeDbReady();
+  // Asks MinIO for the fixture object itself — the app is never involved, so a
+  // broken route cannot buy itself a skip.
+  storageReady = await probeStorageReady();
   await warmUp(baseURL, ["/en", "/en/products", "/en/industries/oil-gas"]);
-  // Environment probe: MinIO reachable + fixture object present. A 404/500 here
-  // means the STORAGE fixture is absent (seed-storage not run), not a code bug —
-  // the download tests skip with a reason instead of failing on environment.
-  try {
-    const ctx = await pwRequest.newContext({ baseURL });
-    const res = await ctx.get("/api/documents/fd-9500-datasheet", { timeout: 15_000 });
-    storageReady = res.status() === 200;
-    await ctx.dispose();
-  } catch {
-    storageReady = false;
-  }
 });
 
 test.describe("the download endpoint (AC1, AC3)", () => {
@@ -68,8 +65,52 @@ test.describe("the download endpoint (AC1, AC3)", () => {
     const malformed = await request.get("/api/documents/A%26B%20junk");
     expect(malformed.status()).toBe(404);
 
-    // Both bodies identical — a prober learns nothing from the difference.
+    // The private row EXISTS and its object exists — only `isPublic` withholds
+    // it. Without this request the test's own name was a claim it never checked:
+    // an Epic-3 auth wrapper answering 403 for private rows would leave the
+    // suite green while private documents became enumerable.
+    const priv = await request.get("/api/documents/fd-9500-datasheet-internal");
+    expect(priv.status()).toBe(404);
+
+    // All three bodies identical — a prober learns nothing from the difference.
     expect(await unknown.text()).toBe(await malformed.text());
+    expect(await priv.text()).toBe(await unknown.text());
+  });
+
+  test("a storage outage is 503, not 404 — a live document is never reported GONE", async ({
+    request,
+  }, testInfo) => {
+    if (!dbReady || !storageReady) testInfo.skip();
+
+    // The inverse of the 404 contract. We cannot stop MinIO from inside the
+    // suite, so this asserts the property that makes the distinction possible:
+    // a PUBLIC, PRESENT document answers 200 and carries the validators a cache
+    // needs. The outage half (503 + Retry-After) is proven in the review record
+    // by stopping the container; what is guarded here is that the healthy path
+    // never regresses into the opaque 404 that used to swallow outages.
+    const res = await request.get("/api/documents/fd-9500-datasheet");
+    expect(res.status()).toBe(200);
+    expect(res.headers()["etag"]).toBeTruthy();
+    expect(res.headers()["last-modified"]).toBeTruthy();
+  });
+
+  test("a conditional request revalidates: If-None-Match returns 304, no body", async ({
+    request,
+  }, testInfo) => {
+    if (!dbReady || !storageReady) testInfo.skip();
+
+    const first = await request.get("/api/documents/fd-9500-datasheet");
+    const etag = first.headers()["etag"];
+    expect(etag).toBeTruthy();
+
+    // `must-revalidate` was previously unbacked — no validator was emitted and
+    // conditional headers were ignored, so revalidation was impossible and every
+    // re-fetch re-sent the whole file.
+    const revalidated = await request.get("/api/documents/fd-9500-datasheet", {
+      headers: { "If-None-Match": etag },
+    });
+    expect(revalidated.status()).toBe(304);
+    expect((await revalidated.body()).length).toBe(0);
   });
 
   test("the response never leaks storage topology", async ({ request }, testInfo) => {
@@ -159,5 +200,8 @@ test.describe("stability (AC2)", () => {
     expect(href).not.toContain("v1");
     expect(href).not.toContain(".pdf");
     expect(href).not.toContain("docs/");
+    // fd-9500-datasheet-internal is version 2 — HIGHER than the public row — so
+    // the pick would surface it if the `isPublic` filter ever broke.
+    expect(href).not.toContain("internal");
   });
 });

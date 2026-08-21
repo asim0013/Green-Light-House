@@ -78,7 +78,7 @@ export function ProductCard({ product }: { product: ProductCardItem }) {
         )}
       </div>
 
-      {product.datasheet && <CardFooter datasheet={product.datasheet} />}
+      {product.datasheet && <CardFooter datasheet={product.datasheet} model={product.model} />}
     </article>
   );
 }
@@ -89,8 +89,26 @@ export function ProductCard({ product }: { product: ProductCardItem }) {
  * font (the a11y floor's "state format + size in text" — inside the link, so the
  * accessible name carries it too). `mt-auto` pins it to the card's bottom edge so
  * grids of mixed-height cards keep a level footer line.
+ *
+ * THE MODEL IS IN THE ACCESSIBLE NAME (2.3 review). Every card computed the
+ * identical name — "Datasheet PDF · 602 B" — so a screen-reader links list on a
+ * full catalogue page reads N indistinguishable entries and the user has to
+ * abandon the rotor and linearise the grid. The model is already on the card, so
+ * an `sr-only` copy names the file without touching the visual line.
+ *
+ * `focus-visible:outline-hidden`, NOT `outline-none`: in Tailwind v4 the latter
+ * emits a real `outline: none`, and forced-colors mode (Windows High Contrast)
+ * strips the box-shadow this ring is built from — leaving a keyboard user with no
+ * focus indicator at all. `outline-hidden` keeps the transparent outline that
+ * forced-colors promotes into a visible one.
  */
-function CardFooter({ datasheet }: { datasheet: NonNullable<ProductCardItem["datasheet"]> }) {
+function CardFooter({
+  datasheet,
+  model,
+}: {
+  datasheet: NonNullable<ProductCardItem["datasheet"]>;
+  model: string;
+}) {
   const t = useTranslations("Catalog");
   const meta = formatDocMeta(datasheet.mime, datasheet.sizeBytes);
 
@@ -98,9 +116,10 @@ function CardFooter({ datasheet }: { datasheet: NonNullable<ProductCardItem["dat
     <div className="mt-auto border-t border-border-subtle px-5 py-3">
       <a
         href={`/api/documents/${datasheet.slug}`}
-        className="inline-flex min-h-11 items-center gap-2 text-[14px] font-semibold text-accent hover:underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 sm:min-h-0"
+        className="inline-flex items-center gap-2 text-[14px] font-semibold text-accent hover:underline underline-offset-4 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 max-sm:min-h-11"
       >
         {t("datasheet")}
+        <span className="sr-only"> {model}</span>
         <span aria-hidden>↓</span>
         {meta && <span className="font-data text-xs font-normal text-ink-2">{meta}</span>}
       </a>

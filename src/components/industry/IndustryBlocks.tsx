@@ -78,8 +78,19 @@ export function IndustrySupplies({ categories }: { categories: CategoryListItem[
  * Plain `<a>`, NOT the next-intl Link: `/api` URLs carry no locale segment. The
  * chip look is inlined (the `Chip` primitive is a non-interactive `<span>`, and
  * wrapping it in an anchor would put the focus ring on the wrong box — the same
- * reason CategoryChips has its own ChipLink). `filled` treatment retained from
- * the 2.1 review's contrast fix.
+ * reason CategoryChips has its own ChipLink).
+ *
+ * IT MUST NOT LOOK INERT (2.3 review). Story 2.3 turned this chip into a
+ * download link but left it wearing the non-interactive `Chip` costume it shipped
+ * with in 2.1 — borderless `surface-2`, ink-2 mono, no underline — so the only
+ * static download cues were an 11px aria-hidden ↓ and the size string, and hover
+ * was the sole real reveal (which touch users never get). A procurement engineer
+ * who saw the same chips sitting inert on this page in 2.1 has every reason to
+ * read them as badges and never click, quietly costing the ungated-docs trust
+ * commitment its entire point. It now takes the codebase's established
+ * interactive-chip treatment — `border-muted bg-surface` with a `hover:border-ink-2`
+ * shift, exactly as `CategoryChips`'s ChipLink does — which is what distinguishes
+ * a link-chip from a span-chip everywhere else in this UI.
  *
  * As of the 2.3 seed, oil-gas and fire-safety carry the EN 54 certificate — the
  * first POPULATED page fixture for this block; the other industries still render
@@ -102,7 +113,7 @@ export function IndustryCertificates({ certificates }: { certificates: Certifica
             <li key={certificate.id}>
               <a
                 href={`/api/documents/${certificate.slug}`}
-                className="inline-flex min-h-11 items-center gap-1.5 bg-surface-2 px-2 py-1 font-mono text-[11px] uppercase tracking-wide text-ink-2 transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 sm:min-h-0"
+                className="inline-flex items-center gap-1.5 border border-muted bg-surface px-2 py-1 font-mono text-[11px] uppercase tracking-wide text-ink-2 transition-colors hover:border-ink-2 hover:text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 max-sm:min-h-11"
               >
                 <BadgeCheck size={13} className="text-brand" aria-hidden />
                 <span lang={certificate.isFallback ? "en" : undefined}>{certificate.title}</span>

@@ -4,21 +4,26 @@ import { probeDbReady, warmUp } from "./dbReady";
 /**
  * Story 2.1 — industry landing pages, end to end.
  *
- * FIXTURES ARE THE SEED, MEASURED not assumed (live SQL, 2026-08-11):
+ * FIXTURES ARE THE SEED, MEASURED not assumed (live SQL; certificates column
+ * re-measured 2026-08-22 after the Story 2.3 seed):
  *
  *   industry        products(pub)  projects(pub)  certificates  services
- *   oil-gas               5              2              0           4
- *   fire-safety           3              0              0           0
+ *   oil-gas               5              2              1           4
+ *   fire-safety           3              0              1           0
  *   energy                1              0              0           0
  *   construction          0              0              0           0
  *   manufacturing         0              0              0           0
  *   nuclear               0              0              0           0
  *
  * So `oil-gas` is the populated case and `construction` is the fully empty one.
- * `document_industries` has ZERO rows, which is why the certificates block is
- * empty even on oil-gas — its populated path is covered by
- * `repository.integration.test.ts`, which self-seeds a document, and that is
- * stated plainly rather than papered over.
+ *
+ * CERTIFICATES ARE NO LONGER EMPTY EVERYWHERE. Story 2.3 added the first
+ * `DocumentIndustry` rows, giving oil-gas and fire-safety the EN 54 certificate
+ * (`fd-9500-en54`); `construction` — this file's EMPTY case — still has none, so
+ * every assertion here holds unchanged. This header said "document_industries has
+ * ZERO rows" until the 2.3 review caught it: the table is treated as binding
+ * fixture documentation by later stories, so a stale row here is a trap, not a
+ * comment.
  *
  * Metadata assertions are made against the RAW server response (`request.get`),
  * never the hydrated DOM: Next 16 streams metadata into `<body>` for JS-capable
@@ -190,7 +195,8 @@ test.describe("an EMPTY industry landing page (AC2)", () => {
     if (!dbReady) testInfo.skip();
 
     // On the current seed this is the COMMON path: 3 of 6 industries are fully
-    // empty, and certificates are empty for all 6.
+    // empty. (Certificates are empty for 4 of 6 since the 2.3 seed — construction
+    // is one of them, which is why this page is still the all-empty case.)
     await page.goto(`/en/industries/${EMPTY}`);
 
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
