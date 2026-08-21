@@ -27,7 +27,10 @@ import type { ProductCardItem } from "@/server/repositories/product";
  */
 export function ProductCard({ product }: { product: ProductCardItem }) {
   return (
-    <article className="flex flex-col border border-border-subtle bg-surface">
+    // `w-full`: grid cells wrap the card in a flex <li>, where a flex item
+    // shrink-to-fits its text — measured as a ragged, misaligned grid (2.2
+    // review). The card always fills its cell.
+    <article className="flex w-full flex-col border border-border-subtle bg-surface">
       {/* Thumbnail stand-in. Real product photography replaces the icon (DESIGN.md
           § Shapes); until then the icon is decorative and the card's accessible
           name comes from the heading below, so it is hidden from assistive tech. */}

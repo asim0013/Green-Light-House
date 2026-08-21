@@ -119,7 +119,7 @@ describe("toProductCardItem", () => {
     expect(item.isFallback).toBe(false);
   });
 
-  it("falls back to EN and flags it; the MODEL is the last resort, never empty", () => {
+  it("uses the MODEL as last resort when NO translation exists — and does not flag fallback", () => {
     const item = toProductCardItem(cardRow({ translations: [] }), "ru");
     expect(item.name).toBe("FD-9500");
     expect(item.isFallback).toBe(false);

@@ -69,14 +69,15 @@
   "Catalog": {
     "title": "Product catalog",
     "subhead": "No prices — full specs and datasheets.",
-    "countLine": "{count, plural, one {# product} other {# products}} · no prices, full specs",
     "categoriesLabel": "Categories",
     "allProducts": "All products",
     "childrenLabel": "In this category",
     "emptyTitle": "Range expanding",
     "emptyLead": "We do not list products under this category yet — the range is expanding. Tell us what the project needs and we will spec and supply it.",
     "emptyCta": "Request what you need",
-    "emptyCatalogLead": "The catalog will be published. Send a model number or a specification and we will source it."
+    "emptyCatalogLead": "The catalog is being published. Send a model number or a specification and we will source it.",
+    "countNoun": "{count, plural, one {product} other {products}}",
+    "countTail": "no prices, full specs"
   },
   "NotFound": {
     "title": "Page not found",

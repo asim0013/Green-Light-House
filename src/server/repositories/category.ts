@@ -138,6 +138,13 @@ export interface FlatCategoryRow extends CategoryRow {
  * list (data corruption, or a cap that cut the parent) is promoted to a root
  * rather than silently dropped — an invisible category is worse than a
  * mis-nested one.
+ *
+ * SCOPE OF THAT PROMISE (2.2 review): it covers the MISSING-parent case only. A
+ * parentId CYCLE (A→B→A) leaves its members parented to each other, reachable
+ * from no root — they drop from the forest without crashing (flatten walks from
+ * roots, so infinite recursion is impossible). Nothing prevents a cycle in the
+ * schema, and nothing can create one until Epic 4 edits categories — which is
+ * where cycle REJECTION belongs: on write, not on every read.
  */
 export function assembleCategoryTree(
   rows: readonly FlatCategoryRow[],
@@ -168,7 +175,15 @@ export function assembleCategoryTree(
  * fetch — depth-agnostic and a single round trip.
  */
 export async function listCategoryTree(locale: Locale): Promise<CategoryTreeNode[]> {
-  return cached(() => queryCategoryTree(locale), ["category-tree", locale], [TAGS.categories]);
+  // `catalog` AS WELL AS `categories` (2.2 review): the payload embeds per-node
+  // published-product COUNTS, so a product publish/unpublish must invalidate it.
+  // Tagged `categories` alone, an admin publish refreshed the grids instantly
+  // while the chip counts lied for up to the 60s SWR window.
+  return cached(
+    () => queryCategoryTree(locale),
+    ["category-tree", locale],
+    [TAGS.categories, TAGS.catalog],
+  );
 }
 
 /** Uncached SQL read. Exported for integration tests — see the note in `@/lib/cache`. */
@@ -198,9 +213,15 @@ export async function queryCategoryTree(locale: Locale): Promise<CategoryTreeNod
 
 /**
  * One category by slug with its parent (for the breadcrumb trail) and children
- * (for the tiles), or `null` when it does not exist (Story 2.2). The caller has
- * already slug-validated the input — this read still caches on it, so the
- * validation gate in the page is what bounds the key space.
+ * (for the tiles), or `null` when it does not exist (Story 2.2).
+ *
+ * CACHE-KEY HONESTY (corrected by the 2.2 review — an earlier comment claimed the
+ * page gate "bounds the key space", which it does not): the gate bounds the SHAPE
+ * and LENGTH of what reaches this key. Malformed values never arrive and the
+ * >247-char tag log-amplification class is dead — but CARDINALITY is unbounded:
+ * every distinct valid-shaped unknown slug still mints one null entry per locale
+ * at the handler TTL. Same exposure class as the 2.1-deferred `getProductBySlug`
+ * item; both want the one existence-check fix tracked in deferred-work.md.
  */
 export async function getCategoryBySlug(
   slug: string,
@@ -209,7 +230,8 @@ export async function getCategoryBySlug(
   return cached(
     () => queryCategoryBySlug(slug, locale),
     ["category", slug, locale],
-    [TAGS.categories],
+    // `catalog` for the same reason as the tree: children carry published counts.
+    [TAGS.categories, TAGS.catalog],
   );
 }
 

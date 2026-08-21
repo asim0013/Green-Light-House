@@ -68,15 +68,16 @@
   },
   "Catalog": {
     "title": "Ürün kataloğu",
-    "subhead": "Fiyat yok — tam teknik özellikler ve veri sayfaları.",
-    "countLine": "{count, plural, other {# ürün}} · fiyat yok, tam teknik özellikler",
+    "subhead": "Fiyat listesi yok — tam teknik özellikler ve veri sayfaları.",
     "categoriesLabel": "Kategoriler",
     "allProducts": "Tüm ürünler",
     "childrenLabel": "Bu kategoride",
     "emptyTitle": "Ürün yelpazemiz genişliyor",
-    "emptyLead": "Bu kategoride henüz ürün listelemiyoruz — yelpazemiz genişliyor. Projenin ihtiyacını iletin, şartnameye göre temin edelim.",
+    "emptyLead": "Bu kategoride henüz ürün listelemiyoruz — yelpazemiz genişliyor. Projenin ihtiyacını iletin, şartnameye göre tedarik edelim.",
     "emptyCta": "İhtiyacınızı iletin",
-    "emptyCatalogLead": "Katalog yayımlanacak. Model numarası veya şartname gönderin, tedarik edelim."
+    "emptyCatalogLead": "Katalog yayımlanacak. Model numarası veya şartname gönderin, tedarik edelim.",
+    "countNoun": "{count, plural, other {ürün}}",
+    "countTail": "fiyat yok, tam teknik özellikler"
   },
   "NotFound": {
     "title": "Sayfa bulunamadı",

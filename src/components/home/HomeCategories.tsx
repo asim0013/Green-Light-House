@@ -48,7 +48,9 @@ export function HomeCategories({ categories }: { categories: CategoryListItem[] 
                 <li key={category.id}>
                   <Link
                     href={`/products?category=${category.slug}`}
-                    className="flex h-full flex-col gap-4 border border-border-subtle bg-surface p-5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+                    // hover = BORDER emphasis, not a fill change: this section is bg-surface-2,
+                    // so hover:bg-surface-2 dissolved the tile into its background (2.2 review).
+                    className="flex h-full flex-col gap-4 border border-border-subtle bg-surface p-5 transition-colors hover:border-ink-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
                   >
                     {/* Decorative — the category name carries the meaning. */}
                     <span className="flex h-20 items-center justify-center bg-surface-2">

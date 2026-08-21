@@ -48,7 +48,9 @@ export function IndustrySupplies({ categories }: { categories: CategoryListItem[
           <li key={category.id}>
             <Link
               href={`/products?category=${category.slug}`}
-              className="block h-full border border-border-subtle bg-surface p-5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+              // Same fix as HomeCategories: IndustrySection here is fill="surface-2", so a
+              // surface-2 hover fill made the tile vanish. Border emphasis instead.
+              className="block h-full border border-border-subtle bg-surface p-5 transition-colors hover:border-ink-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
             >
               <span
                 lang={category.isFallback ? "en" : undefined}

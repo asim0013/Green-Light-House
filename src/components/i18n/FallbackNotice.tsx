@@ -31,8 +31,13 @@ export function FallbackNotice({
   if (!shouldShowFallbackNotice(isFallback)) return null;
 
   return (
+    // `font-body normal-case tracking-normal` are SELF-DEFENSE, not styling: the
+    // notice renders inside arbitrary hosts, and inside a mono/uppercase/tracked
+    // chip it inherited all three — an 11px UPPERCASE parenthetical LOUDER than
+    // the label it qualifies (2.2 review). It now resets typography wherever it
+    // lands; on plain hosts these classes are no-ops.
     <span
-      className={`ml-2 align-middle text-xs font-normal ${
+      className={`ml-2 align-middle font-body text-xs font-normal normal-case tracking-normal ${
         tone === "onDark" ? "text-on-dark-text" : "text-ink-2"
       }`}
     >
