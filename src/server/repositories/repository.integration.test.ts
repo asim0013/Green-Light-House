@@ -670,6 +670,29 @@ describe("documents by product (integration)", () => {
           isPublic: false,
           productId: product.id,
         },
+        // The ordering fixture is SELF-SEEDED (2.4 review). The first version
+        // borrowed ds-v1/ds-v2 from the datasheet-join test in another describe
+        // block and guarded the assertion with `if (datasheets.length > 1)` —
+        // which made it vacuously pass under `-t "documents by product"` while a
+        // `version: "asc"` mutation survived. Versions 94/95 sit above anything
+        // any other fixture creates, so the expectation is unconditional and
+        // holds whether or not the join test ran first.
+        {
+          slug: `${DOCUMENT_PREFIX}pd-ds-old`,
+          type: "datasheet",
+          fileKey: "int/pd-ds-old.pdf",
+          version: 94,
+          isPublic: true,
+          productId: product.id,
+        },
+        {
+          slug: `${DOCUMENT_PREFIX}pd-ds-new`,
+          type: "datasheet",
+          fileKey: "int/pd-ds-new.pdf",
+          version: 95,
+          isPublic: true,
+          productId: product.id,
+        },
       ],
     });
 
@@ -679,10 +702,11 @@ describe("documents by product (integration)", () => {
     // Private documents are never enumerable — the same rule the download
     // handler enforces (Story 2.3).
     expect(slugs).not.toContain(`${DOCUMENT_PREFIX}pd-secret`);
-    // Highest version of a type comes first (this product also has ds-v1/ds-v2
-    // from the datasheet-join fixture above).
+    // Highest version of a type comes first — UNCONDITIONAL, on this test's own
+    // two-version fixture.
     const datasheets = docs.filter((d) => d.type === "datasheet").map((d) => d.slug);
-    if (datasheets.length > 1) expect(datasheets[0]).toBe(`${DOCUMENT_PREFIX}ds-v2`);
+    expect(datasheets[0]).toBe(`${DOCUMENT_PREFIX}pd-ds-new`);
+    expect(datasheets[1]).toBe(`${DOCUMENT_PREFIX}pd-ds-old`);
   });
 
   it("is empty for a product with no public documents", async (ctx) => {

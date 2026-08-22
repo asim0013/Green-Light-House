@@ -36,6 +36,15 @@ import type { ProductCardItem } from "@/server/repositories/product";
  * The footer's download anchor sits at `relative z-10` so it stays above the
  * overlay; without that the stretched pseudo-element would swallow its clicks.
  *
+ * KNOWN TRADE-OFF, accepted deliberately (2.4 review): the overlay owns
+ * hit-testing for the whole card, so model numbers and spec values on a CARD
+ * cannot be drag-selected with a mouse — the drag starts a link interaction
+ * instead. Measured: selection on a card returns empty while the identical drag
+ * on the detail page's h1 selects fine. The same strings are one click away on
+ * the detail page, keyboard/AT users are unaffected, and the alternative
+ * (heading-only link) loses the whole-card affordance buyers expect from a
+ * catalogue grid. Recorded in deferred-work.md.
+ *
  * Presentational only — it takes resolved data, so it renders with zero specs and
  * stays unit-testable without a database.
  */

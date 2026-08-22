@@ -56,7 +56,11 @@ export function ProductAnchorCard({ product }: { product: ProductDetail }) {
         <Fact label={t("categoryLabel")}>
           <Link
             href={`/products?category=${encodeURIComponent(product.category.slug)}`}
-            className="text-accent hover:underline underline-offset-4 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+            // `max-sm:min-h-11`: the 44px touch floor the same diff applied to the
+            // documents rows and the phone link — this link measured 16px tall
+            // without it, a third of the floor, mis-tapping into inert rows
+            // (2.4 review).
+            className="inline-flex items-center text-accent hover:underline underline-offset-4 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 max-sm:min-h-11"
           >
             <span lang={product.category.isFallback ? "en" : undefined}>
               {product.category.name}

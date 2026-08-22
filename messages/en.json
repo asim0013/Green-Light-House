@@ -93,7 +93,7 @@
     "anchorNoPrices": "No price shown — a project-specced quote, fast.",
     "quoteCta": "Request a quote for this product",
     "sla": "Technical review in 24 h · specced proposal in 3 working days",
-    "crumb": "Products",
+    "notFoundCrumb": "Not found",
     "notFoundKicker": "Not found",
     "notFoundTitle": "We do not have a page for that product",
     "notFoundLead": "The address may be mistyped, or the product may not be published yet. Browse the catalog, or call us — we supply well beyond what is listed here.",

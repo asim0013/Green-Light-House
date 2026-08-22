@@ -291,4 +291,31 @@ test.describe("the card wires into the page (AC6)", () => {
     );
     expect(targetHref).toMatch(/^\/api\/documents\//);
   });
+
+  test("the overlay itself exists: a click on the card BODY hits the detail link", async ({
+    page,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+
+    // The 2.4 review proved this was the suite's blind spot: deleting
+    // `after:absolute after:inset-0` left every test green while the detail hit
+    // area silently shrank from the whole card to the heading text. This probes a
+    // NON-link point — the thumbnail zone — and demands the stretched overlay
+    // answer for it.
+    await page.goto("/en/products");
+    const card = page.locator("article", { has: page.locator('a[href="/en/products/fd-9500"]') });
+    const thumb = card.locator("div").first(); // the 140px thumbnail box
+    await thumb.scrollIntoViewIfNeeded();
+    const box = await thumb.boundingBox();
+    expect(box).not.toBeNull();
+
+    const targetHref = await page.evaluate(
+      ({ x, y }) => {
+        const el = document.elementFromPoint(x, y);
+        return el?.closest("a")?.getAttribute("href") ?? null;
+      },
+      { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 },
+    );
+    expect(targetHref).toBe("/en/products/fd-9500");
+  });
 });

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { cached } from "@/lib/cache";
 import { TAGS } from "@/lib/cache-tags";
 import { resolveTranslation } from "@/server/i18n/resolveTranslation";
+import { isValidSlug } from "@/lib/slug";
 
 /** One product as the Product Card renders it (DESIGN.md § Components). */
 export interface ProductCardItem {
@@ -137,23 +138,35 @@ export interface ProductDetail {
   attributes: unknown;
 }
 
+/** Uncached slug→id lookup for PUBLISHED products. */
+async function queryProductId(slug: string): Promise<string | null> {
+  const row = await prisma.product.findFirst({
+    where: { slug, status: "published" },
+    select: { id: true },
+  });
+  return row?.id ?? null;
+}
+
 /**
  * The id behind a PUBLISHED slug, or null. Cached and locale-independent.
- *
  * Exists to give `getProductBySlug` its per-entity cache tag — see there.
+ *
+ * A CACHED NULL IS NEVER TRUSTED (2.4 review). This entry is tagged `catalog`
+ * only — the per-entity tag cannot exist before the id is known — so a null
+ * minted while a product was DRAFT survives the `product:{id}` purge an admin
+ * emits on publish, and the page kept serving not-found. Measured: draft →
+ * request (null cached) → publish → revalidate `product:{id}` → still not-found
+ * until a `catalog` purge. So a cached miss falls through to one direct indexed
+ * SELECT: publish transitions now take effect on the NEXT REQUEST with no purge
+ * needed at all, and the only slugs paying the extra query are ones that do not
+ * resolve. (The stored null entry still exists — the unbounded-cardinality item
+ * stays deferred with `getCategoryBySlug`/`getDocumentBySlug` — it just cannot
+ * poison a publish any more.)
  */
 async function resolveProductId(slug: string): Promise<string | null> {
-  return cached(
-    async () => {
-      const row = await prisma.product.findFirst({
-        where: { slug, status: "published" },
-        select: { id: true },
-      });
-      return row?.id ?? null;
-    },
-    ["product-id", slug],
-    [TAGS.catalog],
-  );
+  const cachedId = await cached(() => queryProductId(slug), ["product-id", slug], [TAGS.catalog]);
+  if (cachedId) return cachedId;
+  return queryProductId(slug);
 }
 
 /**
@@ -161,27 +174,29 @@ async function resolveProductId(slug: string): Promise<string | null> {
  * `locale` (EN fallback). Returns null when the product does not exist OR is not
  * published.
  *
- * IT CARRIES `product:{id}` NOW (Story 2.4, closing a Story 1.8 defer). The
+ * IT CARRIES `product:{id}` (Story 2.4, closing a Story 1.8 defer). The
  * convention's per-entity tag needs the id, but `unstable_cache` fixes tags when
- * the wrapper is BUILT — so the id has to be known first. That is what
- * `resolveProductId` is for: a cheap, locale-independent, cached slug→id hop,
- * after which the detail read is keyed AND tagged by id.
+ * the wrapper is BUILT — so the id has to be known first, via `resolveProductId`;
+ * the detail read is then keyed AND tagged by id. Both tags are applied:
+ * `product:{id}` for a single product's purge, `catalog` so a catalogue-wide
+ * invalidation still reaches detail pages.
  *
- * This was not cosmetic. `/api/revalidate` already accepted `product:{id}` and
- * reported success while NO cached read carried it, so an admin publishing one
- * product was a SILENT NO-OP. Both tags are applied: `product:{id}` for a single
- * product's purge, `catalog` so a catalogue-wide invalidation still reaches
- * detail pages.
+ * THE CACHED CLOSURE QUERIES BY THE SAME ID THE KEY CARRIES (2.4 review). The
+ * first version keyed by id but queried by the CALLER'S SLUG — an input the key
+ * did not distinguish, violating `cache.ts`'s own rule. Measured consequence:
+ * after a slug rename plus a `product:{id}` purge, whichever slug was requested
+ * first wrote ITS result into the shared id-keyed entry — a hit on the retired
+ * slug cached `null` there, and the product's NEW canonical URL then served the
+ * not-found body while the row sat published in the DB (and in the mirror order,
+ * the dead slug served a full 200). Querying by id makes the entry's inputs
+ * match its key, so no slug can poison another's read. The residual rename
+ * behaviour — the RETIRED slug keeps rendering (canonical pointing at the new
+ * URL) for up to the id-hop's TTL — is bounded, self-healing, and disclosed in
+ * deferred-work.md.
  *
  * Cost: one extra cached lookup per render. A slug→id mapping is about as stable
- * as data gets, so in practice it is a permanent Redis hit.
- *
- * Side benefit worth knowing: an unknown slug no longer mints one null entry PER
- * LOCALE — it stops at the locale-independent id hop, a 3× reduction. The
- * underlying cardinality of well-formed unknown slugs is still unbounded and
- * still deferred (it is one item shared with `getCategoryBySlug` and
- * `getDocumentBySlug`); the route's slug gate bounds SHAPE and LENGTH, never
- * CARDINALITY.
+ * as data gets, so in practice it is a permanent Redis hit. An unknown slug also
+ * stops at the locale-independent id hop instead of minting one entry per locale.
  */
 export async function getProductBySlug(
   slug: string,
@@ -191,7 +206,7 @@ export async function getProductBySlug(
   if (!id) return null;
 
   return cached(
-    () => queryProductBySlug(slug, locale),
+    () => queryProductById(id, locale),
     ["product", id, locale],
     [TAGS.product(id), TAGS.catalog],
   );
@@ -217,7 +232,7 @@ export async function listProductsByIndustry(
   return cached(
     () => queryProductsByIndustry(industrySlug, locale, limit),
     ["products-by-industry", industrySlug, locale, String(limit ?? "all")],
-    [TAGS.catalog, TAGS.industry(industrySlug)],
+    [TAGS.catalog, TAGS.industry(industrySlug), TAGS.documents],
   );
 }
 
@@ -321,7 +336,7 @@ export async function listPublishedProducts(
   return cached(
     () => queryPublishedProducts(locale, limit),
     ["products-all", locale, String(limit)],
-    [TAGS.catalog],
+    [TAGS.catalog, TAGS.documents],
   );
 }
 
@@ -357,7 +372,7 @@ export async function listProductsByCategory(
   return cached(
     () => queryProductsByCategory(categorySlug, locale, limit),
     ["products-by-category", categorySlug, locale, String(limit)],
-    [TAGS.catalog, TAGS.categories],
+    [TAGS.catalog, TAGS.categories, TAGS.documents],
   );
 }
 
@@ -388,8 +403,27 @@ export async function queryProductBySlug(
   // to a public URL, which is exactly when "unpublished items are never
   // enumerable" stops being theoretical. `findFirst`, not `findUnique`, because
   // the latter accepts only unique fields in `where`.
+  return queryProductDetail({ slug }, locale);
+}
+
+/**
+ * Uncached SQL read BY ID — what the cached detail entry actually recomputes.
+ *
+ * The cached closure must query by the SAME id its cache key carries (2.4
+ * review): when it queried by the caller's slug instead, a slug rename let two
+ * slugs alias one id-keyed entry and whichever was requested first poisoned the
+ * other — measured serving not-found on a published product's new canonical URL.
+ */
+export async function queryProductById(id: string, locale: Locale): Promise<ProductDetail | null> {
+  return queryProductDetail({ id }, locale);
+}
+
+async function queryProductDetail(
+  where: { slug: string } | { id: string },
+  locale: Locale,
+): Promise<ProductDetail | null> {
   const product = await prisma.product.findFirst({
-    where: { slug, status: "published" },
+    where: { ...where, status: "published" },
     include: {
       translations: true,
       manufacturer: { include: { translations: true } },
@@ -457,7 +491,7 @@ export async function listRelatedProducts(
   return cached(
     () => queryRelatedProducts(slug, locale, limit),
     ["related-products", slug, locale, String(limit)],
-    [TAGS.catalog],
+    [TAGS.catalog, TAGS.documents],
   );
 }
 
@@ -509,7 +543,7 @@ export async function listAccessoriesForProduct(
   return cached(
     () => queryAccessoriesForProduct(slug, locale, limit),
     ["accessories", slug, locale, String(limit)],
-    [TAGS.catalog],
+    [TAGS.catalog, TAGS.documents],
   );
 }
 
@@ -555,7 +589,11 @@ export interface ProductSignalRow {
 }
 
 export async function listProductSignals(locale: Locale): Promise<ProductSignalRow[]> {
-  return cached(() => queryProductSignals(locale), ["product-signals", locale], [TAGS.catalog]);
+  return cached(
+    () => queryProductSignals(locale),
+    ["product-signals", locale],
+    [TAGS.catalog, TAGS.documents],
+  );
 }
 
 /** Uncached SQL read. Exported for integration tests — see the note in `@/lib/cache`. */
@@ -573,14 +611,24 @@ export async function queryProductSignals(locale: Locale): Promise<ProductSignal
     orderBy: { slug: "asc" },
   });
 
-  return products.map((product) => ({
-    slug: product.slug,
-    isFallback: resolveTranslation(product.translations, locale)?.isFallback ?? false,
-    manufacturerIsFallback:
-      resolveTranslation(product.manufacturer.translations, locale)?.isFallback ?? false,
-    categoryIsFallback:
-      resolveTranslation(product.category.translations, locale)?.isFallback ?? false,
-    specCount: toSpecRows(product.attributes, Number.MAX_SAFE_INTEGER).length,
-    documentCount: product._count.documents,
-  }));
+  // THE ROUTE'S SLUG GATE APPLIES HERE TOO (2.4 review). The page's effective
+  // predicate is isValidSlug AND productSignals — gateSlug runs before any read —
+  // but the sitemap consumed these rows ungated, so a published row whose slug
+  // violates the convention (nothing constrains Product.slug beyond @unique) was
+  // ADVERTISED at a URL the route then refuses to serve: measured, a `zz-a&b`
+  // row produced a sitemap <loc> whose exact URL answered the 200+noindex
+  // not-found body. Filtering at the data source keeps "one predicate per
+  // surface" true for every consumer of signal rows.
+  return products
+    .filter((product) => isValidSlug(product.slug))
+    .map((product) => ({
+      slug: product.slug,
+      isFallback: resolveTranslation(product.translations, locale)?.isFallback ?? false,
+      manufacturerIsFallback:
+        resolveTranslation(product.manufacturer.translations, locale)?.isFallback ?? false,
+      categoryIsFallback:
+        resolveTranslation(product.category.translations, locale)?.isFallback ?? false,
+      specCount: toSpecRows(product.attributes, Number.MAX_SAFE_INTEGER).length,
+      documentCount: product._count.documents,
+    }));
 }

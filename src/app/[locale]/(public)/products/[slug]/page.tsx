@@ -122,7 +122,7 @@ export default async function ProductDetailPage(props: {
     return (
       <>
         <Breadcrumb
-          items={[{ label: tNav("products"), href: "/products" }, { label: t("crumb") }]}
+          items={[{ label: tNav("products"), href: "/products" }, { label: t("notFoundCrumb") }]}
         />
         <ProductNotFound />
       </>
