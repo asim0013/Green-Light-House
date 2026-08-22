@@ -82,24 +82,34 @@ test.describe("the catalog page (AC1)", () => {
     expect(visible.toLowerCase()).not.toContain("add to basket");
   });
 
-  test("cards carry ONLY the datasheet link — 2.4's detail link and Epic 3's inquiry stay absent", async ({
+  test("every card links to its detail page; the datasheet is the only other affordance", async ({
     page,
   }, testInfo) => {
     if (!dbReady) testInfo.skip();
 
-    // Story 2.3 INVERTED half of this test (the 2.1/2.2 pattern): the card footer
-    // now carries its ungated "Datasheet ↓" — for the ONE seeded product with a
-    // public datasheet (fd-9500). What must still be absent: product-DETAIL links
-    // (2.4 — the card itself is not a link) and "Add to inquiry" (Epic 3, DP-12).
+    // INVERTED TWICE, both by design (the 2.1/2.2 pattern). Story 2.3 gave the
+    // footer its ungated "Datasheet ↓" for the ONE seeded product with a public
+    // datasheet (fd-9500). Story 2.4 made the card itself a link to the detail
+    // page it had been promising since 2.1 — so what this test guards is no longer
+    // "cards have no links", it is WHICH links a card may carry.
     await page.goto("/en/products");
-    await expect(page.locator('article a[href*="/products/"]')).toHaveCount(0);
+
+    // One detail link per card, on all five seeded published products.
+    await expect(page.locator('article a[href*="/products/"]')).toHaveCount(5);
     await expect(page.locator('article a[href^="/api/documents/"]')).toHaveCount(1);
+
+    // Still absent, and this is the half that never inverts: "Add to inquiry"
+    // waits for Epic 3's RFQ (DP-12 — never link a page that does not exist).
     for (const card of await page.locator("article").all()) {
       const cardText = (await card.innerText()).toLowerCase();
       expect(cardText).not.toContain("add to inquiry");
     }
-    // The datasheet link is the ONLY interactive element any card carries.
-    await expect(page.locator("article a, article button")).toHaveCount(1);
+
+    // 5 detail links + 1 datasheet, and NOTHING else — no stray buttons. The
+    // detail link is a stretched overlay on the heading rather than a wrapper
+    // around the card, precisely so the datasheet anchor stays a separate,
+    // independently focusable element instead of an invalid nested <a>.
+    await expect(page.locator("article a, article button")).toHaveCount(6);
   });
 });
 

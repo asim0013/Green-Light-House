@@ -1,4 +1,5 @@
 import { Package } from "lucide-react";
+import { Link } from "@/i18n/navigation";
 import { useTranslations } from "next-intl";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { formatDocMeta } from "@/lib/doc-meta";
@@ -23,7 +24,17 @@ import type { ProductCardItem } from "@/server/repositories/product";
  * does not exist). The download href is the /api route — a plain <a>, NOT the
  * next-intl Link: /api URLs carry no locale segment.
  *
- * The card is still not itself a link: product detail is Story 2.4.
+ * THE CARD IS NOW A LINK (Story 2.4) — to `/products/<slug>`, the detail page it
+ * had been promising since 2.1. It is built as a STRETCHED OVERLAY, not a wrapper:
+ * the heading holds the only `<a>`, and `after:absolute after:inset-0` extends its
+ * hit area over the whole card. Wrapping the card in an anchor instead would nest
+ * the footer's datasheet `<a>` inside it — invalid HTML, and browsers recover from
+ * it unpredictably. This way the card has exactly TWO interactive elements, both
+ * independently clickable and independently focusable, and a screen reader reads
+ * one link named after the product rather than a link containing another link.
+ *
+ * The footer's download anchor sits at `relative z-10` so it stays above the
+ * overlay; without that the stretched pseudo-element would swallow its clicks.
  *
  * Presentational only — it takes resolved data, so it renders with zero specs and
  * stays unit-testable without a database.
@@ -33,7 +44,8 @@ export function ProductCard({ product }: { product: ProductCardItem }) {
     // `w-full`: grid cells wrap the card in a flex <li>, where a flex item
     // shrink-to-fits its text — measured as a ragged, misaligned grid (2.2
     // review). The card always fills its cell.
-    <article className="flex w-full flex-col border border-border-subtle bg-surface">
+    // `relative` anchors the heading link's stretched overlay.
+    <article className="relative flex w-full flex-col border border-border-subtle bg-surface transition-colors hover:border-ink-2">
       {/* Thumbnail stand-in. Real product photography replaces the icon (DESIGN.md
           § Shapes); until then the icon is decorative and the card's accessible
           name comes from the heading below, so it is hidden from assistive tech. */}
@@ -53,7 +65,14 @@ export function ProductCard({ product }: { product: ProductCardItem }) {
         </span>
 
         <h3 className="font-heading text-base font-semibold text-ink">
-          <span lang={product.isFallback ? "en" : undefined}>{product.name}</span>
+          <Link
+            href={`/products/${encodeURIComponent(product.slug)}`}
+            className="after:absolute after:inset-0 hover:text-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+          >
+            <span lang={product.isFallback ? "en" : undefined}>{product.name}</span>
+          </Link>
+          {/* Outside the link: the notice is ABOUT the name, not part of it, and
+              the accessible name should stay the product's own. */}
           <FallbackNotice isFallback={product.isFallback} />
         </h3>
 
@@ -116,7 +135,7 @@ function CardFooter({
     <div className="mt-auto border-t border-border-subtle px-5 py-3">
       <a
         href={`/api/documents/${datasheet.slug}`}
-        className="inline-flex items-center gap-2 text-[14px] font-semibold text-accent hover:underline underline-offset-4 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 max-sm:min-h-11"
+        className="relative z-10 inline-flex items-center gap-2 text-[14px] font-semibold text-accent hover:underline underline-offset-4 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 max-sm:min-h-11"
       >
         {t("datasheet")}
         <span className="sr-only"> {model}</span>

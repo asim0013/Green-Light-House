@@ -126,26 +126,75 @@ export interface ProductDetail {
   name: string;
   description: string | null;
   isFallback: boolean;
-  manufacturer: { slug: string; name: string };
-  category: { slug: string; name: string };
+  /**
+   * `isFallback` is per-field here for the same reason it is on the card: a
+   * product can be translated while its manufacturer is not. The detail page
+   * marks only the string that actually fell back (FR34a).
+   */
+  manufacturer: { slug: string; name: string; isFallback: boolean };
+  category: { slug: string; name: string; isFallback: boolean };
   /** Technical spec key/values (JSONB); shape is content-defined. */
   attributes: unknown;
 }
 
 /**
+ * The id behind a PUBLISHED slug, or null. Cached and locale-independent.
+ *
+ * Exists to give `getProductBySlug` its per-entity cache tag — see there.
+ */
+async function resolveProductId(slug: string): Promise<string | null> {
+  return cached(
+    async () => {
+      const row = await prisma.product.findFirst({
+        where: { slug, status: "published" },
+        select: { id: true },
+      });
+      return row?.id ?? null;
+    },
+    ["product-id", slug],
+    [TAGS.catalog],
+  );
+}
+
+/**
  * Fetch a single product by slug with all human-readable fields resolved for
- * `locale` (EN fallback). Returns null when the product doesn't exist.
+ * `locale` (EN fallback). Returns null when the product does not exist OR is not
+ * published.
+ *
+ * IT CARRIES `product:{id}` NOW (Story 2.4, closing a Story 1.8 defer). The
+ * convention's per-entity tag needs the id, but `unstable_cache` fixes tags when
+ * the wrapper is BUILT — so the id has to be known first. That is what
+ * `resolveProductId` is for: a cheap, locale-independent, cached slug→id hop,
+ * after which the detail read is keyed AND tagged by id.
+ *
+ * This was not cosmetic. `/api/revalidate` already accepted `product:{id}` and
+ * reported success while NO cached read carried it, so an admin publishing one
+ * product was a SILENT NO-OP. Both tags are applied: `product:{id}` for a single
+ * product's purge, `catalog` so a catalogue-wide invalidation still reaches
+ * detail pages.
+ *
+ * Cost: one extra cached lookup per render. A slug→id mapping is about as stable
+ * as data gets, so in practice it is a permanent Redis hit.
+ *
+ * Side benefit worth knowing: an unknown slug no longer mints one null entry PER
+ * LOCALE — it stops at the locale-independent id hop, a 3× reduction. The
+ * underlying cardinality of well-formed unknown slugs is still unbounded and
+ * still deferred (it is one item shared with `getCategoryBySlug` and
+ * `getDocumentBySlug`); the route's slug gate bounds SHAPE and LENGTH, never
+ * CARDINALITY.
  */
 export async function getProductBySlug(
   slug: string,
   locale: Locale,
 ): Promise<ProductDetail | null> {
-  // Tagged `catalog` only. The convention's per-entity tag is `product:{id}`, but
-  // the id is not known until AFTER this query runs, and `unstable_cache` tags are
-  // fixed when the wrapper is built. A slug→id mapping arrives with the product
-  // detail page (Epic 2) and the admin mutations that would emit `product:{id}`
-  // (Epic 4); until then `catalog` is the honest invalidation granularity here.
-  return cached(() => queryProductBySlug(slug, locale), ["product", slug, locale], [TAGS.catalog]);
+  const id = await resolveProductId(slug);
+  if (!id) return null;
+
+  return cached(
+    () => queryProductBySlug(slug, locale),
+    ["product", id, locale],
+    [TAGS.product(id), TAGS.catalog],
+  );
 }
 
 /**
@@ -333,8 +382,14 @@ export async function queryProductBySlug(
   slug: string,
   locale: Locale,
 ): Promise<ProductDetail | null> {
-  const product = await prisma.product.findUnique({
-    where: { slug },
+  // `status: "published"` is NOT optional, and this read spent three stories
+  // without it: it was a bare `findUnique({ where: { slug } })` with zero callers,
+  // so nothing noticed that it happily returned DRAFTS. Story 2.4 is what wires it
+  // to a public URL, which is exactly when "unpublished items are never
+  // enumerable" stops being theoretical. `findFirst`, not `findUnique`, because
+  // the latter accepts only unique fields in `where`.
+  const product = await prisma.product.findFirst({
+    where: { slug, status: "published" },
     include: {
       translations: true,
       manufacturer: { include: { translations: true } },
@@ -357,11 +412,175 @@ export async function queryProductBySlug(
     manufacturer: {
       slug: product.manufacturer.slug,
       name: mt?.value.name ?? product.manufacturer.slug,
+      isFallback: mt?.isFallback ?? false,
     },
     category: {
       slug: product.category.slug,
       name: ct?.value.name ?? product.category.slug,
+      isFallback: ct?.isFallback ?? false,
     },
     attributes: product.attributes,
   };
+}
+
+/**
+ * How many sibling/accessory cards the detail page shows. Three, matching the
+ * 3-column grid EXPERIENCE.md § Responsive specifies (the same figure the 2.1
+ * review settled for the industry blocks).
+ */
+export const RELATED_LIMIT = 3;
+
+/**
+ * Products related to `slug`, for the detail page's "Related products" block.
+ *
+ * WHAT "RELATED" MEANS HERE — SAME CATEGORY (Story 2.4 decision Q1). The schema
+ * has no `related` relation, so the candidates were category, series and
+ * manufacturer. MEASURED on the current seed: all three return IDENTICAL sets
+ * (fd-9500 ↔ fd-9300, everything else empty), so the seed cannot choose between
+ * them and the decision rests on structure and meaning instead:
+ *   - `categoryId` is a REQUIRED FK, so the relation is always DEFINED. `seriesId`
+ *     is nullable and null for 4 of the 6 seeded products, which makes "related"
+ *     undefined rather than empty for most of the catalogue.
+ *   - Manufacturer would relate an SCBA air set to a flame detector because one
+ *     vendor makes both. A buyer reading a spec sheet wants alternatives in the
+ *     same EQUIPMENT CLASS, not the rest of a vendor's catalogue.
+ *
+ * `status: "published"` again: `as-60`'s only category sibling is `wc-95`, which
+ * is DRAFT — so this filter is the difference between an empty block and
+ * publishing work in progress.
+ */
+export async function listRelatedProducts(
+  slug: string,
+  locale: Locale,
+  limit: number = RELATED_LIMIT,
+): Promise<ProductCardItem[]> {
+  return cached(
+    () => queryRelatedProducts(slug, locale, limit),
+    ["related-products", slug, locale, String(limit)],
+    [TAGS.catalog],
+  );
+}
+
+/** Uncached SQL read. Exported for integration tests — see the note in `@/lib/cache`. */
+export async function queryRelatedProducts(
+  slug: string,
+  locale: Locale,
+  limit: number = RELATED_LIMIT,
+): Promise<ProductCardItem[]> {
+  const self = await prisma.product.findUnique({
+    where: { slug },
+    select: { id: true, categoryId: true },
+  });
+  if (!self) return [];
+
+  const products = await prisma.product.findMany({
+    where: {
+      status: "published",
+      categoryId: self.categoryId,
+      // Never the product you are already looking at.
+      id: { not: self.id },
+    },
+    include: CARD_INCLUDE,
+    orderBy: { slug: "asc" },
+    take: limit,
+  });
+
+  return products.map((product) => toProductCardItem(product, locale));
+}
+
+/**
+ * Compatible accessories for `slug` (FR14's phased half, via the
+ * `AccessoryCompatibility` join table).
+ *
+ * THE TABLE IS EMPTY REPO-WIDE, so on the current seed this always returns `[]`
+ * and the page omits the section — which is precisely what the AC asks for
+ * ("when absent, the section is omitted cleanly"). The populated branch is proven
+ * by a self-seeded integration test rather than pretended.
+ *
+ * The `status: "published"` filter is not defensive boilerplate here: the seed's
+ * obvious accessory is `wc-95` ("fits FD-9500"), and it is DRAFT. Wiring it
+ * without this filter would publish an unfinished catalogue entry.
+ */
+export async function listAccessoriesForProduct(
+  slug: string,
+  locale: Locale,
+  limit: number = RELATED_LIMIT,
+): Promise<ProductCardItem[]> {
+  return cached(
+    () => queryAccessoriesForProduct(slug, locale, limit),
+    ["accessories", slug, locale, String(limit)],
+    [TAGS.catalog],
+  );
+}
+
+/** Uncached SQL read. Exported for integration tests — see the note in `@/lib/cache`. */
+export async function queryAccessoriesForProduct(
+  slug: string,
+  locale: Locale,
+  limit: number = RELATED_LIMIT,
+): Promise<ProductCardItem[]> {
+  const products = await prisma.product.findMany({
+    where: {
+      status: "published",
+      accessoryOf: { some: { product: { slug } } },
+    },
+    include: CARD_INCLUDE,
+    orderBy: { slug: "asc" },
+    take: limit,
+  });
+
+  return products.map((product) => toProductCardItem(product, locale));
+}
+
+/**
+ * Every published product reduced to the fields `productSignals` needs — ONE
+ * query for the whole sitemap (Story 2.4 decision Q3).
+ *
+ * WHY THIS EXISTS RATHER THAN A LOOP: the sitemap already carries an N+1 for
+ * industries (six `getIndustryPageData` calls per locale, a live defer at
+ * 120 reads / 3.2s cold), and products are the larger set — a per-product read
+ * would make `/sitemap.xml` scale with the catalogue. React's `cache()` cannot
+ * rescue it either: it is INERT in Route Handlers (measured in Story 2.1 —
+ * 3 calls, 3 executions), and `sitemap.ts` is one.
+ *
+ * `_count` gives the document tally without loading the rows.
+ */
+export interface ProductSignalRow {
+  slug: string;
+  isFallback: boolean;
+  manufacturerIsFallback: boolean;
+  categoryIsFallback: boolean;
+  specCount: number;
+  documentCount: number;
+}
+
+export async function listProductSignals(locale: Locale): Promise<ProductSignalRow[]> {
+  return cached(() => queryProductSignals(locale), ["product-signals", locale], [TAGS.catalog]);
+}
+
+/** Uncached SQL read. Exported for integration tests — see the note in `@/lib/cache`. */
+export async function queryProductSignals(locale: Locale): Promise<ProductSignalRow[]> {
+  const products = await prisma.product.findMany({
+    where: { status: "published" },
+    select: {
+      slug: true,
+      attributes: true,
+      translations: true,
+      manufacturer: { select: { translations: true } },
+      category: { select: { translations: true } },
+      _count: { select: { documents: { where: { isPublic: true } } } },
+    },
+    orderBy: { slug: "asc" },
+  });
+
+  return products.map((product) => ({
+    slug: product.slug,
+    isFallback: resolveTranslation(product.translations, locale)?.isFallback ?? false,
+    manufacturerIsFallback:
+      resolveTranslation(product.manufacturer.translations, locale)?.isFallback ?? false,
+    categoryIsFallback:
+      resolveTranslation(product.category.translations, locale)?.isFallback ?? false,
+    specCount: toSpecRows(product.attributes, Number.MAX_SAFE_INTEGER).length,
+    documentCount: product._count.documents,
+  }));
 }

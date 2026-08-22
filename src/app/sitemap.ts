@@ -13,6 +13,8 @@ import {
 } from "@/server/industry-page";
 import { listCategoryTree } from "@/server/repositories/category";
 import { catalogSignals } from "@/server/catalog-page";
+import { listProductSignals } from "@/server/repositories/product";
+import { signalsFromRow, productHref } from "@/server/product-page";
 
 /**
  * `/sitemap.xml` (Story 1.9 — FR42, FR42a).
@@ -52,15 +54,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // awaiting each in turn, which tripled this route's latency for no reason.
   const perLocale = await Promise.all(
     routing.locales.map(async (locale) => {
-      const [projects, industries, categories, manufacturers, categoryTree] = await Promise.all([
-        listPublishedProjects(locale, 1),
-        listIndustries(locale),
-        listTopLevelCategories(locale),
-        listManufacturers(locale),
-        // One tree read is the WHOLE catalog gate (Story 2.2): catalogSignals is
-        // deliberately tree-only, so /products costs no per-product reads here.
-        listCategoryTree(locale),
-      ]);
+      const [projects, industries, categories, manufacturers, categoryTree, productRows] =
+        await Promise.all([
+          listPublishedProjects(locale, 1),
+          listIndustries(locale),
+          listTopLevelCategories(locale),
+          listManufacturers(locale),
+          // One tree read is the WHOLE catalog gate (Story 2.2): catalogSignals is
+          // deliberately tree-only, so /products costs no per-product reads here.
+          listCategoryTree(locale),
+          // ONE query for every published product (Story 2.4 decision Q3). A
+          // per-product read would make /sitemap.xml scale with the catalogue,
+          // repeating the industry N+1 already deferred above — and React cache()
+          // cannot rescue it, being INERT in Route Handlers (measured, Story 2.1).
+          listProductSignals(locale),
+        ]);
 
       const translated = [...projects, ...industries, ...categories, ...manufacturers];
       const collectionsIndexable = isIndexable({
@@ -94,6 +102,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         // (one predicate per surface). Category-filtered views canonical to clean
         // /products, so the sitemap grows by exactly this one URL per locale.
         catalogIndexable: isIndexable(catalogSignals(locale, categoryTree)),
+        // Per-product gates from the SAME function the detail page metadata calls
+        // (signalsFromRow / signalsFromPageData both delegate to productSignals),
+        // computed from the batched rows — no extra read per product.
+        indexableProductSlugs: productRows
+          .filter((row) => isIndexable(signalsFromRow(locale, row)))
+          .map((row) => row.slug),
         indexableIndustrySlugs: industrySlugs.filter((slug): slug is string => slug !== null),
       };
     }),
@@ -116,6 +130,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       indexIndexable,
       catalogIndexable,
       indexableIndustrySlugs,
+      indexableProductSlugs,
     }) => [
       ...(collectionsIndexable ? [entry(locale, "/")] : []),
       ...(indexIndexable ? [entry(locale, "/industries")] : []),
@@ -123,6 +138,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       // `industryHref`, not a template literal: Next does NOT escape sitemap URLs,
       // so an unencoded `&` or `<` in a slug makes the WHOLE FILE malformed XML.
       ...indexableIndustrySlugs.map((slug) => entry(locale, industryHref(slug))),
+      // , not a template literal — same XML-escaping reason.
+      ...indexableProductSlugs.map((slug) => entry(locale, productHref(slug))),
     ],
   );
 }

@@ -80,6 +80,25 @@
     "countTail": "no prices, full specs",
     "datasheet": "Datasheet"
   },
+  "Product": {
+    "specsTitle": "Technical specifications",
+    "documentsTitle": "Documents",
+    "documentsLead": "Ungated — no form, no email wall.",
+    "relatedTitle": "Related products",
+    "accessoriesTitle": "Compatible accessories",
+    "manufacturerLabel": "Manufacturer",
+    "categoryLabel": "Category",
+    "modelLabel": "Model",
+    "anchorTitle": "Specced for your project.",
+    "anchorNoPrices": "No price shown — a project-specced quote, fast.",
+    "quoteCta": "Request a quote for this product",
+    "sla": "Technical review in 24 h · specced proposal in 3 working days",
+    "crumb": "Products",
+    "notFoundKicker": "Not found",
+    "notFoundTitle": "We do not have a page for that product",
+    "notFoundLead": "The address may be mistyped, or the product may not be published yet. Browse the catalog, or call us — we supply well beyond what is listed here.",
+    "notFoundBackToCatalog": "Browse the catalog"
+  },
   "NotFound": {
     "title": "Page not found",
     "description": "The page you are looking for does not exist.",

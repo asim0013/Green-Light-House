@@ -80,6 +80,25 @@
     "countTail": "fiyat yok, tam teknik özellikler",
     "datasheet": "Veri sayfası"
   },
+  "Product": {
+    "specsTitle": "Teknik özellikler",
+    "documentsTitle": "Dokümanlar",
+    "documentsLead": "Serbest erişim — form yok, e-posta duvarı yok.",
+    "relatedTitle": "İlgili ürünler",
+    "accessoriesTitle": "Uyumlu aksesuarlar",
+    "manufacturerLabel": "Üretici",
+    "categoryLabel": "Kategori",
+    "modelLabel": "Model",
+    "anchorTitle": "Projenize göre şartnamelendirilir.",
+    "anchorNoPrices": "Fiyat listesi yok — projeye özel teklif, hızlı.",
+    "quoteCta": "Bu ürün için teklif isteyin",
+    "sla": "24 saatte teknik değerlendirme · 3 iş gününde şartnameli teklif",
+    "crumb": "Ürünler",
+    "notFoundKicker": "Bulunamadı",
+    "notFoundTitle": "Bu ürün için bir sayfamız yok",
+    "notFoundLead": "Adres hatalı yazılmış olabilir veya ürün henüz yayımlanmamış olabilir. Kataloğa göz atın ya da bizi arayın — burada listelenenin çok ötesinde tedarik yapıyoruz.",
+    "notFoundBackToCatalog": "Kataloğa göz atın"
+  },
   "NotFound": {
     "title": "Sayfa bulunamadı",
     "description": "Aradığınız sayfa mevcut değil.",

@@ -1,4 +1,4 @@
-import type { Locale } from "@prisma/client";
+import type { Locale, DocumentType } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { cached } from "@/lib/cache";
 import { TAGS } from "@/lib/cache-tags";
@@ -126,4 +126,56 @@ export async function queryCertificatesByIndustry(
   });
 
   return documents.map((document) => toCertificateListItem(document, locale));
+}
+
+/** A product's document, carrying its type so the page can label the row. */
+export interface ProductDocumentItem extends CertificateListItem {
+  type: DocumentType;
+}
+
+/**
+ * Every PUBLIC document attached to `productSlug`, for the detail page's
+ * Documents section (Story 2.4; FR14 — "a product with documents exposes working
+ * download links").
+ *
+ * FILTERED AND ORDERED IN THE QUERY, deliberately — the same discipline Story
+ * 2.3 settled for the card's datasheet pick. A mapper that sorted afterwards
+ * could drift from the query's idea of "newest", and the two would disagree about
+ * which version is current.
+ *
+ * Order: type (so datasheets, certificates and manuals group), then `version`
+ * DESC (newest first), then slug as the tiebreak — fully deterministic, which is
+ * what makes the result safe to cache.
+ *
+ * `isPublic: true` is the whole confidentiality boundary. The seed carries
+ * `fd-9500-datasheet-internal` — a PRIVATE v2 datasheet on the most-populated
+ * product — precisely so this filter has a live negative fixture: it is the
+ * highest version on that product, so a broken filter surfaces it first.
+ */
+export async function listDocumentsByProduct(
+  productSlug: string,
+  locale: Locale,
+): Promise<ProductDocumentItem[]> {
+  return cached(
+    () => queryDocumentsByProduct(productSlug, locale),
+    ["documents-by-product", productSlug, locale],
+    [TAGS.documents, TAGS.catalog],
+  );
+}
+
+/** Uncached SQL read. Exported for integration tests — see the note in `@/lib/cache`. */
+export async function queryDocumentsByProduct(
+  productSlug: string,
+  locale: Locale,
+): Promise<ProductDocumentItem[]> {
+  const documents = await prisma.document.findMany({
+    where: { isPublic: true, product: { slug: productSlug } },
+    orderBy: [{ type: "asc" }, { version: "desc" }, { slug: "asc" }],
+    include: { translations: true },
+  });
+
+  return documents.map((document) => ({
+    ...toCertificateListItem(document, locale),
+    type: document.type,
+  }));
 }

@@ -13,8 +13,15 @@ import {
   queryProductsByIndustry,
   queryProductsByCategory,
   queryPublishedProducts,
+  queryProductBySlug,
+  queryRelatedProducts,
+  queryAccessoriesForProduct,
 } from "./product";
-import { queryCertificatesByIndustry, queryDocumentBySlug } from "./document";
+import {
+  queryCertificatesByIndustry,
+  queryDocumentBySlug,
+  queryDocumentsByProduct,
+} from "./document";
 import { queryServicesByIndustry } from "./service";
 
 /**
@@ -611,5 +618,153 @@ describe("categories by industry (integration)", () => {
     // advertise a category with nothing behind it.
     const slugs = (await queryCategoriesByIndustry(TEST_SLUG, "en")).map((c) => c.slug);
     expect(slugs).not.toContain(`${CATEGORY_PREFIX}draft-only`);
+  });
+});
+
+describe("product detail read (integration)", () => {
+  it("returns a PUBLISHED product with manufacturer and category resolved", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    const detail = await queryProductBySlug(`${PRODUCT_PREFIX}published`, "en");
+    expect(detail?.slug).toBe(`${PRODUCT_PREFIX}published`);
+    expect(detail?.name).toBe("Published product EN");
+    // A missing `include` silently degrades these to the slug — assert the join.
+    expect(detail?.manufacturer.name).toBe("Integration OEM");
+    expect(detail?.category.slug).toBe(`${CATEGORY_PREFIX}published-only`);
+  });
+
+  it("returns NULL for a DRAFT product — the detail page must not publish work in progress", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    // The bug this test exists for: `queryProductBySlug` was a bare
+    // findUnique(slug) with no status filter. It had zero callers, so nothing
+    // noticed until Story 2.4 wired it to a public route.
+    await expect(queryProductBySlug(`${PRODUCT_PREFIX}draft`, "en")).resolves.toBeNull();
+  });
+
+  it("returns NULL for an unknown slug", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    await expect(queryProductBySlug("zzz-int-test-no-such-product", "en")).resolves.toBeNull();
+  });
+});
+
+describe("documents by product (integration)", () => {
+  it("lists PUBLIC documents only, newest version first within a type", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    const product = await prisma.product.findUniqueOrThrow({
+      where: { slug: `${PRODUCT_PREFIX}published` },
+    });
+    await prisma.document.createMany({
+      data: [
+        {
+          slug: `${DOCUMENT_PREFIX}pd-manual`,
+          type: "manual",
+          fileKey: "int/pd-manual.pdf",
+          version: 1,
+          isPublic: true,
+          productId: product.id,
+        },
+        {
+          slug: `${DOCUMENT_PREFIX}pd-secret`,
+          type: "manual",
+          fileKey: "int/pd-secret.pdf",
+          version: 9,
+          isPublic: false,
+          productId: product.id,
+        },
+      ],
+    });
+
+    const docs = await queryDocumentsByProduct(`${PRODUCT_PREFIX}published`, "en");
+    const slugs = docs.map((d) => d.slug);
+    expect(slugs).toContain(`${DOCUMENT_PREFIX}pd-manual`);
+    // Private documents are never enumerable — the same rule the download
+    // handler enforces (Story 2.3).
+    expect(slugs).not.toContain(`${DOCUMENT_PREFIX}pd-secret`);
+    // Highest version of a type comes first (this product also has ds-v1/ds-v2
+    // from the datasheet-join fixture above).
+    const datasheets = docs.filter((d) => d.type === "datasheet").map((d) => d.slug);
+    if (datasheets.length > 1) expect(datasheets[0]).toBe(`${DOCUMENT_PREFIX}ds-v2`);
+  });
+
+  it("is empty for a product with no public documents", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    await expect(queryDocumentsByProduct(`${PRODUCT_PREFIX}draft`, "en")).resolves.toEqual([]);
+  });
+});
+
+describe("related products (integration)", () => {
+  it("returns published category siblings, never the product itself, never drafts", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    const self = await prisma.product.findUniqueOrThrow({
+      where: { slug: `${PRODUCT_PREFIX}published` },
+    });
+    const manufacturerId = self.manufacturerId;
+    // One published sibling and one DRAFT sibling in the SAME category.
+    await prisma.product.create({
+      data: {
+        slug: `${PRODUCT_PREFIX}sibling-pub`,
+        model: "INT-SIB-PUB",
+        status: "published",
+        manufacturerId,
+        categoryId: self.categoryId,
+        translations: { create: [{ locale: "en", name: "Sibling published EN" }] },
+      },
+    });
+    await prisma.product.create({
+      data: {
+        slug: `${PRODUCT_PREFIX}sibling-draft`,
+        model: "INT-SIB-DRAFT",
+        status: "draft",
+        manufacturerId,
+        categoryId: self.categoryId,
+        translations: { create: [{ locale: "en", name: "Sibling draft EN" }] },
+      },
+    });
+
+    const related = await queryRelatedProducts(`${PRODUCT_PREFIX}published`, "en");
+    const slugs = related.map((p) => p.slug);
+    expect(slugs).toContain(`${PRODUCT_PREFIX}sibling-pub`);
+    expect(slugs).not.toContain(`${PRODUCT_PREFIX}sibling-draft`);
+    expect(slugs).not.toContain(`${PRODUCT_PREFIX}published`);
+  });
+
+  it("is empty when every category sibling is unpublished", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    // `${PRODUCT_PREFIX}draft` sits alone in the draft-only category.
+    await expect(queryRelatedProducts(`${PRODUCT_PREFIX}draft`, "en")).resolves.toEqual([]);
+  });
+});
+
+describe("accessory compatibility (integration)", () => {
+  it("returns published accessories — the phased relation has ZERO rows in the seed", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    // `accessory_compatibilities` is empty repo-wide, so the POPULATED branch is
+    // unprovable without self-seeding it here (the Story 2.1 pattern).
+    const self = await prisma.product.findUniqueOrThrow({
+      where: { slug: `${PRODUCT_PREFIX}published` },
+    });
+    const accessory = await prisma.product.findUniqueOrThrow({
+      where: { slug: `${PRODUCT_PREFIX}sibling-pub` },
+    });
+    const draftAccessory = await prisma.product.findUniqueOrThrow({
+      where: { slug: `${PRODUCT_PREFIX}sibling-draft` },
+    });
+    await prisma.accessoryCompatibility.createMany({
+      data: [
+        { productId: self.id, accessoryProductId: accessory.id },
+        // A DRAFT accessory must stay hidden: the seed's real-world temptation is
+        // `wc-95` ("fits FD-9500"), which is draft.
+        { productId: self.id, accessoryProductId: draftAccessory.id },
+      ],
+    });
+
+    const accessories = await queryAccessoriesForProduct(`${PRODUCT_PREFIX}published`, "en");
+    const slugs = accessories.map((p) => p.slug);
+    expect(slugs).toContain(`${PRODUCT_PREFIX}sibling-pub`);
+    expect(slugs).not.toContain(`${PRODUCT_PREFIX}sibling-draft`);
+  });
+
+  it("is empty for a product with no accessory rows", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    await expect(queryAccessoriesForProduct(`${PRODUCT_PREFIX}draft`, "en")).resolves.toEqual([]);
   });
 });
