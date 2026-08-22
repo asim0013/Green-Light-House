@@ -15,7 +15,15 @@ vi.mock("@/i18n/navigation", () => ({
   useRouter: () => ({}),
 }));
 
-import { isValidSlug, categoryParamOf, catalogSignals, flattenTree } from "./catalog-page";
+import {
+  isValidSlug,
+  categoryParamOf,
+  catalogSignals,
+  flattenTree,
+  searchQueryOf,
+  filterSlugOf,
+  SEARCH_QUERY_MAX_LENGTH,
+} from "./catalog-page";
 import { isIndexable, thinContentReason } from "@/lib/seo";
 import type { CategoryTreeNode } from "@/server/repositories/category";
 
@@ -131,5 +139,35 @@ describe("flattenTree", () => {
 
   it("returns empty for an empty forest", () => {
     expect(flattenTree([])).toEqual([]);
+  });
+});
+
+describe("searchQueryOf", () => {
+  it("trims and passes free text through — charset is NOT the gate here", () => {
+    expect(searchQueryOf("  FD-9500  ")).toBe("FD-9500");
+    expect(searchQueryOf("Üç-IR alev")).toBe("Üç-IR alev");
+  });
+
+  it("caps at SEARCH_QUERY_MAX_LENGTH — the value reaches SQL and the page echo", () => {
+    const long = "x".repeat(500);
+    expect(searchQueryOf(long)).toHaveLength(SEARCH_QUERY_MAX_LENGTH);
+  });
+
+  it("first value wins on repeated params; blank collapses to null", () => {
+    expect(searchQueryOf(["fd-9500", "gd-410"])).toBe("fd-9500");
+    expect(searchQueryOf("   ")).toBeNull();
+    expect(searchQueryOf(undefined)).toBeNull();
+    expect(searchQueryOf("")).toBeNull();
+  });
+});
+
+describe("filterSlugOf", () => {
+  it("accepts well-formed slugs, rejects everything else — the categoryParamOf rule", () => {
+    expect(filterSlugOf("sentra-fire")).toBe("sentra-fire");
+    expect(filterSlugOf("Sentra")).toBeNull();
+    expect(filterSlugOf("a&b")).toBeNull();
+    expect(filterSlugOf("x".repeat(65))).toBeNull();
+    expect(filterSlugOf(["gastec", "exlume"])).toBe("gastec");
+    expect(filterSlugOf(undefined)).toBeNull();
   });
 });

@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { toSpecRows, humanizeSpecKey, toProductCardItem, type ProductCardRow } from "./product";
+import {
+  toSpecRows,
+  humanizeSpecKey,
+  toProductCardItem,
+  normalizeModelQuery,
+  type ProductCardRow,
+} from "./product";
 
 /**
  * Spec-row derivation for the Product Card (Story 2.1).
@@ -204,5 +210,24 @@ describe("humanizeSpecKey", () => {
   it("returns the original key when it would humanize to nothing", () => {
     expect(humanizeSpecKey("_")).toBe("_");
     expect(humanizeSpecKey("")).toBe("");
+  });
+});
+
+describe("normalizeModelQuery", () => {
+  it("lower-cases and strips everything outside [a-z0-9] — the paste variants collapse", () => {
+    // Must stay equivalent to the SQL expression in products_model_trgm_idx.
+    expect(normalizeModelQuery("FD-9500")).toBe("fd9500");
+    expect(normalizeModelQuery("fd 9500")).toBe("fd9500");
+    expect(normalizeModelQuery("FD_9500.")).toBe("fd9500");
+    expect(normalizeModelQuery("fd9500")).toBe("fd9500");
+  });
+
+  it("strips LIKE wildcards too — % and _ cannot survive into the model match", () => {
+    expect(normalizeModelQuery("%_%")).toBe("");
+    expect(normalizeModelQuery("fd%9500")).toBe("fd9500");
+  });
+
+  it("strips non-ASCII — the model column is machine data, names go the other path", () => {
+    expect(normalizeModelQuery("Üç-IR")).toBe("ir");
   });
 });

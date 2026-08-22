@@ -6,15 +6,25 @@ import { routing } from "@/i18n/routing";
 import { alternatesFor, robotsFor } from "@/lib/seo";
 import {
   getCatalogPageData,
+  getSearchPageData,
   categoryParamOf,
+  searchQueryOf,
+  filterSlugOf,
   catalogSignals,
   flattenTree,
 } from "@/server/catalog-page";
+import { listManufacturers } from "@/server/repositories/manufacturer";
+import { listSeriesOptions } from "@/server/repositories/series";
 import { Breadcrumb, type Crumb } from "@/components/ui";
 import { ProductCard } from "@/components/catalog/ProductCard";
 import { CategoryChips, pathTo } from "@/components/catalog/CategoryChips";
 import { CatalogEmptyState } from "@/components/catalog/CatalogEmptyState";
+import { SearchForm } from "@/components/catalog/SearchForm";
+import { SearchFilterChips } from "@/components/catalog/SearchFilterChips";
+import { SearchEmptyState } from "@/components/catalog/SearchEmptyState";
 import { CONTAINER } from "@/components/layout/container";
+import type { ProductCardItem } from "@/server/repositories/product";
+import type { SearchSuggestion } from "@/server/repositories/product";
 
 /**
  * SSR per request — reads live DB content, so it must never be baked into the
@@ -30,6 +40,34 @@ export const dynamic = "force-dynamic";
 
 type CatalogSearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
+interface ParsedCatalogParams {
+  q: string | null;
+  categorySlug: string | null;
+  manufacturerSlug: string | null;
+  seriesSlug: string | null;
+  /**
+   * True when ANY 2.5 surface is active (`?q`, `?manufacturer`, `?series`).
+   * A bare `?category` view stays on the 2.2 path — its cached reads, its
+   * container-category semantics, its FR16 states — untouched.
+   */
+  isSearchView: boolean;
+}
+
+async function parseParams(searchParams: CatalogSearchParams): Promise<ParsedCatalogParams> {
+  const raw = await searchParams;
+  const q = searchQueryOf(raw.q);
+  const categorySlug = categoryParamOf(raw.category);
+  const manufacturerSlug = filterSlugOf(raw.manufacturer);
+  const seriesSlug = filterSlugOf(raw.series);
+  return {
+    q,
+    categorySlug,
+    manufacturerSlug,
+    seriesSlug,
+    isSearchView: q !== null || manufacturerSlug !== null || seriesSlug !== null,
+  };
+}
+
 export async function generateMetadata(props: {
   params: Promise<{ locale: string }>;
   searchParams: CatalogSearchParams;
@@ -37,8 +75,18 @@ export async function generateMetadata(props: {
   const { locale } = await props.params;
   if (!hasLocale(routing.locales, locale)) return {};
 
-  const categorySlug = categoryParamOf((await props.searchParams).category);
-  const data = await getCatalogPageData(categorySlug, locale);
+  const parsed = await parseParams(props.searchParams);
+  // Both branches share their request-memo with the page body — same primitive
+  // arguments, same `cache()` entry, reads run once.
+  const data = parsed.isSearchView
+    ? await getSearchPageData(
+        parsed.q,
+        parsed.categorySlug,
+        parsed.manufacturerSlug,
+        parsed.seriesSlug,
+        locale,
+      )
+    : await getCatalogPageData(parsed.categorySlug, locale);
   const t = await getTranslations({ locale, namespace: "Catalog" });
 
   return {
@@ -46,30 +94,33 @@ export async function generateMetadata(props: {
     // everything a CRAWLER consolidates on is view-independent by design:
     title: data.category ? `${data.category.name} · ${t("title")}` : t("title"),
     description: t("subhead"),
-    // CANONICAL-TO-CLEAN (Task 0 / AC7): every `?category` view canonicals to the
-    // bare `/products`, so filtered views are one page to a crawler and the
-    // sitemap lists exactly one URL per locale. Measured live at dev time — see
-    // the Dev Agent Record for the curl evidence.
+    // CANONICAL-TO-CLEAN (2.2 Task 0 / AC7, extended to 2.5's params): every
+    // `?category`, `?q`, `?manufacturer` and `?series` view canonicals to the
+    // bare `/products`, so filtered and searched views are one page to a crawler
+    // and the sitemap lists exactly one URL per locale.
     alternates: alternatesFor(locale, "/products"),
     // View-independent robots — catalogSignals takes only the tree, so this
-    // CANNOT differ between the clean and filtered views of the same canonical.
+    // CANNOT differ between the clean, filtered and searched views of the same
+    // canonical.
     robots: robotsFor(catalogSignals(locale, data.tree)),
   };
 }
 
 /**
- * The product catalog (Story 2.2 — FR4, FR13, FR16; UJ2's entry surface).
+ * The product catalog (Story 2.2 — FR4, FR13, FR16; Story 2.5 — FR17, FR17a,
+ * FR19; UJ2's entry surface).
  *
  * Layout per the recovered mock (the UX decision log's "Products / Catalog +
- * Search screen" — the .pen file is gone, the log's description survives):
- * header zone on `surface-2` (breadcrumb → H1 → subhead → category navigation) →
- * body on `surface` (count toolbar → card grid). The mock's search bar, industry
- * chips, filter sidebar and Sort control are ALL Story 2.5 — deliberately absent,
- * not stubbed.
+ * Search screen"): header zone on `surface-2` (breadcrumb → H1 → subhead →
+ * search → category navigation → facet rows) → body on `surface` (count toolbar
+ * → card grid). Story 2.5 delivered the mock's search bar and the FR17 facet
+ * rows; the mock's SIDEBAR shape and Sort control are deliberately not built —
+ * no FR requires Sort (2.2's "Sort arrives with 2.5" was scope-carving, not a
+ * requirement), and the chip-row idiom replaces the sidebar (decision Q3).
  *
- * The H1 stays "Product catalog" on every view: `?category` views are FILTER
- * VIEWS of one canonical page (Task 0, option A per architecture:102), and the
- * active category is carried by the breadcrumb, the chips and the toolbar.
+ * The H1 stays "Product catalog" on every view: `?category`, `?q` and the
+ * facet params are all FILTER VIEWS of one canonical page (architecture:102),
+ * and the active state is carried by the breadcrumb, the chips and the toolbar.
  */
 export default async function ProductsPage(props: {
   params: Promise<{ locale: string }>;
@@ -83,13 +134,50 @@ export default async function ProductsPage(props: {
   }
   setRequestLocale(locale);
 
-  const categorySlug = categoryParamOf((await props.searchParams).category);
-  const { tree, category, categoryNotFound, products } = await getCatalogPageData(
-    categorySlug,
-    locale,
-  );
+  const parsed = await parseParams(props.searchParams);
   const t = await getTranslations({ locale, namespace: "Catalog" });
   const tNav = await getTranslations({ locale, namespace: "Nav" });
+
+  // The facet option rows render on every view (cached reads, cheap and warm).
+  const [manufacturers, seriesOptions] = await Promise.all([
+    listManufacturers(locale),
+    listSeriesOptions(locale),
+  ]);
+
+  // ---- Data: the 2.5 search branch, or the 2.2 catalog branch, untouched ----
+  let tree, category;
+  let categoryNotFound = false;
+  let products: ProductCardItem[];
+  let shownCount: number;
+  let suggestions: readonly SearchSuggestion[] = [];
+
+  if (parsed.isSearchView) {
+    const data = await getSearchPageData(
+      parsed.q,
+      parsed.categorySlug,
+      parsed.manufacturerSlug,
+      parsed.seriesSlug,
+      locale,
+    );
+    tree = data.tree;
+    category = data.category;
+    products = data.products;
+    // The UNCAPPED match count — searchProducts returns it separately precisely
+    // so the toolbar cannot report the 60-row cap as the total (2.2's rule).
+    shownCount = data.total;
+    suggestions = data.suggestions;
+  } else {
+    const data = await getCatalogPageData(parsed.categorySlug, locale);
+    tree = data.tree;
+    category = data.category;
+    categoryNotFound = data.categoryNotFound;
+    products = data.products;
+    // Uncapped truth for the toolbar (2.2 review): the category's own count and
+    // the tree sums are cap-free.
+    shownCount = category
+      ? category.publishedCount
+      : flattenTree(tree).reduce((sum, node) => sum + node.publishedCount, 0);
+  }
 
   // Breadcrumb from the TREE PATH, not CategoryDetail.parent — the parent field
   // carries one level, so at depth 3 the trail silently lost the root (2.2
@@ -111,22 +199,17 @@ export default async function ProductsPage(props: {
           },
         ];
 
-  const catalogIsEmpty = !categorySlug && products.length === 0;
+  const catalogIsEmpty = !parsed.isSearchView && !parsed.categorySlug && products.length === 0;
 
   // FR16 is for DEAD ENDS. A container category — zero direct products but
   // populated children — is not one: its children ARE its content, and rendering
   // "range expanding" directly under a child chip counting products was a lie
   // the 2.2 review caught. The empty state shows only when there is nowhere
-  // further down to go.
-  const showEmptyState =
-    products.length === 0 && (categoryNotFound || !category || category.children.length === 0);
-
-  // Uncapped truth for the toolbar (2.2 review): `products.length` would report
-  // the 60-row cap as the total once the catalog ramps, while the chips beside it
-  // show real DB counts. The category's own count and the tree sums are cap-free.
-  const shownCount = category
-    ? category.publishedCount
-    : flattenTree(tree).reduce((sum, node) => sum + node.publishedCount, 0);
+  // further down to go. (The search view has its own emptiness rules below.)
+  const showCatalogEmptyState =
+    !parsed.isSearchView &&
+    products.length === 0 &&
+    (categoryNotFound || !category || category.children.length === 0);
 
   return (
     <>
@@ -141,7 +224,23 @@ export default async function ProductsPage(props: {
             {t("title")}
           </h1>
           <p className="mt-3 max-w-[62ch] text-[17px] leading-relaxed text-ink-2">{t("subhead")}</p>
+          <SearchForm
+            query={parsed.q}
+            categorySlug={parsed.categorySlug}
+            manufacturerSlug={parsed.manufacturerSlug}
+            seriesSlug={parsed.seriesSlug}
+          />
           <CategoryChips tree={tree} active={category} categoryNotFound={categoryNotFound} />
+          <SearchFilterChips
+            params={{
+              q: parsed.q,
+              categorySlug: parsed.categorySlug,
+              manufacturerSlug: parsed.manufacturerSlug,
+              seriesSlug: parsed.seriesSlug,
+            }}
+            manufacturers={manufacturers}
+            series={seriesOptions}
+          />
         </div>
       </section>
 
@@ -156,7 +255,20 @@ export default async function ProductsPage(props: {
             {t("countNoun", { count: shownCount })} · {t("countTail")}
           </p>
 
-          {showEmptyState ? (
+          {parsed.isSearchView && products.length === 0 ? (
+            <div className="mt-6">
+              {parsed.q ? (
+                /* FR17a's state: the query matched nothing. Suggestions, the
+                   browse path (the chips above stay live), and the RFQ pre-fill. */
+                <SearchEmptyState query={parsed.q} suggestions={suggestions} />
+              ) : (
+                /* Facet-only zero (e.g. an unknown-but-well-formed ?manufacturer):
+                   there is no query to echo or suggest around, so FR16's
+                   range-expanding state is the honest one. Decision recorded. */
+                <CatalogEmptyState variant="category" />
+              )}
+            </div>
+          ) : showCatalogEmptyState ? (
             <div className="mt-6">
               {/* FR16's state for the true dead ends: an empty LEAF category, an
                   unknown ?category value, or an empty catalog. A container

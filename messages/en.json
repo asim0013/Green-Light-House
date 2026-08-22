@@ -78,7 +78,18 @@
     "emptyCatalogLead": "The catalog is being published. Send a model number or a specification and we will source it.",
     "countNoun": "{count, plural, one {product} other {products}}",
     "countTail": "no prices, full specs",
-    "datasheet": "Datasheet"
+    "datasheet": "Datasheet",
+    "searchLabel": "Search by model number",
+    "searchPlaceholder": "e.g. FD-9500",
+    "searchSubmit": "Search",
+    "filterManufacturer": "Manufacturer",
+    "filterSeries": "Series",
+    "filterAll": "All",
+    "zeroTitle": "No results for “{query}”",
+    "zeroLead": "We may still supply it — the catalog is structure-first and fills over time. Tell us what the project needs and we will spec and supply it.",
+    "zeroSuggestionsTitle": "Did you mean",
+    "zeroBrowse": "Or browse the categories above — the range is wider than the search.",
+    "zeroCta": "Request “{query}”"
   },
   "Product": {
     "specsTitle": "Technical specifications",

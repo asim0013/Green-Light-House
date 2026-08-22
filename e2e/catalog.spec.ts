@@ -59,16 +59,24 @@ test.describe("the catalog page (AC1)", () => {
     await expect(page.locator("article")).toHaveCount(5);
   });
 
-  test("does NOT render Story 2.5's surfaces — no search, no filters, no sort", async ({
+  test("renders the search surface as a plain GET form — no client widgets", async ({
     page,
   }, testInfo) => {
     if (!dbReady) testInfo.skip();
 
+    // INVERTED by Story 2.5 (the fifth consecutive by-design inversion): the
+    // search box arrived. Inverted PRECISELY, not wholesale — the facet UI is
+    // chip-row LINKS (decision Q3), so combobox and checkbox are still truthfully
+    // asserted at ZERO: this test now guards that the filters never quietly grow
+    // client-side widgets against architecture:102's URL-state rule.
     await page.goto("/en/products");
-    await expect(page.getByRole("searchbox")).toHaveCount(0);
+    await expect(page.getByRole("searchbox")).toHaveCount(1);
     await expect(page.getByRole("combobox")).toHaveCount(0);
-    // No checkbox facets either — the sidebar is 2.5.
     await expect(page.getByRole("checkbox")).toHaveCount(0);
+    // And the search is a real FORM (UX-DR23 content-first SSR) — GET, no JS.
+    const form = page.getByRole("search");
+    await expect(form).toHaveCount(1);
+    await expect(form).toHaveAttribute("method", "get");
   });
 
   test("NEVER shows a price or a cart affordance (FR2/FR13)", async ({ page }, testInfo) => {

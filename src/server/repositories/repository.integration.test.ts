@@ -16,6 +16,8 @@ import {
   queryProductBySlug,
   queryRelatedProducts,
   queryAccessoriesForProduct,
+  searchProducts,
+  suggestProducts,
 } from "./product";
 import {
   queryCertificatesByIndustry,
@@ -790,5 +792,129 @@ describe("accessory compatibility (integration)", () => {
   it("is empty for a product with no accessory rows", async (ctx) => {
     if (!dbReachable) return ctx.skip();
     await expect(queryAccessoriesForProduct(`${PRODUCT_PREFIX}draft`, "en")).resolves.toEqual([]);
+  });
+});
+
+describe("product search (integration)", () => {
+  it("finds a product by exact model, and by every paste variant", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    // UJ2's opening beat is a PASTED model string. The normalized expression
+    // index exists so all of these hit FD-9500; a plain trgm index could not
+    // serve the hyphen-stripped forms.
+    for (const q of ["FD-9500", "fd9500", "FD 9500", "fd-9500"]) {
+      const { products, total } = await searchProducts(q, {}, "en");
+      const slugs = products.map((p) => p.slug);
+      expect(slugs, `query "${q}"`).toContain("fd-9500");
+      expect(total).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it("matches translated names in the ACTIVE locale (FR19, TR half)", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    // fd-9500's TR name is "Üç-IR (IR³) Alev Dedektörü".
+    const { products } = await searchProducts("Alev", {}, "tr");
+    expect(products.map((p) => p.slug)).toContain("fd-9500");
+  });
+
+  it("matches EN fallback names from a non-EN locale (FR19, fallback half)", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    // gd-410 has NO TR name; its EN name is "GD-410 Fixed Gas Detector". A TR
+    // buyer typing an English word must still find it — the fallback contract
+    // renders EN names on /tr, so search must match what the page shows.
+    const { products } = await searchProducts("Fixed Gas", {}, "tr");
+    const hit = products.find((p) => p.slug === "gd-410");
+    expect(hit).toBeDefined();
+    expect(hit?.isFallback).toBe(true);
+  });
+
+  it("NEVER returns drafts — by model or by name", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    // wc-95 is the seeded draft ("Weather Cover WC-95").
+    for (const q of ["WC-95", "wc95", "Weather"]) {
+      const { products } = await searchProducts(q, {}, "en");
+      expect(
+        products.map((p) => p.slug),
+        `query "${q}"`,
+      ).not.toContain("wc-95");
+    }
+  });
+
+  it("does not treat LIKE wildcards in the query as wildcards", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    // "%" would match everything if unescaped; a lone wildcard must match NOTHING
+    // (after normalization it is empty on the model side and escaped on the name side).
+    const { products } = await searchProducts("%%%", {}, "en");
+    expect(products).toEqual([]);
+  });
+
+  it("filters narrow results: manufacturer, series, and composition with q (FR17)", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    // "detector" matches fd-9500, fd-9300 (flame detectors) and gd-410 (gas
+    // detector) by EN name. Narrowing by manufacturer=gastec leaves only gd-410.
+    const broad = await searchProducts("detector", {}, "en");
+    expect(broad.products.length).toBeGreaterThanOrEqual(3);
+
+    const narrowed = await searchProducts("detector", { manufacturerSlug: "gastec" }, "en");
+    expect(narrowed.products.map((p) => p.slug)).toEqual(["gd-410"]);
+    expect(narrowed.total).toBe(1);
+
+    // Series filter: flameguard carries fd-9300 + fd-9500.
+    const bySeries = await searchProducts(null, { seriesSlug: "flameguard" }, "en");
+    expect(bySeries.products.map((p) => p.slug).sort()).toEqual(["fd-9300", "fd-9500"]);
+
+    // Category composes with series.
+    const combined = await searchProducts(
+      null,
+      {
+        seriesSlug: "flameguard",
+        categorySlug: "flame-detectors",
+      },
+      "en",
+    );
+    expect(combined.products.map((p) => p.slug).sort()).toEqual(["fd-9300", "fd-9500"]);
+  });
+
+  it("unknown filter slugs return empty, never crash", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    const { products, total } = await searchProducts(null, { manufacturerSlug: "zz-nope" }, "en");
+    expect(products).toEqual([]);
+    expect(total).toBe(0);
+  });
+});
+
+describe("search suggestions (integration)", () => {
+  it("suggests the near-miss model for a truncated or misspelled query (FR17a)", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    for (const q of ["fd-950", "fd9500x"]) {
+      const suggestions = await suggestProducts(q, "en");
+      expect(
+        suggestions.map((s) => s.slug),
+        `query "${q}"`,
+      ).toContain("fd-9500");
+    }
+  });
+
+  it("returns NOTHING for garbage — suggestions must not hallucinate", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    await expect(suggestProducts("xyzzy-plugh", "en")).resolves.toEqual([]);
+  });
+
+  it("never suggests a draft", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    const suggestions = await suggestProducts("wc-9", "en");
+    expect(suggestions.map((s) => s.slug)).not.toContain("wc-95");
+  });
+});
+
+describe("search input hardening (integration)", () => {
+  it("survives a trailing backslash — the LIKE ESCAPE syntax must not 500", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    // Unescaped, 'foo\' produces `LIKE '%foo\%' ESCAPE '\'` — an invalid escape
+    // sequence Postgres rejects. Caught by lint in dev (a heredoc had eaten the
+    // escapes); this pins the repaired behaviour.
+    await expect(searchProducts("detector\\", {}, "en")).resolves.toBeDefined();
+    // And an underscore is a literal, not a single-char wildcard.
+    const { products } = await searchProducts("F_-9500", {}, "en");
+    expect(products.map((p) => p.slug)).not.toContain("fd-9300");
   });
 });

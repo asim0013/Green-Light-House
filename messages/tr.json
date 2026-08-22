@@ -78,7 +78,18 @@
     "emptyCatalogLead": "Katalog yayımlanacak. Model numarası veya şartname gönderin, tedarik edelim.",
     "countNoun": "{count, plural, other {ürün}}",
     "countTail": "fiyat yok, tam teknik özellikler",
-    "datasheet": "Veri sayfası"
+    "datasheet": "Veri sayfası",
+    "searchLabel": "Model numarasıyla arayın",
+    "searchPlaceholder": "örn. FD-9500",
+    "searchSubmit": "Ara",
+    "filterManufacturer": "Üretici",
+    "filterSeries": "Seri",
+    "filterAll": "Tümü",
+    "zeroTitle": "“{query}” için sonuç yok",
+    "zeroLead": "Yine de tedarik edebiliriz — katalog yapı öncelikli ve zamanla doluyor. Projenin ihtiyacını iletin, şartnameye göre tedarik edelim.",
+    "zeroSuggestionsTitle": "Şunu mu demek istediniz",
+    "zeroBrowse": "Ya da yukarıdaki kategorilere göz atın — yelpazemiz aramadan geniştir.",
+    "zeroCta": "“{query}” için teklif isteyin"
   },
   "Product": {
     "specsTitle": "Teknik özellikler",

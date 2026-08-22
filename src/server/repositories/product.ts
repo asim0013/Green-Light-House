@@ -1,4 +1,5 @@
-import type { Locale, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import type { Locale } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { cached } from "@/lib/cache";
 import { TAGS } from "@/lib/cache-tags";
@@ -631,4 +632,182 @@ export async function queryProductSignals(locale: Locale): Promise<ProductSignal
       specCount: toSpecRows(product.attributes, Number.MAX_SAFE_INTEGER).length,
       documentCount: product._count.documents,
     }));
+}
+
+/**
+ * Lower-case and strip everything outside `[a-z0-9]` — BYTE-IDENTICAL in effect
+ * to the SQL expression in `products_model_trgm_idx`
+ * (`regexp_replace(lower(model), '[^a-z0-9]', '', 'g')`, migration
+ * 20260822153001_search_trgm). Both sides of the model match normalize the same
+ * way; that equivalence is what lets `fd 9500`, `fd9500` and `FD-9500` all hit
+ * the same index entry. Change one, change both.
+ */
+export function normalizeModelQuery(q: string): string {
+  return q.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Escape LIKE metacharacters so a query cannot smuggle wildcards — and escape
+ * the escape character itself: an unescaped trailing `\` in the query would
+ * produce an invalid `LIKE … ESCAPE '\'` sequence and turn a search into a 500.
+ */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`);
+}
+
+export interface SearchFilters {
+  categorySlug?: string | null;
+  manufacturerSlug?: string | null;
+  seriesSlug?: string | null;
+}
+
+export interface SearchResultPage {
+  products: ProductCardItem[];
+  /** UNCAPPED match count — the toolbar's number (2.2's rule: never report the cap). */
+  total: number;
+}
+
+/**
+ * Model-number + name search with FR17's filter trio (Story 2.5).
+ *
+ * DELIBERATELY UNCACHED (decision Q2). `q` is attacker-controlled FREE TEXT —
+ * not slug-shaped — so a `cached()` read keyed on it would mint unbounded 24h
+ * Redis entries (the cardinality defer with the cap removed) and put arbitrary
+ * bytes into Redis key names. The 2.4 review's rule ("keyParts must distinguish
+ * everything the closure depends on") taken seriously means the key would need
+ * raw `q`; the honest conclusion is no cache: one indexed query per request on
+ * a `force-dynamic` page. The caller bounds `q` (trim, length cap) at the route
+ * boundary; this function additionally treats blank as no-query.
+ *
+ * MATCHING (FR17 + FR19): the language-neutral `model` matches through the SAME
+ * normalization as the expression index (see `normalizeModelQuery`), so paste
+ * variants land; translated names match in the ACTIVE locale plus EN — the
+ * fallback contract renders EN names on /tr and /ru, so search must match what
+ * the page shows. Published only, as everywhere.
+ *
+ * TWO QUERIES BY DESIGN (decision Q1): a raw id-resolution (where the trgm
+ * indexes and the locale-scoped EXISTS live), then `findMany` with the shared
+ * `CARD_INCLUDE` — full `toProductCardItem` reuse, no raw-SQL duplication of
+ * the card join, and `total` is the uncapped id count.
+ */
+export async function searchProducts(
+  q: string | null,
+  filters: SearchFilters,
+  locale: Locale,
+  limit: number = CATALOG_PRODUCT_CAP,
+): Promise<SearchResultPage> {
+  const conditions: Prisma.Sql[] = [Prisma.sql`p.status = 'published'`];
+
+  const trimmed = q?.trim() ?? "";
+  if (trimmed) {
+    const normalized = normalizeModelQuery(trimmed);
+    const nameLike = `%${escapeLike(trimmed.toLowerCase())}%`;
+    // A query that normalizes to nothing (e.g. "%%%") matches NO model — it must
+    // not degrade into match-everything.
+    const modelCondition = normalized
+      ? Prisma.sql`regexp_replace(lower(p.model), '[^a-z0-9]', '', 'g') LIKE ${`%${normalized}%`}`
+      : Prisma.sql`false`;
+    conditions.push(Prisma.sql`(${modelCondition} OR EXISTS (
+      SELECT 1 FROM product_translations t
+      WHERE t.product_id = p.id
+        AND t.locale::text IN (${locale}, 'en')
+        AND lower(t.name) LIKE ${nameLike} ESCAPE '\'
+    ))`);
+  }
+
+  if (filters.categorySlug) {
+    conditions.push(
+      Prisma.sql`p.category_id IN (SELECT c.id FROM categories c WHERE c.slug = ${filters.categorySlug})`,
+    );
+  }
+  if (filters.manufacturerSlug) {
+    conditions.push(
+      Prisma.sql`p.manufacturer_id IN (SELECT m.id FROM manufacturers m WHERE m.slug = ${filters.manufacturerSlug})`,
+    );
+  }
+  if (filters.seriesSlug) {
+    conditions.push(
+      Prisma.sql`p.series_id IN (SELECT s.id FROM series s WHERE s.slug = ${filters.seriesSlug})`,
+    );
+  }
+
+  const rows = await prisma.$queryRaw<{ id: string }[]>(
+    Prisma.sql`SELECT p.id FROM products p WHERE ${Prisma.join(conditions, " AND ")} ORDER BY p.slug ASC`,
+  );
+
+  const pageIds = rows.slice(0, limit).map((row) => row.id);
+  if (pageIds.length === 0) return { products: [], total: rows.length };
+
+  const products = await prisma.product.findMany({
+    where: { id: { in: pageIds } },
+    include: CARD_INCLUDE,
+    orderBy: { slug: "asc" },
+  });
+
+  return {
+    products: products.map((product) => toProductCardItem(product, locale)),
+    total: rows.length,
+  };
+}
+
+export interface SearchSuggestion {
+  slug: string;
+  name: string;
+  model: string;
+  isFallback: boolean;
+}
+
+/** How many "did you mean" suggestions the zero-result state offers. */
+const SUGGESTION_LIMIT = 3;
+
+/**
+ * The similarity floor, MEASURED against the seed (2026-08-22, pg_trgm on the
+ * normalized-model expression): near-misses score high (`fd950`→FD-9500 0.625,
+ * `fd9500x`→FD-9500 0.667, and `fd950`→FD-9300 lands exactly 0.3 — a useful
+ * second suggestion), while garbage tops out far below (`xyzzyplugh`→XB-200
+ * 0.0625). 0.3 admits the real neighbours and nothing else.
+ */
+const SUGGESTION_FLOOR = 0.3;
+
+/**
+ * "Did you mean" for the FR17a zero-result state (decision Q4): `pg_trgm`
+ * similarity on the normalized model, so a truncated or fat-fingered model
+ * number suggests the real catalogue entries — each a product link, not a
+ * canned query. UNCACHED for the same reason as `searchProducts`. Published
+ * only: a draft must not leak through a suggestion any more than through a
+ * result.
+ */
+export async function suggestProducts(q: string, locale: Locale): Promise<SearchSuggestion[]> {
+  const normalized = normalizeModelQuery(q);
+  if (!normalized) return [];
+
+  const rows = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
+    SELECT p.id
+    FROM products p
+    WHERE p.status = 'published'
+      AND similarity(regexp_replace(lower(p.model), '[^a-z0-9]', '', 'g'), ${normalized}) >= ${SUGGESTION_FLOOR}
+    ORDER BY similarity(regexp_replace(lower(p.model), '[^a-z0-9]', '', 'g'), ${normalized}) DESC, p.slug ASC
+    LIMIT ${SUGGESTION_LIMIT}
+  `);
+  if (rows.length === 0) return [];
+
+  const products = await prisma.product.findMany({
+    where: { id: { in: rows.map((row) => row.id) } },
+    include: { translations: true },
+  });
+  // findMany loses the similarity ordering; restore it from the id sequence.
+  const byId = new Map(products.map((product) => [product.id, product]));
+  return rows.flatMap((row) => {
+    const product = byId.get(row.id);
+    if (!product) return [];
+    const t = resolveTranslation(product.translations, locale);
+    return [
+      {
+        slug: product.slug,
+        name: t?.value.name ?? product.model,
+        model: product.model,
+        isFallback: t?.isFallback ?? false,
+      },
+    ];
+  });
 }

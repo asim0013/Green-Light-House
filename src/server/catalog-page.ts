@@ -3,7 +3,10 @@ import type { Locale } from "@prisma/client";
 import {
   listPublishedProducts,
   listProductsByCategory,
+  searchProducts,
+  suggestProducts,
   type ProductCardItem,
+  type SearchSuggestion,
 } from "@/server/repositories/product";
 import {
   listCategoryTree,
@@ -124,3 +127,75 @@ export function catalogSignals(locale: Locale, tree: readonly CategoryTreeNode[]
     totalFields: nodes.length,
   };
 }
+
+/**
+ * The `?q=` boundary gate (Story 2.5). Free text, NOT slug-shaped — so the gate
+ * bounds LENGTH and blankness, never charset (a buyer's paste can legitimately
+ * carry spaces, dots, unicode). Arrays → first value (the repeated-param rule).
+ * The cap matters because this value reaches a SQL parameter and gets echoed
+ * into the page; 80 chars comfortably holds any real model string.
+ */
+export const SEARCH_QUERY_MAX_LENGTH = 80;
+
+export function searchQueryOf(value: string | string[] | undefined): string | null {
+  const first = Array.isArray(value) ? value[0] : value;
+  if (!first) return null;
+  const trimmed = first.trim().slice(0, SEARCH_QUERY_MAX_LENGTH);
+  return trimmed === "" ? null : trimmed;
+}
+
+/**
+ * The `?manufacturer=` / `?series=` gates — slug-shaped params, the
+ * `categoryParamOf` rule verbatim (shape + length, never cardinality).
+ */
+export function filterSlugOf(value: string | string[] | undefined): string | null {
+  const first = Array.isArray(value) ? value[0] : value;
+  if (!first) return null;
+  return isValidSlug(first) ? first : null;
+}
+
+export interface SearchPageData {
+  /** The whole tree — the category chips stay live on every search view. */
+  tree: CategoryTreeNode[];
+  /** The selected category's detail when `?category` rides along, else null. */
+  category: CategoryDetail | null;
+  products: ProductCardItem[];
+  /** UNCAPPED match count for the toolbar. */
+  total: number;
+  /** "Did you mean" — populated only on zero results with a query (FR17a). */
+  suggestions: SearchSuggestion[];
+}
+
+/**
+ * The search/filtered branch's reads (Story 2.5), memoised for the REQUEST.
+ *
+ * PRIMITIVE ARGUMENTS ONLY — React `cache()` memoises by argument identity, and
+ * an options OBJECT built fresh in both `generateMetadata` and the page body
+ * would never be `===`, silently running every read twice (the exact failure
+ * the wrapper exists to prevent).
+ *
+ * `searchProducts`/`suggestProducts` are deliberately UNCACHED reads (see
+ * product.ts — free-text cache keys are the cardinality defer uncapped), so this
+ * request-scope memo is the ONLY dedupe layer they get, which is exactly right:
+ * one query per request, shared by metadata and body.
+ */
+export const getSearchPageData = cache(
+  async (
+    q: string | null,
+    categorySlug: string | null,
+    manufacturerSlug: string | null,
+    seriesSlug: string | null,
+    locale: Locale,
+  ): Promise<SearchPageData> => {
+    const [tree, category, result] = await Promise.all([
+      listCategoryTree(locale),
+      categorySlug ? getCategoryBySlug(categorySlug, locale) : Promise.resolve(null),
+      searchProducts(q, { categorySlug, manufacturerSlug, seriesSlug }, locale),
+    ]);
+
+    const suggestions =
+      result.total === 0 && q ? await suggestProducts(q, locale) : ([] as SearchSuggestion[]);
+
+    return { tree, category, products: result.products, total: result.total, suggestions };
+  },
+);
