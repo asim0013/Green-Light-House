@@ -24,7 +24,7 @@ import {
   queryDocumentBySlug,
   queryDocumentsByProduct,
 } from "./document";
-import { queryServicesByIndustry } from "./service";
+import { queryServicesByIndustry, queryServices } from "./service";
 import { queryManufacturerOptions } from "./series";
 
 /**
@@ -1019,5 +1019,49 @@ describe("manufacturer facet options (integration)", () => {
     const slugs = options.map((o) => o.slug);
     expect(slugs).toContain("gastec");
     expect(slugs).not.toContain(`${MANUFACTURER_SLUG}-draftonly`);
+  });
+});
+
+describe("all services (integration)", () => {
+  it("returns EVERY service — there is no status column to filter on", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    const services = await queryServices("en");
+    const slugs = services.map((s) => s.slug);
+    // FR23's five competencies, one row each (Story 2.6 decision Q1).
+    for (const slug of [
+      "project-kitting",
+      "technical-selection",
+      "tender-support",
+      "import-export",
+      "logistics",
+    ]) {
+      expect(slugs, `missing ${slug}`).toContain(slug);
+    }
+    // The retired merged row must be gone — the seed deletes it.
+    expect(slugs).not.toContain("kitting-logistics");
+    // Deterministic order (slug asc), the house rule for cacheable reads.
+    expect(slugs).toEqual([...slugs].sort());
+  });
+
+  it("resolves names AND descriptions for the active locale", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    const services = await queryServices("en");
+    const kitting = services.find((s) => s.slug === "project-kitting");
+    expect(kitting?.name).toBe("Project kitting & configuration");
+    // Story 2.6 decision Q2: descriptions were NULL on every seeded row, which
+    // made the page thin by our own predicate. A missing include would silently
+    // return null here.
+    expect(kitting?.description).toBeTruthy();
+    expect(kitting?.isFallback).toBe(false);
+  });
+
+  it("falls back to EN with the flag set for a non-EN locale (FR34a)", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    // No service carries a TR translation, so every row falls back visibly.
+    const services = await queryServices("tr");
+    expect(services.length).toBeGreaterThan(0);
+    for (const service of services) {
+      expect(service.isFallback, service.slug).toBe(true);
+    }
   });
 });

@@ -4,6 +4,7 @@ import { Link } from "@/i18n/navigation";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { formatDocMeta } from "@/lib/doc-meta";
 import { ProductCard } from "@/components/catalog/ProductCard";
+import { ServiceList } from "@/components/services/ServiceList";
 import { IndustrySection } from "./IndustrySection";
 import type { CategoryListItem } from "@/server/repositories/category";
 import type { CertificateListItem } from "@/server/repositories/document";
@@ -141,24 +142,7 @@ export function IndustryServices({ services }: { services: ServiceListItem[] }) 
       isEmpty={services.length === 0}
       fill="surface-2"
     >
-      <ul className="grid gap-5 sm:grid-cols-2">
-        {services.map((service) => (
-          <li key={service.id} className="border border-border-subtle bg-surface p-5">
-            <h3 className="font-heading text-base font-semibold text-ink">
-              <span lang={service.isFallback ? "en" : undefined}>{service.name}</span>
-              <FallbackNotice isFallback={service.isFallback} />
-            </h3>
-            {service.description && (
-              <p
-                lang={service.isFallback ? "en" : undefined}
-                className="mt-2 leading-relaxed text-ink-2"
-              >
-                {service.description}
-              </p>
-            )}
-          </li>
-        ))}
-      </ul>
+      <ServiceList services={services} />
     </IndustrySection>
   );
 }

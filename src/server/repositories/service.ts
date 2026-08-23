@@ -71,3 +71,31 @@ export async function queryServicesByIndustry(
 
   return services.map((service) => toServiceListItem(service, locale));
 }
+
+/**
+ * Every service, for the Services page (Story 2.6 — FR23).
+ *
+ * NO STATUS FILTER, AND THAT IS NOT AN OMISSION. `Service` has no status or
+ * visibility column at all — unlike `Product`/`Project` (`status`) and
+ * `Document` (`is_public`) — so "unpublished services are not enumerable" has
+ * no meaning here: every row is public by construction. This is the same schema
+ * fact `listServicesByIndustry` documents above. If service drafts are ever
+ * wanted, that is a migration, not a filter added here.
+ *
+ * Ordered by slug so the page is deterministic and the cached payload stable —
+ * there is no `sortOrder` column, and an unordered read would let storage
+ * internals choose the page's reading order.
+ */
+export async function listServices(locale: Locale): Promise<ServiceListItem[]> {
+  return cached(() => queryServices(locale), ["services-all", locale], [TAGS.services]);
+}
+
+/** Uncached SQL read. Exported for integration tests — see the note in `@/lib/cache`. */
+export async function queryServices(locale: Locale): Promise<ServiceListItem[]> {
+  const services = await prisma.service.findMany({
+    include: { translations: true },
+    orderBy: { slug: "asc" },
+  });
+
+  return services.map((service) => toServiceListItem(service, locale));
+}

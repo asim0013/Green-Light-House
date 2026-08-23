@@ -118,7 +118,8 @@ test.describe("sitemap.xml and robots.txt (AC3, AC4)", () => {
       // Story 2.1's surfaces. `/industries` is listed because at least one landing
       // page is indexable.
       expect(locs.some((u) => u.endsWith(`/${locale}/industries`))).toBe(true);
-      // oil-gas is the populated fixture — 5 products, 2 projects, 4 services.
+      // oil-gas is the populated fixture — 5 products, 2 projects, 5 services
+      // (Story 2.6 split the merged kitting-logistics row per FR23).
       expect(locs.some((u) => u.endsWith(`/${locale}/industries/oil-gas`))).toBe(true);
       // Story 2.2: the catalog — never per-category entries (filter views
       // canonical to clean /products).
@@ -133,10 +134,15 @@ test.describe("sitemap.xml and robots.txt (AC3, AC4)", () => {
       expect(xml, `sitemap advertises thin industry ${thin}`).not.toContain(`/industries/${thin}<`);
     }
 
-    // Scope guard: the nav still links to Products/Projects/Services/About and /rfq,
-    // none of which exist until Epics 2/3/5. A sitemap of 404s is worse than a small
-    // sitemap, so their ABSENCE is the assertion.
-    for (const unbuilt of ["/projects", "/services", "/about", "/rfq"]) {
+    // Story 2.6 built /services, so it LEFT this guard — the EN entry is asserted
+    // below (TR/RU are fallback-only and correctly absent, which e2e/services.spec.ts
+    // covers in full).
+    expect(locs).toContain("http://localhost:3000/en/services");
+
+    // Scope guard: the nav still links to Projects/About and /rfq, none of which
+    // exist until Epics 3/5. A sitemap of 404s is worse than a small sitemap, so
+    // their ABSENCE is the assertion.
+    for (const unbuilt of ["/projects", "/about", "/rfq"]) {
       expect(xml, `sitemap advertises unbuilt route ${unbuilt}`).not.toContain(`${unbuilt}<`);
     }
 
@@ -186,7 +192,10 @@ test.describe("the localized 404 (AC6)", () => {
   // `/industries` was removed from this list by Story 2.1, which built it — leaving
   // it here would have failed as a confusing, unrelated-looking 404 assertion.
   // `/products` was removed by Story 2.2, which built it (as `/industries` was by 2.1).
-  const UNBUILT = ["/tr/about", "/ru/services"];
+  // `/ru/services` left this list in Story 2.6 — the Services page is built, so
+  // it now renders a real page (noindex on /ru, because every service is EN-only,
+  // but a 200 nonetheless). `/tr/about` is still genuinely unbuilt.
+  const UNBUILT = ["/tr/about"];
 
   for (const path of UNBUILT) {
     const locale = path.split("/")[1];

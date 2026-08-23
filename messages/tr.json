@@ -110,6 +110,15 @@
     "notFoundLead": "Adres hatalı yazılmış olabilir veya ürün henüz yayımlanmamış olabilir. Kataloğa göz atın ya da bizi arayın — burada listelenenin çok ötesinde tedarik yapıyoruz.",
     "notFoundBackToCatalog": "Kataloğa göz atın"
   },
+  "Services": {
+    "title": "Hizmetler",
+    "lead": "Tedarik işin tamamı değil, teslimatın kendisidir. GLH'nin ekipmanın çevresine kurduğu yetkinlikler şunlardır — şartnameden şantiye kapısına kadar.",
+    "kicker": "Ne yapıyoruz",
+    "empty": "Hizmet ayrıntıları yayımlanıyor. Projenin ihtiyacını iletin, doğrudan kapsamlandıralım.",
+    "ctaKicker": "Sonraki adım",
+    "ctaTitle": "Projenin ihtiyacını bize iletin.",
+    "ctaLead": "Şartnameyi, uyulacak standartları ve tarihleri gönderin. 24 saatte teknik değerlendirme, 3 iş gününde şartnameli teklif alırsınız."
+  },
   "NotFound": {
     "title": "Sayfa bulunamadı",
     "description": "Aradığınız sayfa mevcut değil.",

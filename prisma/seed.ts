@@ -303,18 +303,104 @@ async function main() {
   }
 
   // --- Services (linked to oil & gas) ---
-  const services = [
-    { slug: "technical-selection", tr: names("Technical selection") },
-    { slug: "tender-support", tr: names("Tender & procurement support") },
-    { slug: "import-export", tr: names("Import / export & customs") },
-    { slug: "kitting-logistics", tr: names("Project kitting & logistics") },
+  //
+  // FIVE ROWS, ONE PER FR23 COMPETENCY (Story 2.6, decision Q1). FR23 enumerates
+  // "project kitting/configuration, technical selection, tender support,
+  // import/export, logistics" and its AC makes each an editable content item —
+  // but the original seed merged the first and last into one `kitting-logistics`
+  // row, so a Services page built from it could satisfy "presents … logistics"
+  // only by reading. The merged slug is retired below.
+  //
+  // DESCRIPTIONS ARE SEEDED (decision Q2). Every service description was NULL,
+  // and a competency page of bare headings is exactly the thin content our own
+  // indexability predicate is meant to catch. Same reasoning as Story 2.3's
+  // mime/sizeBytes backfill: a fixture that makes the feature unprovable is a
+  // fixture bug. EN only — TR/RU fall back visibly (FR34a), which is honest
+  // about what has actually been translated.
+  const services: { slug: string; tr: Tr[] }[] = [
+    {
+      slug: "project-kitting",
+      tr: [
+        {
+          locale: Locale.en,
+          name: "Project kitting & configuration",
+          description:
+            "Equipment grouped and configured per work package, so what arrives on site matches the drawing rather than the order line.",
+        },
+      ],
+    },
+    {
+      slug: "technical-selection",
+      tr: [
+        {
+          locale: Locale.en,
+          name: "Technical selection",
+          description:
+            "Specification-led product selection against the standards a project is audited on — hazardous-area classification, ingress protection, detection type.",
+        },
+      ],
+    },
+    {
+      slug: "tender-support",
+      tr: [
+        {
+          locale: Locale.en,
+          name: "Tender & procurement support",
+          description:
+            "Compliance matrices, datasheets and certificates assembled to the tender's format, with equivalents proposed where a named brand is unavailable.",
+        },
+      ],
+    },
+    {
+      slug: "import-export",
+      tr: [
+        {
+          locale: Locale.en,
+          name: "Import / export & customs",
+          description:
+            "Cross-border supply on the Türkiye–Russia corridor: customs documentation, classification and clearance handled as part of the delivery.",
+        },
+      ],
+    },
+    {
+      slug: "logistics",
+      tr: [
+        {
+          locale: Locale.en,
+          name: "Logistics & delivery",
+          description:
+            "Consolidated shipment to site or to a staging warehouse, sequenced against the installation programme.",
+        },
+      ],
+    },
   ];
+
+  // The retired merged row. Idempotent: a no-op once it is gone, and it must run
+  // BEFORE the upserts so a re-seed cannot leave six services behind.
+  await prisma.service.deleteMany({ where: { slug: "kitting-logistics" } });
+
   for (const s of services) {
     const rec = await prisma.service.upsert({
       where: { slug: s.slug },
       update: {},
       create: { slug: s.slug, translations: { create: s.tr } },
     });
+    // Translations are upserted SEPARATELY rather than left to the `create`
+    // branch: the original `update: {}` meant a re-seed never repaired an
+    // existing row, so the new descriptions would never reach a database that
+    // already had these services (the same trap Story 2.3's update branch fixed).
+    for (const t of s.tr) {
+      await prisma.serviceTranslation.upsert({
+        where: { serviceId_locale: { serviceId: rec.id, locale: t.locale } },
+        update: { name: t.name, description: t.description ?? null },
+        create: {
+          serviceId: rec.id,
+          locale: t.locale,
+          name: t.name,
+          description: t.description ?? null,
+        },
+      });
+    }
     await prisma.serviceIndustry.upsert({
       where: { serviceId_industryId: { serviceId: rec.id, industryId: oilGas.id } },
       update: {},

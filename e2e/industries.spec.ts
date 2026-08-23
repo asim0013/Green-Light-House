@@ -8,7 +8,7 @@ import { probeDbReady, warmUp } from "./dbReady";
  * re-measured 2026-08-22 after the Story 2.3 seed):
  *
  *   industry        products(pub)  projects(pub)  certificates  services
- *   oil-gas               5              2              1           4
+ *   oil-gas               5              2              1           5
  *   fire-safety           3              0              1           0
  *   energy                1              0              0           0
  *   construction          0              0              0           0
@@ -16,6 +16,11 @@ import { probeDbReady, warmUp } from "./dbReady";
  *   nuclear               0              0              0           0
  *
  * So `oil-gas` is the populated case and `construction` is the fully empty one.
+ *
+ * SERVICES BECAME FIVE, NOT FOUR (Story 2.6). FR23 names five competencies and
+ * the seed had merged two of them into one `kitting-logistics` row; 2.6 split it
+ * into `project-kitting` + `logistics` so each competency is its own editable
+ * content item. Only oil-gas carries services, so only its row changes.
  *
  * CERTIFICATES ARE NO LONGER EMPTY EVERYWHERE. Story 2.3 added the first
  * `DocumentIndustry` rows, giving oil-gas and fire-safety the EN 54 certificate
@@ -143,7 +148,8 @@ test.describe("a populated industry landing page (AC1)", () => {
     await page.goto(`/en/industries/${POPULATED}`);
 
     // 3 published products (capped from 5 by PRODUCT_LIMIT, which matches the
-    // 3-column grid EXPERIENCE.md specifies), 2 projects, 4 services.
+    // 3-column grid EXPERIENCE.md specifies), 2 projects, 5 services (Story 2.6
+    // split the merged kitting-logistics row per FR23).
     await expect(page.locator("article")).toHaveCount(3);
     await expect(page.getByText("Technical selection")).toBeVisible();
 
