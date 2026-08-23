@@ -86,9 +86,9 @@
     "filterSeries": "Series",
     "filterAll": "All",
     "zeroTitle": "No results for “{query}”",
-    "zeroLead": "We may still supply it — the catalog is structure-first and fills over time. Tell us what the project needs and we will spec and supply it.",
+    "zeroLead": "We may still supply it — we supply well beyond what is listed here. Tell us what the project needs and we will spec and supply it.",
     "zeroSuggestionsTitle": "Did you mean",
-    "zeroBrowse": "Or browse the categories above — the range is wider than the search.",
+    "zeroBrowse": "Or browse the categories above — they cover more than any single search term.",
     "zeroCta": "Request “{query}”"
   },
   "Product": {

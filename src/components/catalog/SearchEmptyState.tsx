@@ -1,6 +1,7 @@
 import { Phone } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
+import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { buttonClasses } from "@/components/ui/buttonClasses";
 import { SITE } from "@/config/site";
 import type { SearchSuggestion } from "@/server/repositories/product";
@@ -60,6 +61,10 @@ export function SearchEmptyState({
                   >
                     {suggestion.name}
                   </span>
+                  {/* The VISIBLE notice, not just lang= — every other fallback
+                      string on the site carries it, and this was the one place
+                      marking a fallback invisibly (2.5 review). */}
+                  <FallbackNotice isFallback={suggestion.isFallback} />
                 </Link>
               </li>
             ))}

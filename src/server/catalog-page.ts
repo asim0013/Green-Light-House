@@ -137,11 +137,37 @@ export function catalogSignals(locale: Locale, tree: readonly CategoryTreeNode[]
  */
 export const SEARCH_QUERY_MAX_LENGTH = 80;
 
+/**
+ * The shortest query worth running (2.5 review). One or two characters is
+ * simultaneously the BROADEST possible substring match and the least
+ * index-servable one — trigram indexes need three characters — so `?q=a` was the
+ * single most expensive request shape the surface accepted, and its result
+ * ("most of the catalogue") is useless to a buyer anyway. Below this, the page
+ * treats the query as absent rather than erroring: no scary state for someone
+ * mid-type.
+ */
+export const SEARCH_QUERY_MIN_LENGTH = 3;
+
+/** C0 + C1 control characters, spelled as escapes so no literal byte hides here. */
+const CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/g;
+
 export function searchQueryOf(value: string | string[] | undefined): string | null {
   const first = Array.isArray(value) ? value[0] : value;
   if (!first) return null;
-  const trimmed = first.trim().slice(0, SEARCH_QUERY_MAX_LENGTH);
-  return trimmed === "" ? null : trimmed;
+
+  // Strip C0/C1 control characters BEFORE anything else. A NUL byte is not
+  // whitespace, so `trim()` kept it, and Postgres rejects NUL in UTF-8 text
+  // (SQLSTATE 22021) — `?q=%00` was a plain HTTP 500 (2.5 review). Parameterization
+  // was never in doubt; this is the gate doing the job its docstring claims.
+  const cleaned = first.replace(CONTROL_CHARS, " ").trim();
+  if (cleaned === "") return null;
+
+  // Cap by CODE POINT, not UTF-16 code unit. `slice(80)` cut astral characters
+  // (any emoji) in half, and the resulting lone surrogate made Prisma throw while
+  // serializing the parameter — another 500 from a legal paste (2.5 review).
+  const capped = [...cleaned].slice(0, SEARCH_QUERY_MAX_LENGTH).join("").trim();
+  if (capped.length < SEARCH_QUERY_MIN_LENGTH) return null;
+  return capped;
 }
 
 /**
@@ -194,7 +220,9 @@ export const getSearchPageData = cache(
     ]);
 
     const suggestions =
-      result.total === 0 && q ? await suggestProducts(q, locale) : ([] as SearchSuggestion[]);
+      result.total === 0 && q
+        ? await suggestProducts(q, locale, { categorySlug, manufacturerSlug, seriesSlug })
+        : ([] as SearchSuggestion[]);
 
     return { tree, category, products: result.products, total: result.total, suggestions };
   },

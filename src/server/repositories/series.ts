@@ -42,3 +42,43 @@ export async function querySeriesOptions(locale: Locale): Promise<SeriesOption[]
     };
   });
 }
+
+export interface ManufacturerOption {
+  slug: string;
+  name: string;
+}
+
+/**
+ * The manufacturer filter's option row (Story 2.5, corrected in its review).
+ *
+ * Story 2.5 reused `listManufacturers`, which returns EVERY manufacturer
+ * unconditionally — so the facet could offer a chip whose only possible result is
+ * an empty grid, the exact dead-end the series facet beside it was written to
+ * avoid. `listManufacturers` itself is left alone: the sitemap's collection
+ * signals count it and must keep counting every row.
+ *
+ * Brand names are not translated prose, so no fallback flag travels with them
+ * (the chips would otherwise append "shown in English" to four brand names on
+ * every non-EN view).
+ */
+export async function listManufacturerOptions(locale: Locale): Promise<ManufacturerOption[]> {
+  return cached(
+    () => queryManufacturerOptions(locale),
+    ["manufacturer-options", locale],
+    [TAGS.catalog, TAGS.manufacturers],
+  );
+}
+
+/** Uncached SQL read. Exported for integration tests — see the note in `@/lib/cache`. */
+export async function queryManufacturerOptions(locale: Locale): Promise<ManufacturerOption[]> {
+  const rows = await prisma.manufacturer.findMany({
+    where: { products: { some: { status: "published" } } },
+    include: { translations: true },
+    orderBy: { slug: "asc" },
+  });
+
+  return rows.map((row) => ({
+    slug: row.slug,
+    name: resolveTranslation(row.translations, locale)?.value.name ?? row.slug,
+  }));
+}

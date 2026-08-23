@@ -702,17 +702,34 @@ export async function searchProducts(
   if (trimmed) {
     const normalized = normalizeModelQuery(trimmed);
     const nameLike = `%${escapeLike(trimmed.toLowerCase())}%`;
-    // A query that normalizes to nothing (e.g. "%%%") matches NO model — it must
-    // not degrade into match-everything.
-    const modelCondition = normalized
-      ? Prisma.sql`regexp_replace(lower(p.model), '[^a-z0-9]', '', 'g') LIKE ${`%${normalized}%`}`
-      : Prisma.sql`false`;
-    conditions.push(Prisma.sql`(${modelCondition} OR EXISTS (
-      SELECT 1 FROM product_translations t
-      WHERE t.product_id = p.id
-        AND t.locale::text IN (${locale}, 'en')
-        AND lower(t.name) LIKE ${nameLike} ESCAPE '\'
-    ))`);
+    // TWO INDEX-SERVED ARMS UNIONed, never `OR EXISTS` (2.5 review). Postgres
+    // cannot BitmapOr an index arm against an EXISTS subplan, so the original
+    // `(model LIKE … OR EXISTS (…))` shape made BOTH trgm indexes unusable and
+    // every q-bearing search a full scan — measured 69.5ms/4,251 buffers for a
+    // one-row answer at 20k, while this UNION form is 0.84ms/26 buffers. The
+    // migration's own comment already called a seq scan "wrong at 50k (NFR)".
+    //
+    // A query that normalizes to nothing (e.g. "%%%") contributes NO model arm —
+    // it must not degrade into match-everything.
+    const arms: Prisma.Sql[] = [];
+    if (normalized) {
+      arms.push(Prisma.sql`
+        SELECT pm.id FROM products pm
+        WHERE regexp_replace(lower(pm.model), '[^a-z0-9]', '', 'g') LIKE ${`%${normalized}%`}
+      `);
+    }
+    // ESCAPE '\\' in SOURCE, which cooks to a single backslash in the SQL text.
+    // Writing `ESCAPE '\'` here (as shipped) collapses to `ESCAPE ''` — the
+    // SQL-standard form that DISABLES escaping, so escapeLike's backslashes
+    // became literal characters no name contains and any product whose NAME held
+    // a `%` or `_` was unfindable (2.5 review; the "pinning" tests passed against
+    // both states and could not tell them apart).
+    arms.push(Prisma.sql`
+      SELECT t.product_id AS id FROM product_translations t
+      WHERE t.locale::text IN (${locale}, 'en')
+        AND lower(t.name) LIKE ${nameLike} ESCAPE '\\'
+    `);
+    conditions.push(Prisma.sql`p.id IN (${Prisma.join(arms, " UNION ")})`);
   }
 
   if (filters.categorySlug) {
@@ -731,12 +748,23 @@ export async function searchProducts(
     );
   }
 
-  const rows = await prisma.$queryRaw<{ id: string }[]>(
-    Prisma.sql`SELECT p.id FROM products p WHERE ${Prisma.join(conditions, " AND ")} ORDER BY p.slug ASC`,
+  // LIMIT IN SQL, total via a WINDOW (2.5 review). The first version had no
+  // LIMIT and sliced in JS, so the uncapped `total` was bought by shipping every
+  // matching id to Node on every request — measured 20,005 uuids for a broad
+  // query at 20k rows, growing linearly with catalogue size on a read that is
+  // uncached by design. `count(*) OVER ()` keeps the total exact while only
+  // `limit` rows cross the wire.
+  const rows = await prisma.$queryRaw<{ id: string; total: bigint }[]>(
+    Prisma.sql`SELECT p.id, count(*) OVER () AS total FROM products p
+      WHERE ${Prisma.join(conditions, " AND ")}
+      ORDER BY p.slug ASC
+      LIMIT ${limit}`,
   );
 
-  const pageIds = rows.slice(0, limit).map((row) => row.id);
-  if (pageIds.length === 0) return { products: [], total: rows.length };
+  const pageIds = rows.map((row) => row.id);
+  // The window repeats the same total on every row; zero rows means zero matches.
+  const total = rows.length > 0 ? Number(rows[0].total) : 0;
+  if (pageIds.length === 0) return { products: [], total };
 
   const products = await prisma.product.findMany({
     where: { id: { in: pageIds } },
@@ -746,7 +774,7 @@ export async function searchProducts(
 
   return {
     products: products.map((product) => toProductCardItem(product, locale)),
-    total: rows.length,
+    total,
   };
 }
 
@@ -776,16 +804,56 @@ const SUGGESTION_FLOOR = 0.3;
  * canned query. UNCACHED for the same reason as `searchProducts`. Published
  * only: a draft must not leak through a suggestion any more than through a
  * result.
+ *
+ * THE `%` OPERATOR IS LOAD-BEARING, NOT DECORATION (2.5 review). A bare
+ * `similarity(expr, q) >= floor` predicate is UN-INDEXABLE — only the `%`/`<%`
+ * operators can use a GIN trgm index — so the shipped form full-scanned the
+ * catalogue on every zero-result query, i.e. on the attacker's cheapest input,
+ * uncached and unmemoised (measured: full scan of every published row, ~50ms at
+ * 40k, versus ~4ms index-served). `%` compares against
+ * `pg_trgm.similarity_threshold`, whose default is 0.3 — exactly SUGGESTION_FLOOR
+ * — but the explicit `similarity(...) >= floor` is KEPT beside it so the result
+ * set stays correct even if a deployment changes that GUC. Index narrows, the
+ * float re-checks; the measured 0.3-boundary behaviour is preserved (verified:
+ * `similarity('fd9300','fd950') = 0.3` and `%` returns true for it).
  */
-export async function suggestProducts(q: string, locale: Locale): Promise<SearchSuggestion[]> {
+export async function suggestProducts(
+  q: string,
+  locale: Locale,
+  filters: SearchFilters = {},
+): Promise<SearchSuggestion[]> {
   const normalized = normalizeModelQuery(q);
   if (!normalized) return [];
+
+  // THE SAME FILTERS THE SEARCH USED (2.5 review). `total === 0` can mean the
+  // FACETS excluded an otherwise-perfect match, and the unfiltered suggestion
+  // query then echoed the user's own query back at them: 'No results for
+  // "FD-9500" … Did you mean: FD-9500'. A suggestion the active view cannot show
+  // is not a suggestion.
+  const scope: Prisma.Sql[] = [];
+  if (filters.categorySlug) {
+    scope.push(
+      Prisma.sql` AND p.category_id IN (SELECT c.id FROM categories c WHERE c.slug = ${filters.categorySlug})`,
+    );
+  }
+  if (filters.manufacturerSlug) {
+    scope.push(
+      Prisma.sql` AND p.manufacturer_id IN (SELECT m.id FROM manufacturers m WHERE m.slug = ${filters.manufacturerSlug})`,
+    );
+  }
+  if (filters.seriesSlug) {
+    scope.push(
+      Prisma.sql` AND p.series_id IN (SELECT s.id FROM series s WHERE s.slug = ${filters.seriesSlug})`,
+    );
+  }
+  const scopeSql = scope.length > 0 ? Prisma.join(scope, "") : Prisma.empty;
 
   const rows = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
     SELECT p.id
     FROM products p
     WHERE p.status = 'published'
-      AND similarity(regexp_replace(lower(p.model), '[^a-z0-9]', '', 'g'), ${normalized}) >= ${SUGGESTION_FLOOR}
+      AND regexp_replace(lower(p.model), '[^a-z0-9]', '', 'g') % ${normalized}
+      AND similarity(regexp_replace(lower(p.model), '[^a-z0-9]', '', 'g'), ${normalized}) >= ${SUGGESTION_FLOOR}${scopeSql}
     ORDER BY similarity(regexp_replace(lower(p.model), '[^a-z0-9]', '', 'g'), ${normalized}) DESC, p.slug ASC
     LIMIT ${SUGGESTION_LIMIT}
   `);

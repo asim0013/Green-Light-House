@@ -86,9 +86,9 @@
     "filterSeries": "Seri",
     "filterAll": "Tümü",
     "zeroTitle": "“{query}” için sonuç yok",
-    "zeroLead": "Yine de tedarik edebiliriz — katalog yapı öncelikli ve zamanla doluyor. Projenin ihtiyacını iletin, şartnameye göre tedarik edelim.",
+    "zeroLead": "Yine de tedarik edebiliriz — burada listelenenin çok ötesinde tedarik yapıyoruz. Projenin ihtiyacını iletin, şartnameye göre tedarik edelim.",
     "zeroSuggestionsTitle": "Şunu mu demek istediniz",
-    "zeroBrowse": "Ya da yukarıdaki kategorilere göz atın — yelpazemiz aramadan geniştir.",
+    "zeroBrowse": "Ya da yukarıdaki kategorilere göz atın — kategoriler tek bir arama teriminden fazlasını kapsar.",
     "zeroCta": "“{query}” için teklif isteyin"
   },
   "Product": {

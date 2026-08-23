@@ -171,3 +171,28 @@ describe("filterSlugOf", () => {
     expect(filterSlugOf(undefined)).toBeNull();
   });
 });
+
+describe("searchQueryOf hardening (2.5 review)", () => {
+  it("strips control characters — a NUL byte was a plain HTTP 500", () => {
+    expect(searchQueryOf("fd\u00009500")).toBe("fd 9500");
+    // A query that is ONLY control characters is not a query.
+    expect(searchQueryOf("\u0000")).toBeNull();
+    expect(searchQueryOf("\u0000\u0007")).toBeNull();
+  });
+
+  it("caps by CODE POINT so an emoji is never split into a lone surrogate", () => {
+    const q = "a".repeat(79) + "\u{1F525}";
+    const out = searchQueryOf(q);
+    // 80 code points, and the last one is the INTACT emoji.
+    expect([...out!]).toHaveLength(SEARCH_QUERY_MAX_LENGTH);
+    expect(out!.endsWith("\u{1F525}")).toBe(true);
+    // No lone surrogate survived.
+    expect(/[\uD800-\uDFFF]/.test(out!.replace(/[\u{10000}-\u{10FFFF}]/gu, ""))).toBe(false);
+  });
+
+  it("rejects queries below the minimum length — the broadest, least indexable shape", () => {
+    expect(searchQueryOf("a")).toBeNull();
+    expect(searchQueryOf("ab")).toBeNull();
+    expect(searchQueryOf("abc")).toBe("abc");
+  });
+});

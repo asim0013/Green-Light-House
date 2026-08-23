@@ -180,6 +180,10 @@ test.describe("SEO invariants (AC5)", () => {
 
     const clean = await (await request.get("/en/products")).text();
     const cleanRobots = clean.match(/name="robots" content="([^"]*)"/)?.[1];
+    // The assertion below compares each view against this value — so it is only
+    // meaningful if the value EXISTS. Without this line the whole test passes
+    // when the robots meta is missing from every view (2.5 review).
+    expect(cleanRobots).toBeTruthy();
 
     for (const view of ["?q=FD-9500", "?q=zzz-nothing", "?manufacturer=gastec&q=detector"]) {
       const html = await (await request.get(`/en/products${view}`)).text();
@@ -188,5 +192,90 @@ test.describe("SEO invariants (AC5)", () => {
       // emptiness of one view is not the emptiness of the surface.
       expect(html.match(/name="robots" content="([^"]*)"/)?.[1], view).toBe(cleanRobots);
     }
+  });
+});
+
+test.describe("filters compose in EVERY direction (AC3 — 2.5 review)", () => {
+  test("submitting a new query KEEPS the active facets — the hidden inputs are load-bearing", async ({
+    page,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+
+    // Deleting SearchForm's three hidden inputs left the entire suite green: no
+    // test ever submitted the form while a facet was active. A GET form
+    // structurally cannot carry params that are not fields.
+    await page.goto("/en/products?manufacturer=sentra-fire&category=flame-detectors");
+    await page.getByRole("searchbox").fill("detector");
+    await page.getByRole("search").getByRole("button").click();
+
+    await expect(page).toHaveURL(/q=detector/);
+    await expect(page).toHaveURL(/manufacturer=sentra-fire/);
+    await expect(page).toHaveURL(/category=flame-detectors/);
+  });
+
+  test("clicking a CATEGORY chip keeps the active search — the third facet composes too", async ({
+    page,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+
+    // Story 2.2's CategoryChips emitted bare /products?category=<slug> hrefs, so
+    // choosing a category while searching silently discarded q (and the other
+    // facets) — the buyer narrowed and got MORE results. All three facets now
+    // build their hrefs from one shared composer.
+    await page.goto("/en/products?q=detector");
+    await expect(page.locator("article")).toHaveCount(3);
+
+    // A ROOT chip: an uncategorised search view shows only the root row, so
+    // `flame-detectors` (a child) is not on screen here.
+    const nav = page.getByRole("navigation", { name: "Categories" });
+    await nav.locator('a[href*="category=fire-gas-detection"]').first().click();
+
+    await expect(page).toHaveURL(/category=fire-gas-detection/);
+    await expect(page).toHaveURL(/q=detector/);
+    // Narrowing must NARROW: gd-410 is the category's only DIRECT match (2.2's
+    // no-roll-up rule), down from the unfiltered three.
+    await expect(page.locator("article")).toHaveCount(1);
+  });
+
+  test("'All products' does not claim to be the current page while a search narrows the view", async ({
+    page,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+
+    // Two contradictory current-markers per page: the chip said aria-current
+    // while ?q= was filtering (2.5 review).
+    await page.goto("/en/products?q=detector");
+    const nav = page.getByRole("navigation", { name: "Categories" });
+    await expect(nav.locator('a[aria-current="page"]')).toHaveCount(0);
+
+    // On the genuinely unfiltered view it IS current.
+    await page.goto("/en/products");
+    await expect(nav.locator('a[aria-current="page"]')).toHaveCount(1);
+  });
+});
+
+test.describe("input hardening (2.5 review)", () => {
+  test("control bytes and split emoji do not 500 the page", async ({ request }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+
+    // ?q=%00 reached Postgres and threw SQLSTATE 22021; an emoji straddling the
+    // 80-unit cap left a lone surrogate that Prisma could not serialize.
+    const split = "a".repeat(79) + "\u{1F525}";
+    for (const q of ["%00", "fd%009500", encodeURIComponent(split)]) {
+      const res = await request.get(`/en/products?q=${q}`);
+      expect(res.status(), `query "${q}"`).toBe(200);
+    }
+  });
+
+  test("a one-character query is treated as no query, not as a catalogue-wide scan", async ({
+    page,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+
+    // Simultaneously the broadest substring match and the least indexable shape.
+    await page.goto("/en/products?q=a");
+    // No zero-result state, no echoed query — just the ordinary catalogue.
+    await expect(page.getByRole("heading", { name: /No results for/ })).toHaveCount(0);
+    await expect(page.locator("article")).toHaveCount(5);
   });
 });

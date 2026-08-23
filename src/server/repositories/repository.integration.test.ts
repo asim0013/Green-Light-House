@@ -25,6 +25,7 @@ import {
   queryDocumentsByProduct,
 } from "./document";
 import { queryServicesByIndustry } from "./service";
+import { queryManufacturerOptions } from "./series";
 
 /**
  * Integration tests — need a reachable Postgres (DATABASE_URL). They self-seed
@@ -56,7 +57,7 @@ async function cleanup() {
   await prisma.project.deleteMany({ where: { slug: { startsWith: PROJECT_PREFIX } } });
   await prisma.product.deleteMany({ where: { slug: { startsWith: PRODUCT_PREFIX } } });
   await prisma.category.deleteMany({ where: { slug: { startsWith: CATEGORY_PREFIX } } });
-  await prisma.manufacturer.deleteMany({ where: { slug: MANUFACTURER_SLUG } });
+  await prisma.manufacturer.deleteMany({ where: { slug: { startsWith: MANUFACTURER_SLUG } } });
   await prisma.industry.deleteMany({ where: { slug: TEST_SLUG } });
 }
 
@@ -916,5 +917,107 @@ describe("search input hardening (integration)", () => {
     // And an underscore is a literal, not a single-char wildcard.
     const { products } = await searchProducts("F_-9500", {}, "en");
     expect(products.map((p) => p.slug)).not.toContain("fd-9300");
+  });
+});
+
+describe("search: FR19 locale scoping and escaping (integration)", () => {
+  it("a TR-ONLY name does NOT match from /en — the locale scope is real", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    // The mutation that survived the whole 2.5 suite: dropping IN (locale,'en')
+    // from the name arm. fd-9500's TR name is "Üç-IR (IR³) Alev Dedektörü" and it
+    // has NO EN name containing "Dedektörü", so this word must be findable from
+    // /tr and invisible from /en.
+    const fromTr = await searchProducts("Dedektörü", {}, "tr");
+    expect(fromTr.products.map((p) => p.slug)).toContain("fd-9500");
+
+    const fromEn = await searchProducts("Dedektörü", {}, "en");
+    expect(fromEn.products.map((p) => p.slug)).not.toContain("fd-9500");
+  });
+
+  it("LIKE ESCAPE is ACTIVE: a literal underscore in a name is findable", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    // The shipped source wrote ESCAPE '\' inside a template literal, which cooks
+    // to ESCAPE '' — the SQL form that DISABLES escaping. escapeLike's backslashes
+    // then became literal characters no name contains, so a name holding "_" or
+    // "%" was unfindable. The old "pinning" tests passed against BOTH states.
+    const product = await prisma.product.findUniqueOrThrow({
+      where: { slug: `${PRODUCT_PREFIX}published` },
+    });
+    await prisma.product.create({
+      data: {
+        slug: `${PRODUCT_PREFIX}escape`,
+        model: "ZZESC-1",
+        status: "published",
+        manufacturerId: product.manufacturerId,
+        categoryId: product.categoryId,
+        translations: { create: [{ locale: "en", name: "ZZ_Cover 50% Special" }] },
+      },
+    });
+
+    // A literal underscore must match itself...
+    const underscore = await searchProducts("ZZ_Cover", {}, "en");
+    expect(underscore.products.map((p) => p.slug)).toContain(`${PRODUCT_PREFIX}escape`);
+    // ...and a literal percent too.
+    const percent = await searchProducts("50%", {}, "en");
+    expect(percent.products.map((p) => p.slug)).toContain(`${PRODUCT_PREFIX}escape`);
+    // But a bare wildcard still matches NOTHING — no over-match.
+    const wildcard = await searchProducts("%%%", {}, "en");
+    expect(wildcard.products).toEqual([]);
+  });
+
+  it("total is the UNCAPPED match count even when the page is capped", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    // The grid caps; the toolbar number must not. Capping to 1 on a query that
+    // matches several proves the window count is independent of the page size.
+    const broad = await searchProducts("detector", {}, "en");
+    expect(broad.total).toBeGreaterThan(1);
+
+    const capped = await searchProducts("detector", {}, "en", 1);
+    expect(capped.products).toHaveLength(1);
+    expect(capped.total).toBe(broad.total);
+  });
+
+  it("suggestions respect the ACTIVE FILTERS — never suggest what the facets exclude", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    // Unfiltered, a near-miss suggests fd-9500...
+    const open = await suggestProducts("fd9500x", "en");
+    expect(open.map((s) => s.slug)).toContain("fd-9500");
+    // ...but under a manufacturer facet that excludes it, suggesting it would be
+    // echoing the user's own query back at them (2.5 review).
+    const scoped = await suggestProducts("fd9500x", "en", { manufacturerSlug: "gastec" });
+    expect(scoped.map((s) => s.slug)).not.toContain("fd-9500");
+  });
+});
+
+describe("manufacturer facet options (integration)", () => {
+  it("lists only manufacturers that HAVE a published product", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    // The seeded zzz- manufacturer owns only the self-seeded fixtures; every
+    // seeded brand owns a published product, so the guard is proven by a
+    // manufacturer with a DRAFT-only catalogue.
+    const draftOnly = await prisma.manufacturer.create({
+      data: {
+        slug: `${MANUFACTURER_SLUG}-draftonly`,
+        translations: { create: [{ locale: "en", name: "Draft Only OEM" }] },
+      },
+    });
+    const seedProduct = await prisma.product.findUniqueOrThrow({
+      where: { slug: `${PRODUCT_PREFIX}published` },
+    });
+    await prisma.product.create({
+      data: {
+        slug: `${PRODUCT_PREFIX}draftonly`,
+        model: "ZZDO-1",
+        status: "draft",
+        manufacturerId: draftOnly.id,
+        categoryId: seedProduct.categoryId,
+        translations: { create: [{ locale: "en", name: "Draft only product" }] },
+      },
+    });
+
+    const options = await queryManufacturerOptions("en");
+    const slugs = options.map((o) => o.slug);
+    expect(slugs).toContain("gastec");
+    expect(slugs).not.toContain(`${MANUFACTURER_SLUG}-draftonly`);
   });
 });

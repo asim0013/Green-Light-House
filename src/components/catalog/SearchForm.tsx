@@ -43,13 +43,17 @@ export function SearchForm({
       </label>
       <input
         id="catalog-search"
+        // type="search" is KEPT: it carries the implicit `searchbox` role that the
+        // suite and assistive tech both rely on. WebKit's rounded clear button is
+        // suppressed in CSS instead (2.5 review) — swapping to type="text" fixed
+        // the chrome and silently broke the role, which the tests caught.
         type="search"
         name="q"
         defaultValue={query ?? ""}
         placeholder={t("searchPlaceholder")}
         // Machine data goes in, so the input renders in the data mono — the same
         // "a machine produced it" rule the model line on the card follows.
-        className="min-h-11 w-full border border-border-subtle bg-surface px-3 font-data text-[14px] text-ink placeholder:text-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
+        className="min-h-11 w-full border border-muted bg-surface px-3 font-data text-[14px] text-ink placeholder:text-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent [&::-webkit-search-cancel-button]:appearance-none"
       />
       {categorySlug && <input type="hidden" name="category" value={categorySlug} />}
       {manufacturerSlug && <input type="hidden" name="manufacturer" value={manufacturerSlug} />}

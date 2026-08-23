@@ -13,8 +13,7 @@ import {
   catalogSignals,
   flattenTree,
 } from "@/server/catalog-page";
-import { listManufacturers } from "@/server/repositories/manufacturer";
-import { listSeriesOptions } from "@/server/repositories/series";
+import { listSeriesOptions, listManufacturerOptions } from "@/server/repositories/series";
 import { Breadcrumb, type Crumb } from "@/components/ui";
 import { ProductCard } from "@/components/catalog/ProductCard";
 import { CategoryChips, pathTo } from "@/components/catalog/CategoryChips";
@@ -140,7 +139,7 @@ export default async function ProductsPage(props: {
 
   // The facet option rows render on every view (cached reads, cheap and warm).
   const [manufacturers, seriesOptions] = await Promise.all([
-    listManufacturers(locale),
+    listManufacturerOptions(locale),
     listSeriesOptions(locale),
   ]);
 
@@ -161,6 +160,10 @@ export default async function ProductsPage(props: {
     );
     tree = data.tree;
     category = data.category;
+    // A requested-but-unknown category is still a failed lookup on a search view
+    // (2.5 review: the flag was dropped here, so the chips claimed "All products"
+    // was current while ?category=nonsense was in the URL).
+    categoryNotFound = parsed.categorySlug !== null && data.category === null;
     products = data.products;
     // The UNCAPPED match count — searchProducts returns it separately precisely
     // so the toolbar cannot report the 60-row cap as the total (2.2's rule).
@@ -230,7 +233,16 @@ export default async function ProductsPage(props: {
             manufacturerSlug={parsed.manufacturerSlug}
             seriesSlug={parsed.seriesSlug}
           />
-          <CategoryChips tree={tree} active={category} categoryNotFound={categoryNotFound} />
+          <CategoryChips
+            tree={tree}
+            active={category}
+            categoryNotFound={categoryNotFound}
+            view={{
+              q: parsed.q,
+              manufacturerSlug: parsed.manufacturerSlug,
+              seriesSlug: parsed.seriesSlug,
+            }}
+          />
           <SearchFilterChips
             params={{
               q: parsed.q,
@@ -262,10 +274,12 @@ export default async function ProductsPage(props: {
                    browse path (the chips above stay live), and the RFQ pre-fill. */
                 <SearchEmptyState query={parsed.q} suggestions={suggestions} />
               ) : (
-                /* Facet-only zero (e.g. an unknown-but-well-formed ?manufacturer):
-                   there is no query to echo or suggest around, so FR16's
-                   range-expanding state is the honest one. Decision recorded. */
-                <CatalogEmptyState variant="category" />
+                /* Facet-only zero (e.g. an unknown-but-well-formed
+                   ?manufacturer): there is no query to echo or suggest around.
+                   FR16's copy names a CATEGORY, so it is only honest when a
+                   category is actually the filter — otherwise the generic
+                   catalog variant speaks (2.5 review). */
+                <CatalogEmptyState variant={parsed.categorySlug ? "category" : "catalog"} />
               )}
             </div>
           ) : showCatalogEmptyState ? (

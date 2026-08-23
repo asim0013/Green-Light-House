@@ -2,6 +2,7 @@ import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import type { CategoryTreeNode, CategoryDetail } from "@/server/repositories/category";
+import { catalogHref, type CatalogViewParams } from "@/lib/catalog-href";
 
 /**
  * The category navigation for `/products` (Story 2.2, FR13).
@@ -27,9 +28,17 @@ export function CategoryChips({
   tree,
   active,
   categoryNotFound = false,
+  view = {},
 }: {
   tree: CategoryTreeNode[];
   active: CategoryDetail | null;
+  /**
+   * The OTHER active params (`q`, manufacturer, series). Every chip href carries
+   * them, so choosing a category NARROWS the current view instead of resetting
+   * it — Story 2.5's review found this component discarding the search while its
+   * sibling facet chips preserved it (AC3 requires all three to compose).
+   */
+  view?: CatalogViewParams;
   /**
    * True when a category was REQUESTED but does not exist. Without it the
    * "All products" chip claimed `aria-current` over the FR16 empty state —
@@ -57,15 +66,24 @@ export function CategoryChips({
       <ul className="flex flex-wrap gap-2">
         <li>
           <ChipLink
-            href="/products"
+            href={catalogHref({ ...view, categorySlug: null })}
             label={t("allProducts")}
-            isActive={active === null && !categoryNotFound}
+            // "All products" means "no CATEGORY filter" — it must not claim to be
+            // the current page while a search or facet is narrowing the view
+            // (2.5 review: two contradictory current-markers per page).
+            isActive={
+              active === null &&
+              !categoryNotFound &&
+              !view.q &&
+              !view.manufacturerSlug &&
+              !view.seriesSlug
+            }
           />
         </li>
         {tree.map((node) => (
           <li key={node.id}>
             <ChipLink
-              href={`/products?category=${node.slug}`}
+              href={catalogHref({ ...view, categorySlug: node.slug })}
               label={node.name}
               count={node.publishedCount}
               isFallback={node.isFallback}
@@ -85,7 +103,7 @@ export function CategoryChips({
             {branchRow.map((node) => (
               <li key={node.id}>
                 <ChipLink
-                  href={`/products?category=${node.slug}`}
+                  href={catalogHref({ ...view, categorySlug: node.slug })}
                   label={node.name}
                   count={node.publishedCount}
                   isFallback={node.isFallback}
