@@ -57,3 +57,23 @@ next-env.d.ts
 /_bmad-output/
 /_bmad/
 /.claude/
+
+# EXCEPTION (2026-08-25): the UX design source IS versioned.
+#
+# Why: DESIGN.md named a machine-local Pencil `.pen` path as "source of truth for
+# layout". The export step was skipped, so the canvas survived only as a
+# content-addressed blob in a tool's cache, named by its hash and findable by no
+# search. Five Epic 2 story records checked the named path, found nothing, and
+# recorded "there is no mock" — and four surfaces were designed at dev-kickoff from
+# prose while their frames sat one directory outside the repo. Recovering it into an
+# untracked folder would have left the same failure one step less severe.
+#
+# Git cannot re-include a path whose parent directory is excluded, so each level has
+# to be re-included and then re-emptied in turn. Everything else under
+# `_bmad-output/` (implementation artifacts, story files, the deferred ledger)
+# stays local-only exactly as before.
+!/_bmad-output/
+/_bmad-output/*
+!/_bmad-output/planning-artifacts/
+/_bmad-output/planning-artifacts/*
+!/_bmad-output/planning-artifacts/ux-designs/
