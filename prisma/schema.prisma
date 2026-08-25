@@ -40,11 +40,27 @@ enum LeadStatus {
   closed
 }
 
+/// Where an inquiry came from. `search` and `service` are placed BEFORE `direct`
+/// so `direct` stays the fallthrough: it means "no doorway context", not "other".
+/// `search` is the `/rfq?q=` doorway Story 2.5 shipped; `service` is the services
+/// page CTA. Both were reachable in shipped code before this enum could name them.
 enum LeadSource {
   project
   product
   industry
+  search
+  service
   direct
+}
+
+/// Attachment scan lifecycle (FR32a — "quarantined/non-public until it passes").
+/// Nullable on `Lead`: null means no attachment, NOT "unscanned". Story 3.7b owns
+/// the transitions; Story 3.0 only gives the state machine somewhere to live.
+enum AttachmentScanStatus {
+  pending
+  clean
+  infected
+  failed
 }
 
 enum MatchType {
@@ -286,26 +302,87 @@ model ServiceTranslation {
 // Written now so the model exists; the RFQ that creates leads is Epic 3,
 // the admin that reads/deletes them is Epic 4. Not built here.
 model Lead {
-  id             String     @id @default(cuid())
-  industry       String?
-  equipment      Json       @default("[]")
-  projectDetails String?    @map("project_details")
+  id String @id @default(cuid())
+
+  /// The human-quotable reference the sender sees on screen and both emails cite.
+  /// Story 3.0 — DB-side, from `lead_reference_seq` (hand-written in the migration;
+  /// Prisma cannot author CREATE SEQUENCE).
+  ///
+  /// NO `lpad`. The epics AC proposed `lpad(n::text, 4, '0')`; Postgres `lpad`
+  /// TRUNCATES to the target width rather than only padding, so at sequence value
+  /// 10000 it emits `GLH-RFQ-1000` and every later value collides. Proven in a
+  /// scratch database: 9999 -> GLH-RFQ-9999, 10000 -> GLH-RFQ-1000, then 10001 and
+  /// 10002 both failed with `duplicate key ... (GLH-RFQ-1000) already exists`. On a
+  /// live endpoint that is a hard 500 on the 10,001st inquiry. The sequence starts
+  /// at 2000, so references are four digits until they naturally become five.
+  ///
+  /// The default string below is POSTGRES'S OWN CANONICAL FORM, read back with
+  /// `pg_get_expr`. Prisma 6 compares `dbgenerated` strings LITERALLY: a
+  /// semantically identical but differently-spelled expression makes `migrate dev`
+  /// propose a spurious `ALTER COLUMN ... SET DEFAULT` on every run, forever, and
+  /// the remedy for that drift is a reset — which is consent-gated here.
+  ///
+  /// Gaps are CORRECT: `nextval` is non-transactional, so a rolled-back insert
+  /// burns its value. Never diagnose a gap as a lost lead, and never assert
+  /// contiguity in a test.
+  reference String @unique @default(dbgenerated("('GLH-RFQ-'::text || (nextval('lead_reference_seq'::regclass))::text)"))
+
+  /// Industry SLUG, resolved server-side — never a translated label. `Lead` has no
+  /// FK to `Industry` by design (a lead must survive the industry being renamed or
+  /// removed), so the slug is the only stable join key Story 4.7 can filter on.
+  industry String?
+
+  /// Tagged-union array; see `src/server/rfq/contracts.ts` for the frozen shape.
+  /// The discriminator is an explicit `kind`, never the presence of a field.
+  equipment      Json    @default("[]")
+  projectDetails String? @map("project_details")
   quantities     String?
-  company        String
-  name           String
-  email          String
-  phone          String?
-  country        String?
-  locale         Locale?
-  attachmentKey  String?    @map("attachment_key")
-  consent        Boolean    @default(false)
-  consentAt      DateTime?  @map("consent_at")
+
+  /// Free text, constrained by zod at the boundary rather than by a Postgres enum:
+  /// the option set is unspecified (the mock offers one set, no FR fixes it), so it
+  /// must be changeable without a migration.
+  timeline String?
+
+  company String
+  name    String
+  email   String
+  phone   String?
+  country String?
+  locale  Locale?
+
+  /// Attachment metadata. Story 3.2 captures nothing here (attachment capture moved
+  /// to Story 3.7b in the planning review); these exist so 3.7b adds no migration.
+  attachmentKey        String?               @map("attachment_key")
+  attachmentName       String?               @map("attachment_name")
+  attachmentMime       String?               @map("attachment_mime")
+  attachmentSizeBytes  Int?                  @map("attachment_size_bytes")
+  attachmentScanStatus AttachmentScanStatus? @map("attachment_scan_status")
+  attachmentScannedAt  DateTime?             @map("attachment_scanned_at")
+
+  consent   Boolean   @default(false)
+  consentAt DateTime? @map("consent_at")
+
+  /// Which privacy-policy version the sender was shown (FR44). Nullable because
+  /// leads created before the policy is versioned have no honest answer.
+  consentVersion String? @map("consent_version")
+
   status         LeadStatus @default(new)
   source         LeadSource @default(direct)
   prefillContext Json       @default("{}") @map("prefill_context")
-  createdAt      DateTime   @default(now()) @map("created_at")
-  updatedAt      DateTime   @updatedAt @map("updated_at")
 
+  /// Send state (Story 3.3). Nullable throughout: null means "not yet", never
+  /// "failed" — `deliveryFailureReason` carries terminal failure so a null
+  /// timestamp is never ambiguous.
+  notifiedAt            DateTime? @map("notified_at")
+  confirmationSentAt    DateTime? @map("confirmation_sent_at")
+  deliveryFailureReason String?   @map("delivery_failure_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// Story 4.7's leads list sorts newest-first and filters by status.
+  @@index([status, createdAt])
+  @@index([createdAt])
   @@map("leads")
 }
 

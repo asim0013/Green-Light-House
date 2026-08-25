@@ -36,9 +36,25 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
+      # BullMQ's instance (Story 3.0). Separate from the cache above because
+      # FLUSHALL, maxmemory and persistence are all instance-wide — see
+      # .env.example. Provisioned now, ahead of Story 3.3's worker, so that
+      # story's tests have a real queue to run against rather than an
+      # environment-gated skip.
+      redis-queue:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     env:
       DATABASE_URL: postgresql://glh:glh@localhost:5432/greenlighthouse?schema=public
       REDIS_URL: redis://localhost:6379
+      REDIS_QUEUE_URL: redis://localhost:6380
       REVALIDATE_SECRET: ci-revalidate-secret
       # Object storage for the Story 2.3 download endpoint. MinIO runs as a STEP
       # rather than a service container because `minio/minio` needs a command
@@ -108,6 +124,10 @@ jobs:
         env:
           DATABASE_URL: postgresql://glh:glh@127.0.0.1:1/greenlighthouse?schema=public
           REDIS_URL: ""
+          # Blanked too (Story 3.0). Adding a third backing-service URL without
+          # adding it here would silently narrow this guard: a reachable queue is
+          # one more thing a build could come to depend on without anyone noticing.
+          REDIS_QUEUE_URL: ""
         run: npm run build
       - run: npm run test
 

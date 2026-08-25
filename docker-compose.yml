@@ -13,10 +13,21 @@ services:
     ports:
       - "3000:3000"
     env_file: .env
+    # `.env` carries HOST addresses (localhost:...), which are unreachable from
+    # inside a container. Override the service addresses here (Story 3.0). Only
+    # the Redis pair is corrected in this story — DATABASE_URL, S3_ENDPOINT and
+    # CLAMAV_HOST have the same pre-existing defect and are logged in
+    # deferred-work.md; Story 3.3 needs DATABASE_URL fixed for the worker.
+    environment:
+      REDIS_URL: redis://redis:6379
+      REDIS_QUEUE_URL: redis://redis-queue:6379
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      # `app` becomes a queue PRODUCER in Story 3.2.
+      redis-queue:
         condition: service_healthy
       minio:
         condition: service_healthy
@@ -26,10 +37,16 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     env_file: .env
+    # See the note on `app` — host addresses from `.env` are unreachable in-container.
+    environment:
+      REDIS_URL: redis://redis:6379
+      REDIS_QUEUE_URL: redis://redis-queue:6379
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      redis-queue:
         condition: service_healthy
       clamav:
         condition: service_healthy
@@ -52,9 +69,28 @@ services:
       start_period: 10s
 
   redis:
+    # The Next incremental cache. DISPOSABLE — the pre-proof step empties it.
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  redis-queue:
+    # BullMQ (Story 3.3). A separate INSTANCE, not a separate DB index on the one
+    # above: FLUSHALL is instance-wide, and maxmemory/eviction/persistence are too
+    # — a shared instance tuned for cache eviction would drop queued jobs, which is
+    # precisely what FR29 forbids. AOF on, because a lost job is a lost inquiry.
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6380:6379"
+    volumes:
+      - queuedata:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -100,3 +136,4 @@ services:
 volumes:
   pgdata:
   miniodata:
+  queuedata:

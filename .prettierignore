@@ -5,3 +5,8 @@ playwright-report
 test-results
 package-lock.json
 *.md
+
+# Generated design artifacts (Story 3.0). Machine-emitted JSON recovered from the
+# Pencil backup and from the reconciliation fleet — reformatting them produces a
+# ~478KB diff on every `npm run format` and changes nothing a human reads.
+_bmad-output/planning-artifacts/ux-designs/**/imports/*.json

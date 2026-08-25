@@ -49,9 +49,17 @@ const SERVICE_PREFIX = "zzz-int-test-service-";
 const MANUFACTURER_SLUG = "zzz-int-test-manufacturer";
 let dbReachable = false;
 
+/**
+ * `Lead` has no slug, so the file's `zzz-int-test-` convention has no natural
+ * anchor. Email is the one required, free-text, indexable field — pick it
+ * explicitly rather than leaving lead fixtures uncleaned (Story 3.0).
+ */
+const LEAD_EMAIL_PREFIX = "zzz-int-test-lead-";
+
 async function cleanup() {
   // Order matters: products reference the manufacturer and categories, and the
   // join rows cascade from their owning side.
+  await prisma.lead.deleteMany({ where: { email: { startsWith: LEAD_EMAIL_PREFIX } } });
   await prisma.document.deleteMany({ where: { slug: { startsWith: DOCUMENT_PREFIX } } });
   await prisma.service.deleteMany({ where: { slug: { startsWith: SERVICE_PREFIX } } });
   await prisma.project.deleteMany({ where: { slug: { startsWith: PROJECT_PREFIX } } });
@@ -63,9 +71,11 @@ async function cleanup() {
 
 beforeAll(async () => {
   // The whole setup (connectivity AND schema-dependent seed) must succeed for the
-  // suite to run. If Postgres is unreachable OR reachable-but-unmigrated, any step
-  // here throws and we leave dbReachable=false so the tests skip cleanly rather
-  // than erroring the suite. CI applies migrations first, so it runs for real.
+  // suite to run. LOCALLY, if Postgres is unreachable or reachable-but-unmigrated,
+  // any step here throws and we leave dbReachable=false so the tests skip cleanly.
+  // IN CI the catch RETHROWS (Story 3.0) — migrations are applied before this runs,
+  // so anything thrown there is a real defect, and the old blanket swallow meant a
+  // missing column reported ~30 green skips and exit 0.
   try {
     await prisma.$queryRaw`SELECT 1`;
     await cleanup();
@@ -227,7 +237,22 @@ beforeAll(async () => {
     });
 
     dbReachable = true;
-  } catch {
+  } catch (err) {
+    // IN CI, NEVER SKIP (Story 3.0; retrospective action T6).
+    //
+    // This catch was written for Story 1.2's world, where "reachable but not yet
+    // migrated" was a legitimate local state to skip past. It is the wrong shape
+    // for any story whose subject IS the migration: a missing column makes the
+    // fixture creates above throw, the bare catch ate it, and all ~30 assertions
+    // in this file reported SKIPPED while `npm test` exited 0 — the verification
+    // substrate reporting success for the exact failure it exists to catch.
+    // That is retrospective §4.2 ("tests that cannot fail") pre-armed in the one
+    // file a schema story must edit.
+    //
+    // Locally a missing database is still an honest skip. In CI, migrations are
+    // applied before this runs, so anything thrown here is a real defect and must
+    // fail loudly.
+    if (process.env.CI) throw err;
     dbReachable = false;
   }
 });
@@ -1062,6 +1087,98 @@ describe("all services (integration)", () => {
     expect(services.length).toBeGreaterThan(0);
     for (const service of services) {
       expect(service.isFallback, service.slug).toBe(true);
+    }
+  });
+});
+
+/**
+ * Story 3.0 — the Epic 3 foundations migration.
+ *
+ * OWN `describe`, OWN GUARD, deliberately. These fixtures touch a table nothing
+ * else in this file touches, and the point of the story's test-hazard fix is that
+ * a Lead failure must be loud — not silently mute the ~30 assertions above it.
+ * `beforeAll`'s catch now rethrows in CI; this block additionally keeps its own
+ * failures local to itself.
+ *
+ * WHAT IS ASSERTABLE ABOUT A MIGRATION, and nothing more: that the columns exist
+ * with the intended nullability, that the reference default produces the intended
+ * FORMAT, and that uniqueness is enforced. Never a literal reference value and
+ * never contiguity — `nextval` is non-transactional, so a rolled-back insert
+ * burns its number and gaps are correct behaviour.
+ */
+describe("Story 3.0 — Lead foundations (integration)", () => {
+  const baseLead = () => ({
+    company: "ZZZ Integration Co",
+    name: "Integration Tester",
+    email: `${LEAD_EMAIL_PREFIX}${Math.floor(performance.now() * 1000)}@example.test`,
+  });
+
+  it("mints a human-quotable reference in the GLH-RFQ-<digits> format", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    const lead = await prisma.lead.create({ data: baseLead() });
+    // FORMAT, not value: the sequence's position is not this test's business.
+    expect(lead.reference).toMatch(/^GLH-RFQ-\d{4,}$/);
+  });
+
+  it("never truncates the reference — the lpad defect would collide past 9999", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    const lead = await prisma.lead.create({ data: baseLead() });
+    const digits = lead.reference.replace("GLH-RFQ-", "");
+    // A truncating default emits exactly 4 digits forever. A correct one emits
+    // "at least 4, growing". Assert the property that distinguishes them: the
+    // digits must be the sequence value verbatim, so no leading zero padding.
+    expect(digits).not.toMatch(/^0/);
+    expect(Number(digits)).toBeGreaterThanOrEqual(2000);
+  });
+
+  it("enforces uniqueness on reference", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    const first = await prisma.lead.create({ data: baseLead() });
+    await expect(
+      prisma.lead.create({ data: { ...baseLead(), reference: first.reference } }),
+    ).rejects.toThrow();
+  });
+
+  it("gives distinct leads distinct references", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    const a = await prisma.lead.create({ data: baseLead() });
+    const b = await prisma.lead.create({ data: baseLead() });
+    expect(a.reference).not.toBe(b.reference);
+  });
+
+  it("defaults every new Epic 3 column to null — null means 'not yet', never 'failed'", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    const lead = await prisma.lead.create({ data: baseLead() });
+    expect(lead.timeline).toBeNull();
+    expect(lead.attachmentName).toBeNull();
+    expect(lead.attachmentMime).toBeNull();
+    expect(lead.attachmentSizeBytes).toBeNull();
+    expect(lead.attachmentScanStatus).toBeNull();
+    expect(lead.attachmentScannedAt).toBeNull();
+    expect(lead.notifiedAt).toBeNull();
+    expect(lead.confirmationSentAt).toBeNull();
+    expect(lead.deliveryFailureReason).toBeNull();
+    expect(lead.consentVersion).toBeNull();
+  });
+
+  it("accepts every AttachmentScanStatus value the FR32a state machine needs", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    for (const attachmentScanStatus of ["pending", "clean", "infected", "failed"] as const) {
+      const lead = await prisma.lead.create({
+        data: { ...baseLead(), attachmentScanStatus },
+      });
+      expect(lead.attachmentScanStatus, attachmentScanStatus).toBe(attachmentScanStatus);
+    }
+  });
+
+  it("accepts the widened LeadSource values, and `direct` is still the default", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    const fallthrough = await prisma.lead.create({ data: baseLead() });
+    expect(fallthrough.source).toBe("direct");
+
+    for (const source of ["project", "product", "industry", "search", "service"] as const) {
+      const lead = await prisma.lead.create({ data: { ...baseLead(), source } });
+      expect(lead.source, source).toBe(source);
     }
   });
 });
