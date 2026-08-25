@@ -117,7 +117,8 @@
     "empty": "Service details are being published. Tell us what the project needs and we will scope it directly.",
     "ctaKicker": "Next step",
     "ctaTitle": "Tell us what the project needs.",
-    "ctaLead": "Send the specification, the standards it is audited against and the dates. You get a technical review and a specced proposal — no price list to chase."
+    "ctaLead": "Send the specification, the standards it is audited against and the dates. You get a technical review and a specced proposal — no price list to chase.",
+    "sla": "Technical review in 24 h · specced proposal in 3 working days"
   },
   "NotFound": {
     "title": "Page not found",

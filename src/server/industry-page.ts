@@ -51,7 +51,14 @@ export function industryHref(slug: string): string {
 export const PRODUCT_LIMIT = 3;
 export const PROJECT_LIMIT = 3;
 export const CERTIFICATE_LIMIT = 6;
-export const SERVICE_LIMIT = 4;
+// 5, one per FR23 competency — raised from 4 by the Story 2.6 review. The cap had
+// never bound: the seed had exactly four services until 2.6 split the merged
+// `kitting-logistics` row into `project-kitting` + `logistics`. At 4 it silently
+// dropped `tender-support` (slug-ascending + `take`), and `IndustrySection` has no
+// view-all affordance, so that competency had no path onward from this page. This
+// is a COMPLETE set, not a teaser like PRODUCT_LIMIT — if services ever outgrow
+// FR23's five, revisit with a link to /services rather than by raising this again.
+export const SERVICE_LIMIT = 5;
 
 /**
  * The page's six reads, memoised for the REQUEST.

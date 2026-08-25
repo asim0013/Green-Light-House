@@ -117,7 +117,8 @@
     "empty": "Hizmet ayrıntıları yayımlanıyor. Projenin ihtiyacını iletin, doğrudan kapsamlandıralım.",
     "ctaKicker": "Sonraki adım",
     "ctaTitle": "Projenin ihtiyacını bize iletin.",
-    "ctaLead": "Şartnameyi, uyulacak standartları ve tarihleri gönderin. 24 saatte teknik değerlendirme, 3 iş gününde şartnameli teklif alırsınız."
+    "ctaLead": "Şartnameyi, uyulması gereken standartları ve tarihleri gönderin. Teknik değerlendirme ve şartnameli bir teklif alırsınız — peşinden koşulacak fiyat listesi yok.",
+    "sla": "24 saatte teknik değerlendirme · 3 iş gününde şartnameli teklif"
   },
   "NotFound": {
     "title": "Sayfa bulunamadı",

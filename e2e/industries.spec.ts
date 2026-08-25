@@ -149,9 +149,30 @@ test.describe("a populated industry landing page (AC1)", () => {
 
     // 3 published products (capped from 5 by PRODUCT_LIMIT, which matches the
     // 3-column grid EXPERIENCE.md specifies), 2 projects, 5 services (Story 2.6
-    // split the merged kitting-logistics row per FR23).
+    // split the merged kitting-logistics row per FR23; SERVICE_LIMIT was raised
+    // 4 → 5 by that story's review so the cap does not clip an FR23 competency).
     await expect(page.locator("article")).toHaveCount(3);
-    await expect(page.getByText("Technical selection")).toBeVisible();
+
+    // ASSERTED, NOT JUST COMMENTED. The 2.6 review found this comment claiming
+    // five services while the page rendered four: the seed split pushed oil-gas
+    // past SERVICE_LIMIT=4 and `tender-support` (last under slug-ascending +
+    // `take`) silently vanished, with nothing here to catch it. The old lone
+    // `getByText("Technical selection")` survived only because that slug sorts
+    // 4th — it was the last row under the cap.
+    const servicesBlock = page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: "Relevant services" }) });
+    await expect(servicesBlock).toHaveCount(1);
+    await expect(servicesBlock.locator("ul > li")).toHaveCount(5);
+    for (const name of [
+      "Project kitting & configuration",
+      "Technical selection",
+      "Tender & procurement support",
+      "Import / export & customs",
+      "Logistics & delivery",
+    ]) {
+      await expect(servicesBlock, name).toContainText(name);
+    }
 
     // A model designation is machine data and must be rendered.
     await expect(page.getByText("FD-9500").first()).toBeVisible();

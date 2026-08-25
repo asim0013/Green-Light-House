@@ -7,7 +7,7 @@ import { routing } from "@/i18n/routing";
 import { alternatesFor, robotsFor } from "@/lib/seo";
 import { getServicesPageData, servicesSignals } from "@/server/services-page";
 import { Link } from "@/i18n/navigation";
-import { Breadcrumb, Kicker } from "@/components/ui";
+import { Breadcrumb, DarkBand, Kicker, TwoColumn } from "@/components/ui";
 import { buttonClasses } from "@/components/ui/buttonClasses";
 import { ServiceList } from "@/components/services/ServiceList";
 import { CONTAINER } from "@/components/layout/container";
@@ -97,7 +97,11 @@ export default async function ServicesPage(props: { params: Promise<{ locale: st
       <section className="bg-surface">
         <div className={`${CONTAINER} py-10 md:py-12`}>
           {services.length > 0 ? (
-            <ServiceList services={services} />
+            /* h2, not the component default h3: this surface has no SectionHeader
+               above the list, so the items ARE the page's second level. At h3 the
+               outline read h1 → h3×5 → h2 and put the CTA above the content
+               (2.6 review). */
+            <ServiceList services={services} headingLevel={2} />
           ) : (
             /* A sparse PID is the launch reality (EXPERIENCE.md § State Patterns).
                With no services this is still a real page with a way onward — the
@@ -109,29 +113,58 @@ export default async function ServicesPage(props: { params: Promise<{ locale: st
 
       {/* Every surface terminates at the RFQ or the phone (EXPERIENCE.md §
           Surface closure); `/rfq` is the sanctioned phased-page exception until
-          Story 3.2 builds it. */}
-      <section className="bg-surface-2">
-        <div className={`${CONTAINER} py-12 md:py-16`}>
-          <Kicker tone="ink">{t("ctaKicker")}</Kicker>
-          <h2 className="mt-3 font-heading text-[22px] font-bold tracking-tight text-ink md:text-[26px]">
-            {t("ctaTitle")}
-          </h2>
-          <p className="mt-3 max-w-[62ch] leading-relaxed text-ink-2">{t("ctaLead")}</p>
-          <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-4">
-            <Link href={SITE.rfqHref} className={buttonClasses("primary")}>
-              {tNav("requestQuote")}
-            </Link>
-            <a
-              href={`tel:${SITE.phone}`}
-              aria-label={`${tNav("phoneLabel")}: ${SITE.phoneDisplay}`}
-              className="inline-flex min-h-11 items-center gap-2 whitespace-nowrap font-data text-[15px] text-ink hover:text-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
-            >
-              <Phone size={16} aria-hidden />
-              {SITE.phoneDisplay}
-            </a>
-          </div>
+          Story 3.2 builds it.
+
+          DarkBand + TwoColumn, not a hand-rolled light section (2.6 review).
+          DESIGN.md § Elevation reserves the full-bleed `ink` band for stat bands,
+          SLA steppers and CLOSING CTAs, and both existing closing CTAs —
+          `IndustryCta` and `HomeCredibility` — are built this way. Bypassing the
+          primitives would have meant a future change to the closing-CTA treatment
+          silently skipping this page, and made this file's own "no new visual
+          language is invented here" claim untrue. */}
+      <DarkBand>
+        <div className={`${CONTAINER} py-14 md:py-16`}>
+          <TwoColumn
+            sideWidth={320}
+            main={
+              <div>
+                <Kicker>{t("ctaKicker")}</Kicker>
+                <h2 className="mt-3 font-heading text-2xl font-bold tracking-tight text-white md:text-[28px]">
+                  {t("ctaTitle")}
+                </h2>
+                <p className="mt-4 max-w-[62ch] leading-relaxed text-on-dark-text">
+                  {t("ctaLead")}
+                </p>
+                {/* The SLA numbers live in `messages` and are identical on every
+                    surface that promises them. TR and RU had inlined them into
+                    `ctaLead` prose instead — a fourth, uncentralised copy that the
+                    next SLA revision would have missed (2.6 review). */}
+                <p className="mt-6 font-mono text-[11px] uppercase leading-relaxed tracking-[0.15em] text-on-dark-text">
+                  {t("sla")}
+                </p>
+              </div>
+            }
+            side={
+              <div className="flex flex-col gap-3">
+                <Link
+                  href={SITE.rfqHref}
+                  className={buttonClasses("onDarkPrimary", "w-full text-center")}
+                >
+                  {tNav("requestQuote")}
+                </Link>
+                <a
+                  href={`tel:${SITE.phone}`}
+                  aria-label={`${tNav("phoneLabel")}: ${SITE.phoneDisplay}`}
+                  className={buttonClasses("onDarkSecondary", "w-full gap-2 font-data")}
+                >
+                  <Phone size={16} aria-hidden />
+                  {SITE.phoneDisplay}
+                </a>
+              </div>
+            }
+          />
         </div>
-      </section>
+      </DarkBand>
     </>
   );
 }

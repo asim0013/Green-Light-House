@@ -73,7 +73,12 @@ test.describe("the Services page (AC1, AC2, AC3)", () => {
     await expect(navLink).toBeVisible();
     await navLink.click();
     await expect(page).toHaveURL(/\/en\/services$/);
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    // ASSERT THE DESTINATION, not merely that some h1 exists: Next's localized
+    // not-found renders at the SAME URL with a visible `<h1>Page not found</h1>`,
+    // so `toHaveURL` + `h1 visible` both hold on the very 404 this test is named
+    // for (2.6 review). The heading TEXT and the list are what separate them.
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Services");
+    await expect(page.locator("main ul > li")).toHaveCount(5);
   });
 
   test("carries the RFQ and co-equal phone paths, and NO price (FR2, FR31)", async ({
@@ -113,14 +118,28 @@ test.describe("localization and SEO (AC1, AC5)", () => {
     if (!dbReady) testInfo.skip();
 
     // Every service is EN-only, so both non-default locales are fallback-only.
-    for (const locale of ["tr", "ru"]) {
-      const html = await (await request.get(`/${locale}/services`)).text();
-      expect(html, locale).toContain('name="robots" content="noindex');
-    }
+    for (const [locale, notice] of [
+      ["tr", "(İngilizce gösteriliyor)"],
+      ["ru", "(показано на английском)"],
+    ]) {
+      const res = await request.get(`/${locale}/services`);
+      // STATUS FIRST. The localized 404 emits `content="noindex"` too (measured),
+      // so on its own the robots assertion below is satisfied by a route that
+      // stopped existing — and 2.6 removed /ru/services from seo.spec's UNBUILT
+      // list, leaving nothing anywhere asserting this URL resolves (2.6 review).
+      expect(res.status(), locale).toBe(200);
+      expect(await res.text(), locale).toContain('name="robots" content="noindex');
 
-    // The visible FallbackNotice says so to the reader (FR34a), not just `lang=`.
-    await page.goto("/tr/services");
-    await expect(page.locator('main span[lang="en"]').first()).toBeVisible();
+      // The VISIBLE FallbackNotice (FR34a), not just `lang=`. The lang attribute
+      // sits on the NAME span; the notice is a sibling span carrying NO lang, so
+      // a `span[lang="en"]` locator cannot see it — deleting `<FallbackNotice/>`
+      // from ServiceList kept the entire suite green, on this surface AND on the
+      // industry pages that now share the component (2.6 review). Both locales,
+      // because RU previously had no rendering assertion at all.
+      await page.goto(`/${locale}/services`);
+      await expect(page.locator('main span[lang="en"]').first()).toBeVisible();
+      await expect(page.locator("main").getByText(notice).first()).toBeVisible();
+    }
 
     // INCLUSION is decided by <loc>, never raw text: every entry also carries the
     // full hreflang map, so /ru/services legitimately appears as an xhtml:link.

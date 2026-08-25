@@ -107,12 +107,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         // (one predicate per surface). Category-filtered views canonical to clean
         // /products, so the sitemap grows by exactly this one URL per locale.
         catalogIndexable: isIndexable(catalogSignals(locale, categoryTree)),
+        // One predicate per surface: `servicesSignals` is what /services' robots
+        // metadata uses, so page and sitemap cannot disagree.
+        servicesIndexable: isIndexable(servicesSignals(locale, services)),
         // Per-product gates from the SAME function the detail page metadata calls
         // (signalsFromRow / signalsFromPageData both delegate to productSignals),
         // computed from the batched rows — no extra read per product.
-        // One predicate per surface: `servicesSignals` is what /services'
-        // robots metadata uses, so page and sitemap cannot disagree.
-        servicesIndexable: isIndexable(servicesSignals(locale, services)),
         indexableProductSlugs: productRows
           .filter((row) => isIndexable(signalsFromRow(locale, row)))
           .map((row) => row.slug),
