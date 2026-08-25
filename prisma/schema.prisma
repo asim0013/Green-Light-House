@@ -42,6 +42,15 @@ enum LeadStatus {
 
 /// Where an inquiry came from. `search` and `service` are placed BEFORE `direct`
 /// so `direct` stays the fallthrough: it means "no doorway context", not "other".
+///
+/// ⚠️ THE PHYSICAL ORDER IN POSTGRES DID NOT MATCH THIS UNTIL 2026-08-25. The
+/// migration that added the values used bare `ALTER TYPE ... ADD VALUE`, which
+/// APPENDS — the clause needed is `ADD VALUE 'x' BEFORE 'direct'` — so `direct`
+/// sat 4th in `pg_enum` while this comment said otherwise. **Prisma cannot see
+/// this**: `migrate status` and a datamodel diff both reported no drift, so every
+/// gate was blind to it. Corrected by `20260825190000_leadsource_enum_order`
+/// (create new type + swap, the only route Postgres offers) and now asserted in
+/// `repository.integration.test.ts` — because nothing else can catch it.
 /// `search` is the `/rfq?q=` doorway Story 2.5 shipped; `service` is the services
 /// page CTA. Both were reachable in shipped code before this enum could name them.
 enum LeadSource {

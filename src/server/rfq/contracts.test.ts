@@ -32,8 +32,15 @@ describe("the pre-fill vocabulary is frozen", () => {
     expect(SLUG_PREFILL_PARAMS).not.toContain("q");
   });
 
-  it("resolves source most-specific-first", () => {
+  it("resolves source most-specific-first, and deliberately omits `category`", () => {
     expect([...PREFILL_PRECEDENCE]).toEqual(["project", "product", "industry", "q"]);
+    // `category` is an accepted, slug-gated param that is NOT a source origin: it
+    // is equipment context, carried by `LeadEquipmentItem { kind: "category" }`
+    // and preserved in `prefillContext`. Asserted explicitly because the Story 3.0
+    // code review filed the omission as a defect — four lenses read it as an
+    // oversight, since nothing said otherwise.
+    expect(PREFILL_PARAMS).toContain("category");
+    expect(PREFILL_PRECEDENCE).not.toContain("category");
   });
 });
 
@@ -93,6 +100,49 @@ describe("Lead.equipment is a tagged union", () => {
 
   it("requires the label snapshot on resolved items — the admin reads it later", () => {
     expect(isLeadEquipmentItem({ kind: "product", slug: "fd-9500" })).toBe(false);
+  });
+
+  /**
+   * ⚠️ These three were MISSING (Story 3.0 code review): deleting the `slug` check
+   * or the `text` check from the guard left all ten assertions in this block
+   * green, so two of the three fields the contract exists to guarantee were
+   * unguarded by any test.
+   */
+  it("requires a slug on resolved items", () => {
+    expect(isLeadEquipmentItem({ kind: "product", label: "FD-9500" })).toBe(false);
+    expect(isLeadEquipmentItem({ kind: "category", label: "PPE" })).toBe(false);
+  });
+
+  it("requires text on a freeText item", () => {
+    expect(isLeadEquipmentItem({ kind: "freeText" })).toBe(false);
+    expect(isLeadEquipmentItem({ kind: "freeText", label: "not text" })).toBe(false);
+  });
+
+  it("slug-gates the slug rather than merely type-checking it", () => {
+    // The module imports `isValidSlug` and applies it in `prefillSlugOf`; this
+    // guard used to accept "" and "Oil Gas/../x" for the same field.
+    for (const slug of ["", "  ", "Oil-Gas", "oil gas", "../../admin", "a".repeat(65)]) {
+      expect(isLeadEquipmentItem({ kind: "product", slug, label: "x" }), slug).toBe(false);
+    }
+    expect(isLeadEquipmentItem({ kind: "product", slug: "fd-9500", label: "x" })).toBe(true);
+  });
+
+  it("rejects empty label and empty text — a blank chip is not something a buyer typed", () => {
+    expect(isLeadEquipmentItem({ kind: "product", slug: "fd-9500", label: "" })).toBe(false);
+    expect(isLeadEquipmentItem({ kind: "freeText", text: "   " })).toBe(false);
+  });
+
+  it("never throws on hostile JSONB, including values that break unguarded `.length`", () => {
+    const hostile = [
+      { kind: "product", slug: null, label: "x" },
+      { kind: "product", slug: 42, label: "x" },
+      { kind: "freeText", text: null },
+      ["kind", "product"],
+      null,
+      Object.create(null),
+    ];
+    expect(() => parseLeadEquipment(hostile)).not.toThrow();
+    expect(parseLeadEquipment(hostile)).toEqual([]);
   });
 
   it("drops malformed entries instead of throwing on arbitrary JSONB", () => {

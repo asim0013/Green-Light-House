@@ -1,5 +1,7 @@
 import type { Locale } from "@prisma/client";
 
+import { isValidSlug } from "@/lib/slug";
+
 /**
  * THE FROZEN `Project.media` SHAPE (Story 3.0).
  *
@@ -21,6 +23,11 @@ export interface ProjectMediaEntry {
    * Stable identifier within the project, used in the delivery URL. Not the
    * storage key: the key changes when Epic 4 replaces the file, and a URL that
    * changes on replacement breaks every link and cache entry pointing at it.
+   *
+   * SLUG-SHAPED and UNIQUE within the project — both enforced at the parse
+   * boundary. It becomes a URL path segment, so anything dot-shaped would be
+   * normalized away by the browser, and a duplicate would mint two entries with
+   * the same delivery URL.
    */
   id: string;
   /**
@@ -89,14 +96,25 @@ function isSafeMime(value: unknown): value is (typeof SAFE_IMAGE_MIME)[number] {
 /** Narrow one raw JSONB element. Anything not matching the contract is dropped. */
 export function isProjectMediaEntry(value: unknown): value is ProjectMediaEntry {
   if (typeof value !== "object" || value === null) return false;
+  if (Array.isArray(value)) return false;
   const entry = value as Record<string, unknown>;
-  if (typeof entry.id !== "string" || entry.id === "") return false;
+  // `id` is SLUG-GATED, not merely non-empty (Story 3.0 code review). It is the
+  // sole component `projectMediaHref` puts in the URL path, and
+  // `encodeURIComponent` does NOT escape dot segments — so an `id` of ".." or "."
+  // survived encoding and the browser normalized it away before the request left,
+  // silently resolving to a different route. A slug cannot contain a dot.
+  if (typeof entry.id !== "string" || !isValidSlug(entry.id)) return false;
   if (typeof entry.storageKey !== "string" || entry.storageKey === "") return false;
   if (!isSafeMime(entry.mime)) return false;
   if (typeof entry.sort !== "number" || !Number.isFinite(entry.sort)) return false;
   const alt = entry.alt;
-  if (typeof alt !== "object" || alt === null) return false;
-  return typeof (alt as Record<string, unknown>).en === "string";
+  if (typeof alt !== "object" || alt === null || Array.isArray(alt)) return false;
+  const altRecord = alt as Record<string, unknown>;
+  if (typeof altRecord.en !== "string") return false;
+  // Every OTHER locale key must be a string too, or the narrowing lies: the type
+  // promises `tr?: string; ru?: string`, and Story 3.1 renders `alt[locale]`
+  // trusting it. `{ en: "ok", tr: 42 }` used to pass.
+  return Object.values(altRecord).every((text) => typeof text === "string");
 }
 
 /**
@@ -108,7 +126,25 @@ export function isProjectMediaEntry(value: unknown): value is ProjectMediaEntry 
  */
 export function parseProjectMedia(value: unknown): ProjectMediaEntry[] {
   if (!Array.isArray(value)) return [];
-  return value
-    .filter(isProjectMediaEntry)
-    .sort((a, b) => a.sort - b.sort || a.id.localeCompare(b.id));
+  const seen = new Set<string>();
+  return (
+    value
+      .filter(isProjectMediaEntry)
+      // DUPLICATE ids are dropped, first occurrence wins (Story 3.0 code review).
+      // `id` is the sole key `projectMediaHref` builds the delivery URL from, so
+      // two entries sharing one produced two gallery items with byte-identical
+      // URLs — and nothing enforced uniqueness at the boundary that designates it.
+      .filter((entry) => {
+        if (seen.has(entry.id)) return false;
+        seen.add(entry.id);
+        return true;
+      })
+      // Tie-break with plain comparison, NOT `localeCompare` (Story 3.0 code
+      // review). `localeCompare` without an explicit locale uses the HOST's
+      // default, so ordering could differ between a developer's machine and CI,
+      // and it returns 0 for distinct strings differing only by ignorable
+      // characters — neither total nor deterministic, which is what the docstring
+      // and the test title both claim it is.
+      .sort((a, b) => a.sort - b.sort || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  );
 }

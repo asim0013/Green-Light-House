@@ -9,7 +9,7 @@ These moved here on 2026-08-13, when this project was separated from the shared 
 
 ## Stack (locked)
 
-Next.js 16.2 (App Router, RSC/SSR, Turbopack) · React 19 · TypeScript **strict** · Tailwind v4 · Prisma + PostgreSQL · Redis (cache + BullMQ) · next-intl (EN/TR/RU) · Auth.js (single admin) · S3-compatible storage (R2/MinIO) · ClamAV · container/VPS hosting. Do **not** swap the framework or add T3/tRPC/a headless CMS.
+Next.js 16.2 (App Router, RSC/SSR, Turbopack) · React 19 · TypeScript **strict** · Tailwind v4 · Prisma + PostgreSQL · **two Redis instances** (`REDIS_URL` = disposable ISR cache, emptied with `npm run cache:flush`, never `FLUSHALL`; `REDIS_QUEUE_URL` = durable BullMQ, FR29) · next-intl (EN/TR/RU) · Auth.js (single admin) · S3-compatible storage (R2/MinIO) · ClamAV · container/VPS hosting. Do **not** swap the framework or add T3/tRPC/a headless CMS.
 
 ## Naming
 

@@ -1094,11 +1094,18 @@ describe("all services (integration)", () => {
 /**
  * Story 3.0 — the Epic 3 foundations migration.
  *
- * OWN `describe`, OWN GUARD, deliberately. These fixtures touch a table nothing
- * else in this file touches, and the point of the story's test-hazard fix is that
- * a Lead failure must be loud — not silently mute the ~30 assertions above it.
- * `beforeAll`'s catch now rethrows in CI; this block additionally keeps its own
- * failures local to itself.
+ * OWN `describe`, deliberately: these fixtures touch a table nothing else in this
+ * file touches, so a Lead failure is attributable at a glance rather than mixed
+ * into the catalog assertions.
+ *
+ * ⚠️ IT DOES NOT HAVE ITS OWN GUARD, and an earlier version of this docstring
+ * claimed it did (corrected in the Story 3.0 code review). Every test below reads
+ * the same file-level `dbReachable` as the ~40 tests above, which means they are
+ * gated on the WHOLE Story 1.x/2.x fixture set in `beforeAll` succeeding — a
+ * catalog fixture failing skips the Lead assertions too. That is acceptable
+ * because `beforeAll`'s catch now rethrows under CI, so nothing skips silently in
+ * the merge gate; it is recorded here because a docstring asserting a guard that
+ * does not exist is how the next reader stops looking for one.
  *
  * WHAT IS ASSERTABLE ABOUT A MIGRATION, and nothing more: that the columns exist
  * with the intended nullability, that the reference default produces the intended
@@ -1120,15 +1127,67 @@ describe("Story 3.0 — Lead foundations (integration)", () => {
     expect(lead.reference).toMatch(/^GLH-RFQ-\d{4,}$/);
   });
 
-  it("never truncates the reference — the lpad defect would collide past 9999", async (ctx) => {
+  /**
+   * ⚠️ THIS TEST REPLACES ONE THAT COULD NOT FAIL (Story 3.0 code review).
+   *
+   * The original asserted `digits` had no leading zero and was >= 2000, on the
+   * stated grounds that this "distinguishes" the correct default from the
+   * epics' rejected `lpad((nextval(...))::text, 4, '0')`. It does not. `lpad`
+   * is the IDENTITY function over 4-digit strings, and the sequence starts at
+   * 2000, so both defaults emit byte-identical values for every sequence value
+   * in [2000, 9999]. Measured in Postgres at the live sequence value: shipped
+   * -> GLH-RFQ-2032, defective -> GLH-RFQ-2032. The check could only have gone
+   * red at sequence 10000 — i.e. AFTER the outage it existed to prevent.
+   *
+   * A generated VALUE cannot witness this defect. The stored DEFAULT EXPRESSION
+   * can, and does so the instant anyone reinstates lpad. This is rule P5 applied
+   * properly: the thing that must break for this to go red is the one thing the
+   * story decided.
+   */
+  it("stores the reference default WITHOUT lpad, in Postgres's canonical form", async (ctx) => {
     if (!dbReachable) return ctx.skip();
-    const lead = await prisma.lead.create({ data: baseLead() });
-    const digits = lead.reference.replace("GLH-RFQ-", "");
-    // A truncating default emits exactly 4 digits forever. A correct one emits
-    // "at least 4, growing". Assert the property that distinguishes them: the
-    // digits must be the sequence value verbatim, so no leading zero padding.
-    expect(digits).not.toMatch(/^0/);
-    expect(Number(digits)).toBeGreaterThanOrEqual(2000);
+    const rows = await prisma.$queryRaw<{ expr: string | null }[]>`
+      SELECT pg_get_expr(d.adbin, d.adrelid) AS expr
+      FROM pg_attrdef d
+      JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+      JOIN pg_class c ON c.oid = d.adrelid
+      WHERE c.relname = 'leads' AND a.attname = 'reference'
+    `;
+    expect(rows).toHaveLength(1);
+    const expr = rows[0]?.expr ?? "";
+    // The defect, named directly.
+    expect(expr).not.toMatch(/lpad/i);
+    // The canonical string schema.prisma pins. Prisma compares `dbgenerated`
+    // literally, so a differently-spelled equivalent is drift, not a tidy-up.
+    expect(expr).toBe("('GLH-RFQ-'::text || (nextval('lead_reference_seq'::regclass))::text)");
+  });
+
+  /**
+   * Guards the correction made by `20260825190000_leadsource_enum_order`.
+   *
+   * The original migration used bare `ALTER TYPE ... ADD VALUE`, which APPENDS,
+   * so `direct` sat 4th while AC1, the schema docstring and the Change Log all
+   * said the new values were placed before it. Prisma does not compare enum
+   * ordering — `migrate status` and a datamodel diff both reported no drift —
+   * so nothing in the gate suite could see it. This assertion can.
+   */
+  it("orders LeadSource with `direct` LAST so it stays the fallthrough", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    const rows = await prisma.$queryRaw<{ enumlabel: string }[]>`
+      SELECT e.enumlabel
+      FROM pg_enum e
+      JOIN pg_type t ON t.oid = e.enumtypid
+      WHERE t.typname = 'LeadSource'
+      ORDER BY e.enumsortorder
+    `;
+    expect(rows.map((r) => r.enumlabel)).toEqual([
+      "project",
+      "product",
+      "industry",
+      "search",
+      "service",
+      "direct",
+    ]);
   });
 
   it("enforces uniqueness on reference", async (ctx) => {

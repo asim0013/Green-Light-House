@@ -39,6 +39,14 @@ describe("parseProjectMedia — the security boundary", () => {
   });
 
   it("accepts exactly the four allowlisted raster types and nothing else", () => {
+    // ⚠️ THE CARDINALITY + IDENTITY ASSERTIONS ARE THE POINT (Story 3.0 code
+    // review). Without them the loop below is true BY CONSTRUCTION for any list —
+    // `isSafeMime` accepts precisely by `SAFE_IMAGE_MIME.includes()`, so iterating
+    // the allowlist and asserting the guard accepts each member proves nothing
+    // about WHICH types are allowed. Adding "image/svg+xml" to the list would have
+    // left the old version of this test green.
+    expect([...SAFE_IMAGE_MIME]).toEqual(["image/jpeg", "image/png", "image/webp", "image/avif"]);
+
     for (const mime of SAFE_IMAGE_MIME) {
       expect(isProjectMediaEntry(entry({ mime })), mime).toBe(true);
     }
@@ -73,6 +81,58 @@ describe("parseProjectMedia — degradation", () => {
     expect(isProjectMediaEntry(entry({ alt: { tr: "Turkish only" } }))).toBe(false);
     expect(isProjectMediaEntry(entry({ alt: {} }))).toBe(false);
   });
+
+  it("rejects a non-string value on ANY locale key, not just `en`", () => {
+    // The narrowed type promises `tr?: string; ru?: string` and Story 3.1 renders
+    // `alt[locale]` trusting it. `{ en: "ok", tr: 42 }` used to pass.
+    expect(isProjectMediaEntry(entry({ alt: { en: "ok", tr: 42 } }))).toBe(false);
+    expect(isProjectMediaEntry(entry({ alt: { en: "ok", ru: null } }))).toBe(false);
+    expect(isProjectMediaEntry(entry({ alt: { en: "ok", tr: "tamam" } }))).toBe(true);
+  });
+
+  it("NEVER THROWS on a hostile entry INSIDE the array — the case the table above cannot reach", () => {
+    // Every case in the degradation table is a non-array, so all five short-circuit
+    // at `if (!Array.isArray(value)) return []` before any entry is inspected. The
+    // `alt === null` guard — the one whose removal turns a malformed blob into a
+    // 500 on a public project page, which is the stated reason this function
+    // exists — was therefore never exercised (Story 3.0 code review).
+    const hostile = [
+      null,
+      undefined,
+      42,
+      "string",
+      [],
+      entry({ alt: null }),
+      entry({ alt: "not an object" }),
+      entry({ alt: [] }),
+      entry({ sort: Number.NaN }),
+      entry({ sort: Number.POSITIVE_INFINITY }),
+      entry({ id: "" }),
+      entry({ storageKey: "" }),
+      Object.create(null),
+      new Date(),
+    ];
+    expect(() => parseProjectMedia(hostile)).not.toThrow();
+    expect(parseProjectMedia(hostile)).toEqual([]);
+  });
+
+  it("rejects dot-segment and non-slug ids — they would escape the delivery route", () => {
+    // `encodeURIComponent` does not escape `.`, so ".." survived encoding and the
+    // browser normalized it away before the request left, resolving elsewhere.
+    for (const id of ["..", ".", "a/b", "Hero", "hero image", "-hero", ""]) {
+      expect(isProjectMediaEntry(entry({ id })), id).toBe(false);
+    }
+    expect(isProjectMediaEntry(entry({ id: "hero-2" }))).toBe(true);
+  });
+
+  it("drops duplicate ids — two entries must never share a delivery URL", () => {
+    const parsed = parseProjectMedia([
+      entry({ id: "hero", sort: 0, storageKey: "first.jpg" }),
+      entry({ id: "hero", sort: 1, storageKey: "second.jpg" }),
+    ]);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]?.storageKey).toBe("first.jpg");
+  });
 });
 
 describe("parseProjectMedia — ordering", () => {
@@ -101,8 +161,26 @@ describe("projectMediaHref", () => {
     );
   });
 
-  it("keys the URL on the media id, not the storage key", () => {
-    // The storage key changes when Epic 4 replaces the file; the URL must not.
-    expect(projectMediaHref("lng", "hero")).not.toContain("projects/lng/hero.jpg");
+  /**
+   * ⚠️ REPLACES A TEST THAT COULD NOT FAIL (Story 3.0 code review).
+   *
+   * The original asserted the output did not contain a storage-key string that
+   * was never passed in — and `projectMediaHref(projectSlug, mediaId)` has no
+   * storage-key parameter, so no implementation of that signature could have
+   * failed it. What the property actually needs is that the URL is stable across
+   * a storage-key change, which is testable by parsing a real entry.
+   */
+  it("produces a URL that survives the storage key changing under it", () => {
+    const before = parseProjectMedia([entry({ id: "hero", storageKey: "projects/lng/v1.jpg" })]);
+    const after = parseProjectMedia([
+      entry({ id: "hero", storageKey: "projects/lng/v2-other.jpg" }),
+    ]);
+    const hrefBefore = projectMediaHref("lng", before[0]!.id);
+    const hrefAfter = projectMediaHref("lng", after[0]!.id);
+
+    expect(hrefBefore).toBe(hrefAfter);
+    expect(hrefBefore).toBe("/api/projects/lng/media/hero");
+    // And the key genuinely differed, so the equality above is not vacuous.
+    expect(before[0]!.storageKey).not.toBe(after[0]!.storageKey);
   });
 });

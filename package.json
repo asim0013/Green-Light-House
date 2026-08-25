@@ -18,6 +18,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "cache:flush": "node scripts/cache-flush.mjs",
+    "check:architecture": "tsx scripts/check-architecture-structure.ts",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
     "test:e2e:caching": "playwright test --config=playwright.caching.config.ts"

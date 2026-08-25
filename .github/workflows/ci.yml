@@ -52,6 +52,12 @@ jobs:
           --health-retries 10
 
     env:
+      # Set EXPLICITLY (Story 3.0 code review). GitHub Actions defines CI=true by
+      # default, but `repository.integration.test.ts`'s beforeAll uses it to decide
+      # whether to RETHROW or skip ~30 assertions — the difference between a merge
+      # gate that catches a missing column and one that reports green skips. A
+      # load-bearing gate must not rest on a provider's implicit default.
+      CI: "true"
       DATABASE_URL: postgresql://glh:glh@localhost:5432/greenlighthouse?schema=public
       REDIS_URL: redis://localhost:6379
       REDIS_QUEUE_URL: redis://localhost:6380
