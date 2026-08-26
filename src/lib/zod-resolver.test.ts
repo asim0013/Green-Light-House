@@ -54,9 +54,20 @@ describe("zodResolver", () => {
   });
 
   it("first issue per field wins — one message per field, never an array", async () => {
-    const result = await call({ ...VALID, name: "" });
+    // The RFQ schema rarely yields two issues on one path, so this uses a
+    // schema that PROVABLY does (min + regex both fail — 3.2 review: the
+    // original payload produced one issue and the test could not fail).
+    const schema = z.object({
+      code: z.string("required").min(5, "tooShort").regex(/^x/, "badPrefix"),
+    });
+    const resolver = zodResolver<Record<string, unknown>, z.infer<typeof schema>>(schema);
+    const result = await resolver({ code: "abc" }, undefined, {
+      fields: {},
+      shouldUseNativeValidation: false,
+    });
     const errors = result.errors as Record<string, { message?: string }>;
-    expect(errors.name?.message).toBe("required");
+    // Two issues exist for `code`; the FIRST (declaration order: min) wins.
+    expect(errors.code?.message).toBe("tooShort");
   });
 
   it("normalize runs BEFORE parsing — the DOM's '' becomes the schema's absent", async () => {

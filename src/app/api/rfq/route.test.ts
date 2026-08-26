@@ -116,8 +116,18 @@ describe("POST /api/rfq — guard chain", () => {
     expect((await errorOf(res)).code).toBe("payload_too_large");
   });
 
-  it("413s an actually-oversize body even without a Content-Length header", async () => {
-    const res = await post({ ...VALID, projectDetails: "x".repeat(70 * 1024) });
+  it("413s an actually-oversize body via the BYTE COUNTER — provably not the header path", async () => {
+    // Branch isolation (3.2 review): if the runtime synthesized a
+    // Content-Length for the string body, this test would exercise the header
+    // short-circuit and the byte counter would be tested by nothing. Assert
+    // the precondition so drift in undici's behavior fails loud, not silent.
+    const request = new Request(`${SELF_ORIGIN}/api/rfq`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...VALID, projectDetails: "x".repeat(70 * 1024) }),
+    });
+    expect(request.headers.get("content-length")).toBeNull();
+    const res = await POST(request);
     expect(res.status).toBe(413);
     expect(createLead).not.toHaveBeenCalled();
   });
@@ -153,6 +163,67 @@ describe("POST /api/rfq — guard chain", () => {
     expect(res.status).toBe(422);
     expect((await errorOf(res)).details).toEqual([{ path: "industry", key: "invalid" }]);
     expect(createLead).not.toHaveBeenCalled();
+  });
+
+  it("valid-JSON non-objects ([], null, scalars) are invalid_body — never zod's English", async () => {
+    for (const body of ["[]", "null", '"x"', "42"]) {
+      const res = await post(body);
+      expect(res.status, body).toBe(422);
+      const error = await errorOf(res);
+      expect(error.code, body).toBe("invalid_body");
+    }
+    expect(createLead).not.toHaveBeenCalled();
+  });
+
+  it("hostile code points 422 as `invalid` — never a 500 at the insert (the 2.5 class)", async () => {
+    // Each of these previously passed the whole guard chain and died INSIDE
+    // prisma.lead.create (Postgres 22021/22P05, or Prisma's own hex-escape
+    // throw for the lone surrogate) — minting the 500 this route reserves for
+    // "Postgres down" (3.2 review, HIGH).
+    const cases: [string, Record<string, unknown>][] = [
+      ["NUL in name", { ...VALID, name: "Elena\u0000Petrova" }],
+      ["NUL in freeText", { ...VALID, equipment: [{ kind: "freeText", text: "crane\u0000" }] }],
+      ["bidi override in company", { ...VALID, company: "Enka\u202Egpj.exe" }],
+      ["lone surrogate in projectDetails", { ...VALID, projectDetails: "x\uD800y" }],
+    ];
+    for (const [label, payload] of cases) {
+      const res = await post(payload);
+      expect(res.status, label).toBe(422);
+      const error = await errorOf(res);
+      expect(error.code, label).toBe("validation_failed");
+      expect(
+        error.details!.every((d) => d.key === "invalid" || d.key === "required"),
+        label,
+      ).toBe(true);
+    }
+    expect(createLead).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/rfq — Origin canonicalization (3.2 review)", () => {
+  const withSiteUrl = async (siteUrl: string, origin: string) => {
+    const saved = process.env.SITE_URL;
+    process.env.SITE_URL = siteUrl;
+    try {
+      return await post(VALID, { origin });
+    } finally {
+      if (saved === undefined) delete process.env.SITE_URL;
+      else process.env.SITE_URL = saved;
+    }
+  };
+
+  it("legal SITE_URL spellings must not 403 real buyers (case, default port)", async () => {
+    // Browsers send Origin lowercased and without default ports; a raw string
+    // compare against these legal configs was a silent total funnel outage.
+    expect((await withSiteUrl("https://GLH.example", "https://glh.example")).status).toBe(201);
+    expect((await withSiteUrl("https://glh.example:443", "https://glh.example")).status).toBe(201);
+  });
+
+  it('the literal "null" Origin (opaque context) fails closed', async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const res = await post(VALID, { origin: "null" });
+    expect(res.status).toBe(403);
+    warn.mockRestore();
   });
 });
 
@@ -208,7 +279,7 @@ describe("POST /api/rfq — the create-args centrepiece (AC4)", () => {
       locale: "ru",
       consent: true,
       consentAt: expect.any(Date),
-      consentVersion: "privacy-2026-08-stub:en",
+      consentVersion: "privacy-2026-08-stub-r2:en",
     });
     // Server-stamped, never client time.
     expect((args.consentAt as Date).getTime()).toBeGreaterThanOrEqual(before);
@@ -234,7 +305,7 @@ describe("POST /api/rfq — the create-args centrepiece (AC4)", () => {
       locale: "ru",
       consent: true,
       consentAt: expect.any(Date),
-      consentVersion: "privacy-2026-08-stub:en",
+      consentVersion: "privacy-2026-08-stub-r2:en",
     });
   });
 
@@ -258,8 +329,14 @@ describe("POST /api/rfq — the create-args centrepiece (AC4)", () => {
     expect(args).not.toHaveProperty("prefillContext");
     expect(args).not.toHaveProperty("attachmentKey");
     expect(args).not.toHaveProperty("website");
-    expect(args.consentVersion).toBe("privacy-2026-08-stub:en");
+    expect(args.consentVersion).toBe("privacy-2026-08-stub-r2:en");
     expect((args.consentAt as Date).getFullYear()).toBeGreaterThan(2000);
+  });
+
+  it("consentVersion carries the ACTUAL uiLocale — a hard-coded ':en' cannot pass (3.2 review)", async () => {
+    const res = await post({ ...VALID, uiLocale: "ru" });
+    expect(res.status).toBe(201);
+    expect(createLead.mock.calls[0][0].consentVersion).toBe("privacy-2026-08-stub-r2:ru");
   });
 
   it("keeps the client label when a catalog slug no longer resolves", async () => {

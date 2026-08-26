@@ -65,7 +65,11 @@ export function fieldAria(id: string, hasError: boolean) {
 export function controlClasses(hasError: boolean, extra = ""): string {
   return [
     "min-h-11 w-full border bg-surface px-3 text-[14px] text-ink",
-    "placeholder:text-muted",
+    // ink-2, not muted (3.2 review): muted measures 3.10:1 on the white card
+    // fill — under AA for 14px text — and the projectDetails placeholder is
+    // genuine guidance, not a decorative example. ink-2 (6.01:1) still reads
+    // as a hint beside the ink-valued entered text.
+    "placeholder:text-ink-2",
     "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent",
     hasError ? "border-error" : "border-muted",
     extra,

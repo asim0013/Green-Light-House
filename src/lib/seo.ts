@@ -93,7 +93,8 @@ export interface ContentSignals {
   itemCount: number;
   /**
    * A route that exists but holds no real content yet — e.g. an Epic 2 category
-   * page shipped before its products are loaded. No caller passes this today.
+   * page shipped before its products are loaded. One caller passes it today:
+   * the `/privacy` consent stub (Story 3.2), which is a placeholder BY INTENT.
    */
   isPlaceholder?: boolean;
   /** Of the page's primary translatable fields, how many resolved via EN fallback. */

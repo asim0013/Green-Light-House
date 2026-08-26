@@ -1,6 +1,11 @@
 import type { Locale, Prisma } from "@prisma/client";
 import { siteOrigin } from "@/lib/seo";
-import { rfqSchema, issueDetails, type RfqInput } from "@/server/rfq/schema";
+import {
+  rfqSchema,
+  issueDetails,
+  PRIVACY_POLICY_VERSION,
+  type RfqInput,
+} from "@/server/rfq/schema";
 import type { LeadEquipmentItem } from "@/server/rfq/contracts";
 import { createLead, type LeadCreateData } from "@/server/repositories/lead";
 import { listIndustries } from "@/server/repositories/industry";
@@ -21,9 +26,17 @@ import { listCategoryTree, type CategoryTreeNode } from "@/server/repositories/c
  *      grants one (no CORS headers anywhere here — that absence is load-bearing).
  *   2. Origin check (architecture:68) → 403. Present-and-mismatched is rejected
  *      and logged; ABSENT is allowed (curl, server-to-server, the e2e's direct
- *      POSTs carry no Origin). Compared against `siteOrigin()`, never the Host
- *      header — Host/X-Forwarded-Host trust is Story 3.7a's written
- *      trusted-proxy policy and must not be half-implemented here.
+ *      POSTs carry no Origin). CANONICAL-origin comparison, never raw strings
+ *      (3.2 review): browsers send the Origin header lowercased and without
+ *      default ports, so a raw compare against a legal SITE_URL spelling
+ *      ("https://GLH.example", ":443") would 403 every real buyer — a silent,
+ *      total funnel outage. DISCLOSED AC3 DEVIATION: AC3 says "does not match
+ *      the request host", but this compares against `siteOrigin()` (SITE_URL),
+ *      deliberately — trusting the request's Host/X-Forwarded-Host is exactly
+ *      the trusted-proxy policy Story 3.7a owns, and half-implementing it here
+ *      would let a spoofed Host defeat the check. A deployment whose serving
+ *      origin differs from SITE_URL rejects browser POSTs; SITE_URL being
+ *      right is already load-bearing for every canonical/hreflang on the site.
  *   3. self-imposed 64 KB body cap → 413. Route handlers have NO built-in limit
  *      (`bodySizeLimit` is Server-Actions-only): Content-Length is checked
  *      first, then the stream is read with a byte counter because chunked
@@ -44,19 +57,30 @@ import { listCategoryTree, type CategoryTreeNode } from "@/server/repositories/c
  *     shared zod schema STRIPS it, so read it from the raw parse, after guard
  *     4). A honeypot hit returns THIS route's exact success shape —
  *     `{ reference }`, 201 — with NO row written; 3.7a owns the fabrication
- *     strategy for that fake reference.
+ *     strategy for that fake reference. ⚠️ TREAT A FILLED HONEYPOT AS A SOFT
+ *     SIGNAL, not an unconditional silent drop (3.2 review): Chrome ignores
+ *     `autocomplete="off"`, and profile-autofill on a form whose real fields
+ *     carry name/organization/email/tel tokens can populate a labeled
+ *     "Website" input for a REAL buyer — a silent drop would eat their lead.
  * Neither exists in 3.2: no limiter, no counter, no 429, by the sprint
  * proposal's split (3.7a is merge-gated to this story on the same branch).
  * ─────────────────────────────────────────────────────────────────────────────
  *
- * After validation, the handler resolves against the DB (guards passed, so
- * these reads are not attacker-amplified beyond one bounded submission):
- * `industry` must be a real PID slug (`listIndustries` — AC2), and
- * `product`/`category` equipment labels are re-resolved to display names at
- * submit time where resolvable (AC4 snapshot semantics; the buyer-typed label
- * survives only when the slug no longer resolves). In 3.2 the form itself only
- * emits `freeText` items — the catalog kinds arrive with Story 3.4's pre-fill —
- * but a direct POST may send them today, so the endpoint handles them today.
+ * After validation, the handler resolves against the DB: `industry` must be a
+ * real PID slug (`listIndustries` — AC2), and `product`/`category` equipment
+ * labels are re-resolved to display names at submit time where resolvable (AC4
+ * snapshot semantics; the buyer-typed label survives only when the slug no
+ * longer resolves). In 3.2 the form itself only emits `freeText` items — the
+ * catalog kinds arrive with Story 3.4's pre-fill — but a direct POST may send
+ * them today, so the endpoint handles them today.
+ *
+ * HONEST COST ACCOUNTING (3.2 review — an earlier draft claimed "not
+ * attacker-amplified", which was wrong): per-REQUEST cost is bounded (≤20
+ * validated items, catalog slugs deduplicated before resolution so one slug
+ * costs one lookup) but request RATE is not, until 3.7a's limiter merges.
+ * Unknown-but-valid-shaped product slugs each mint a cached-null id-hop entry
+ * (the 2.2 slug-gate bounds shape, never cardinality) — the limiter is what
+ * bounds the minting rate.
  */
 
 /** AC3's self-imposed cap. Attachments are 3.7b's and arrive multipart — 415'd. */
@@ -125,17 +149,40 @@ async function resolveEquipment(
     ? await listCategoryTree(locale)
     : [];
 
-  return Promise.all(
-    items.map(async (item): Promise<LeadEquipmentItem> => {
-      if (item.kind === "freeText") return { kind: "freeText", text: item.text };
-      if (item.kind === "product") {
-        const product = await getProductBySlug(item.slug, locale);
-        return { kind: "product", slug: item.slug, label: product?.name ?? item.label };
-      }
-      const category = findCategory(categoryTree, item.slug);
-      return { kind: "category", slug: item.slug, label: category?.name ?? item.label };
-    }),
+  // DISTINCT product slugs resolve once (3.2 review): 20 copies of one
+  // attacker-chosen slug must cost one lookup, not 20 parallel query pairs.
+  const productSlugs = [...new Set(items.filter((i) => i.kind === "product").map((i) => i.slug))];
+  const productNames = new Map<string, string | null>(
+    await Promise.all(
+      productSlugs.map(async (slug): Promise<[string, string | null]> => {
+        const product = await getProductBySlug(slug, locale);
+        return [slug, product?.name ?? null];
+      }),
+    ),
   );
+
+  return items.map((item): LeadEquipmentItem => {
+    if (item.kind === "freeText") return { kind: "freeText", text: item.text };
+    if (item.kind === "product") {
+      return { kind: "product", slug: item.slug, label: productNames.get(item.slug) ?? item.label };
+    }
+    const category = findCategory(categoryTree, item.slug);
+    return { kind: "category", slug: item.slug, label: category?.name ?? item.label };
+  });
+}
+
+/**
+ * Canonical-origin equality (3.2 review): both sides pass through
+ * `new URL(...).origin`, so case, default ports and any trailing path in
+ * SITE_URL cannot 403 a legitimate browser. An unparseable Origin — including
+ * the literal `"null"` an opaque context sends — fails closed.
+ */
+function originAllowed(origin: string): boolean {
+  try {
+    return new URL(origin).origin === new URL(siteOrigin()).origin;
+  } catch {
+    return false;
+  }
 }
 
 export async function POST(request: Request) {
@@ -147,8 +194,9 @@ export async function POST(request: Request) {
 
   // Guard 2 — Origin: present-and-mismatched → reject + log; absent → allow.
   const origin = request.headers.get("origin");
-  if (origin !== null && origin !== siteOrigin()) {
-    console.warn(`[rfq] cross-origin POST rejected (origin ${origin})`);
+  if (origin !== null && !originAllowed(origin)) {
+    // Truncated: the header is attacker-controlled and unbounded.
+    console.warn(`[rfq] cross-origin POST rejected (origin ${origin.slice(0, 200)})`);
     return fail(403, "invalid_origin", "Cross-origin submissions are not accepted.");
   }
 
@@ -167,6 +215,13 @@ export async function POST(request: Request) {
     json = JSON.parse(body);
   } catch {
     return fail(422, "invalid_body", "Request body is not valid JSON.");
+  }
+
+  // A valid-JSON non-object (`[]`, `null`, `"x"`) must die HERE: handing it to
+  // zod would leak the library's English "expected object" sentence where the
+  // envelope promises stable keys (3.2 review).
+  if (typeof json !== "object" || json === null || Array.isArray(json)) {
+    return fail(422, "invalid_body", "Request body must be a JSON object.");
   }
 
   // ── 3.7a seam: the honeypot check reads `website` off `json` HERE — after the
@@ -220,9 +275,9 @@ export async function POST(request: Request) {
     // Server-stamped, never client time (AC4).
     consentAt: new Date(),
     // Task 0 #8: the consent-TEXT locale rides here; `locale` above stays the
-    // preferred reply language. The version prefix changes when Story 5.1
-    // replaces the stub with the real policy.
-    consentVersion: `privacy-2026-08-stub:${input.uiLocale}`,
+    // preferred reply language. The version half is the SHARED constant the
+    // /privacy page renders — bumped together or not at all (FR44).
+    consentVersion: `${PRIVACY_POLICY_VERSION}:${input.uiLocale}`,
   };
 
   let created;

@@ -4,6 +4,7 @@ import { setRequestLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { alternatesFor, robotsFor } from "@/lib/seo";
+import { PRIVACY_POLICY_VERSION } from "@/server/rfq/schema";
 import { CONTAINER } from "@/components/layout/container";
 
 /**
@@ -12,11 +13,13 @@ import { CONTAINER } from "@/components/layout/container";
  *
  * ⚠️ STORY 5.1 REPLACES THIS FILE with the full legal set. Until then:
  *
- * - The version token `privacy-2026-08-stub` is LOAD-BEARING: `POST /api/rfq`
- *   stamps `Lead.consentVersion` with it (plus the UI locale), so FR44's "which
- *   policy text was shown" has an honest answer. Any wording change to the
- *   `Legal` namespace must bump the token IN BOTH PLACES (here via messages,
- *   and the prefix in `src/app/api/rfq/route.ts`).
+ * - The version token is LOAD-BEARING: `POST /api/rfq` stamps
+ *   `Lead.consentVersion` with it (plus the UI locale), so FR44's "which
+ *   policy text was shown" has an honest answer. It is ONE shared constant —
+ *   `PRIVACY_POLICY_VERSION` in `@/server/rfq/schema` — consumed here and by
+ *   the route, so the two cannot drift; any wording change to the `Legal`
+ *   namespace must bump that constant (the 3.2 review's `-r2` bump, adding
+ *   `industry`/`timeline` to the disclosure, is the worked example).
  * - `noindex` BY INTENT, and absent from the sitemap: a legal placeholder is
  *   thin content on purpose. The signal is `isPlaceholder` — the honest FR42a
  *   reason — declared inline because both surfaces (this robots tag, the
@@ -32,7 +35,7 @@ import { CONTAINER } from "@/components/layout/container";
 export const dynamic = "force-dynamic";
 
 /** What `Lead.consentVersion` is minted from — see the docstring. */
-const POLICY_VERSION = "privacy-2026-08-stub";
+const POLICY_VERSION = PRIVACY_POLICY_VERSION;
 
 export async function generateMetadata(props: {
   params: Promise<{ locale: string }>;

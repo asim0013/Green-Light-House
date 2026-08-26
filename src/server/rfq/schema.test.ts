@@ -114,4 +114,31 @@ describe("rfqSchema", () => {
     expect(rfqSchema.safeParse({ ...VALID, consent: "true" }).success).toBe(false);
     expect(rfqSchema.safeParse({ ...VALID, consent: 1 }).success).toBe(false);
   });
+
+  it("email is trimmed before the format check — the phone-keyboard trailing space", () => {
+    const parsed = rfqSchema.safeParse({ ...VALID, email: "  elena@enka.example  " });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.email).toBe("elena@enka.example");
+  });
+
+  it("hostile code points are rejected with the `invalid` key on every text field", () => {
+    // NUL and lone surrogates break the Prisma insert itself; bidi overrides
+    // spoof what the 4.7 admin reads. Rejected at the boundary, never stripped.
+    const hostile = [
+      { name: "Elena\u0000Petrova" },
+      { company: "Enka\u202Egpj.exe" },
+      { projectDetails: "x\uD800y" },
+      { quantities: "12\u0001units" },
+      { equipment: [{ kind: "freeText", text: "crane\u2066" }] },
+    ];
+    for (const overlay of hostile) {
+      const details = keysFor({ ...VALID, ...overlay });
+      expect(details.length, JSON.stringify(overlay)).toBeGreaterThan(0);
+      for (const detail of details) expect(detail.key).toBe("invalid");
+    }
+    // Legitimate whitespace survives: a multi-line projectDetails is a textarea.
+    expect(
+      rfqSchema.safeParse({ ...VALID, projectDetails: "line one\nline two\ttabbed" }).success,
+    ).toBe(true);
+  });
 });

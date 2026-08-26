@@ -6,6 +6,10 @@ import { defineConfig, devices } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "./e2e",
+  // The leads pollution gate (Story 3.2): sweeps `zzz-e2e-lead-` leftovers and
+  // reports the census AFTER all workers finish — the one place a whole-prefix
+  // sweep cannot race an in-flight worker.
+  globalTeardown: "./e2e/global-teardown.ts",
   // The caching proof must run against the server AS DEPLOYED (production build,
   // `next start`) and mutates shared seeded rows, so it runs serially from
   // `playwright.caching.config.ts` via `npm run test:e2e:caching`.

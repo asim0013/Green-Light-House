@@ -110,7 +110,17 @@ export function RfqForm({
   const t = useTranslations("Rfq");
   const [reference, setReference] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [announcement, setAnnouncement] = useState("");
+  // The nonce makes IDENTICAL consecutive announcements re-announce (3.2
+  // review): a bare string state bails out on Object.is-equal sets, and an
+  // unchanged text node is no DOM mutation — aria-live announces mutations
+  // only. The nonce keys the text node, so every announce replaces it.
+  const [announcement, setAnnouncement] = useState({ text: "", nonce: 0 });
+  // The equipment ADD input's draft lives HERE, not in EquipmentChips (3.2
+  // review): submit must be able to commit a typed-but-unchipped draft — the
+  // buyer who types "20 t overhead crane" and clicks Send without pressing
+  // Add must not silently lose the one thing they named.
+  const [equipmentDraft, setEquipmentDraft] = useState("");
+  const equipmentInputRef = useRef<HTMLInputElement>(null);
   const honeypotRef = useRef<HTMLInputElement>(null);
 
   const normalize = useCallback(
@@ -178,7 +188,25 @@ export function RfqForm({
     return key ? t(`errors.${key}`) : undefined;
   };
 
-  const announce = (message: string) => setAnnouncement(message);
+  const announce = (message: string) =>
+    setAnnouncement((current) => ({ text: message, nonce: current.nonce + 1 }));
+
+  /** Append one freeText chip. Revalidates only while an equipment error is
+   *  showing, so fixing it clears the message without premature validation. */
+  const addEquipmentChip = (text: string) => {
+    setValue("equipment", [...equipment, { kind: "freeText", text }], {
+      shouldValidate: !!errors.equipment,
+    });
+    announce(t("equipmentAdded", { label: text }));
+  };
+
+  /** Commit a non-empty draft as a chip. Runs on Add AND at submit. */
+  const commitDraft = () => {
+    const text = equipmentDraft.trim();
+    if (!text) return;
+    addEquipmentChip(text);
+    setEquipmentDraft("");
+  };
 
   const onValid = async (data: RfqInput) => {
     setSubmitError(null);
@@ -200,21 +228,32 @@ export function RfqForm({
           error?: { details?: { path: string; key: string }[] };
         } | null;
         const details = body?.error?.details ?? [];
-        const landed = new Set<FieldName>();
+        // DOM order, not zod issue order (3.2 review): FIELD_NAMES is declared
+        // in render order, so "first invalid" means what a sighted user sees.
+        const byField = new Map<FieldName, string>();
         for (const detail of details) {
           const field = detail.path.split(".")[0];
-          if (!isFieldName(field) || landed.has(field)) continue;
+          if (isFieldName(field) && !byField.has(field)) byField.set(field, detail.key);
+        }
+        let first = true;
+        for (const field of FIELD_NAMES) {
+          const key = byField.get(field);
+          if (key === undefined) continue;
           setError(
             field,
-            { type: "server", message: detail.key },
+            { type: "server", message: key },
             // Focus the FIRST invalid control — the server path does not go
-            // through the resolver, so shouldFocusError cannot do it.
-            { shouldFocus: landed.size === 0 },
+            // through the resolver, so shouldFocusError cannot do it. For the
+            // ref-less equipment field, setError's shouldFocus silently
+            // no-ops (RHF guards on a registered ref — 3.2 review), so the
+            // add input is focused directly.
+            { shouldFocus: first && field !== "equipment" },
           );
-          landed.add(field);
+          if (first && field === "equipment") equipmentInputRef.current?.focus();
+          first = false;
         }
-        if (landed.size > 0) {
-          announce(t("errorsSummary", { count: landed.size }));
+        if (byField.size > 0) {
+          announce(t("errorsSummary", { count: byField.size }));
           return;
         }
       }
@@ -229,21 +268,38 @@ export function RfqForm({
   };
 
   const onInvalid = (invalid: Record<string, unknown>) => {
-    announce(t("errorsSummary", { count: Object.keys(invalid).length }));
+    // RHF's own shouldFocusError only reaches REGISTERED fields; when
+    // equipment (setValue-driven, ref-less) is the sole error, nothing else
+    // will take focus, so the add input is focused here. RHF's focus pass
+    // runs AFTER this callback and only touches registered invalid fields,
+    // so the two cannot fight over the same submit (3.2 review).
+    const fields = Object.keys(invalid);
+    if (fields.length === 1 && fields[0] === "equipment") {
+      equipmentInputRef.current?.focus();
+    }
+    announce(t("errorsSummary", { count: fields.length }));
   };
 
   return (
     <div>
-      {/* Mounted from first render, empty until it has news — see docstring. */}
+      {/* Mounted from first render, empty until it has news — see docstring.
+          The keyed span makes each announcement a NODE REPLACEMENT, so
+          repeating the same text still mutates the region (3.2 review). */}
       <div role="status" aria-atomic="true" className="sr-only">
-        {announcement}
+        {announcement.text ? <span key={announcement.nonce}>{announcement.text}</span> : null}
       </div>
 
       {reference ? (
         <RfqConfirmation reference={reference} />
       ) : (
         <form
-          onSubmit={handleSubmit(onValid, onInvalid)}
+          onSubmit={(event) => {
+            // A typed-but-unchipped equipment draft commits at submit — see
+            // the draft-state note above. setValue is synchronous into RHF's
+            // store, so the resolver run inside handleSubmit sees the chip.
+            commitDraft();
+            return handleSubmit(onValid, onInvalid)(event);
+          }}
           noValidate
           className="flex flex-col gap-5"
         >
@@ -288,12 +344,16 @@ export function RfqForm({
             <Field id="rfq-equipment" label={t("equipmentLabel")} error={errorText("equipment")}>
               <EquipmentChips
                 inputId="rfq-equipment"
+                inputRef={equipmentInputRef}
                 items={equipment}
-                onAdd={(text) => setValue("equipment", [...equipment, { kind: "freeText", text }])}
+                draft={equipmentDraft}
+                onDraftChange={setEquipmentDraft}
+                onCommit={commitDraft}
                 onRemove={(index) =>
                   setValue(
                     "equipment",
                     equipment.filter((_, i) => i !== index),
+                    { shouldValidate: !!errors.equipment },
                   )
                 }
                 announce={announce}

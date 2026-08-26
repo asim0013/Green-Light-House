@@ -44,14 +44,76 @@ export const TIMELINE_KEYS = ["asap", "1-3m", "3-6m", "6m-plus", "exploring"] as
 
 export type TimelineKey = (typeof TIMELINE_KEYS)[number];
 
-/** Bounded free text: trimmed, capped, and empty-after-trim is rejected. */
-function requiredText(max: number) {
-  return z.string("required").trim().min(1, "required").max(max, "tooLong");
+/**
+ * Which privacy-policy text `consentVersion` cites (Task 0 #8 / FR44) — ONE
+ * constant consumed by the /privacy page's version line AND the endpoint's
+ * `consentVersion` stamp, so the two can never drift. BUMP THIS whenever the
+ * `Legal` namespace's wording changes (the /privacy docstring carries the
+ * rule). `-r2`: the 3.2 review added `industry` and `timeline` to the
+ * disclosure — they were stored but undeclared.
+ */
+export const PRIVACY_POLICY_VERSION = "privacy-2026-08-stub-r2";
+
+/**
+ * Code points no legitimate buyer input contains, and which this stack cannot
+ * store or render honestly (3.2 review, HIGH): U+0000 and most C0/DEL break the
+ * Prisma insert itself (Postgres 22021/22P05 — a hostile body would mint the
+ * 500 this route reserves for "Postgres down"), and the bidi embedding/override
+ * set (U+202A–202E, U+2066–2069) lets a stored label visually spoof what
+ * Story 4.7's admin reads. `\t`, `\n`, `\r` stay legal — projectDetails is a
+ * textarea. Rejected (422 `invalid`), never stripped: "sanitized but never
+ * corrected" means we refuse hostile bytes, we do not silently alter text.
+ */
+const HOSTILE_CODEPOINTS =
+  /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u202A-\u202E\u2066-\u2069]/;
+
+/**
+ * Lone-surrogate scan, as a function rather than a lookbehind regex: this
+ * module ships in the CLIENT bundle, and a lookbehind literal throws at parse
+ * time on older engines — taking the whole form down to reject an edge case.
+ * A lone surrogate cannot serialize to UTF-8, so Prisma throws pre-query.
+ */
+function hasLoneSurrogate(value: string): boolean {
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(i + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return true;
+      i++;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      return true;
+    }
+  }
+  return false;
 }
 
-/** Bounded optional free text. `""` survives parsing; the handler stores null. */
+function isStorableText(value: string): boolean {
+  return !HOSTILE_CODEPOINTS.test(value) && !hasLoneSurrogate(value);
+}
+
+/** Bounded free text: trimmed, capped, empty-after-trim rejected, hostile
+ *  code points rejected (see `HOSTILE_CODEPOINTS`). */
+function requiredText(max: number) {
+  return z
+    .string("required")
+    .trim()
+    .min(1, "required")
+    .max(max, "tooLong")
+    .refine(isStorableText, "invalid");
+}
+
+/** Bounded optional free text. `""` survives parsing; the handler stores null.
+ *  NOTE FOR DIRECT CALLERS (the client's `normalize` hides this): empty strings
+ *  are valid-and-nulled on free-text optionals but 422-`invalid` on the
+ *  slug/enum optionals (`industry`, `timeline`) — send `undefined`/omit for
+ *  "absent", never `""`. */
 function optionalText(max: number) {
-  return z.string("invalid").trim().max(max, "tooLong").optional();
+  return z
+    .string("invalid")
+    .trim()
+    .max(max, "tooLong")
+    .refine(isStorableText, "invalid")
+    .optional();
 }
 
 /**
@@ -104,7 +166,12 @@ export const rfqSchema = z.object({
   quantities: optionalText(1000),
   name: requiredText(200),
   company: requiredText(200),
-  email: z.email("email").max(320, "tooLong"),
+  // Pre-trimmed: a trailing space (the phone-keyboard autocomplete gift) must
+  // not reject an otherwise valid address (3.2 review).
+  email: z.preprocess(
+    (value) => (typeof value === "string" ? value.trim() : value),
+    z.email("email").max(320, "tooLong"),
+  ),
   phone: optionalText(40),
   country: optionalText(120),
   locale: z.enum(routing.locales, "invalid"),

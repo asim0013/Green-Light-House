@@ -13,9 +13,12 @@ const { routing } = await import("@/i18n/routing");
 
 describe("rfqSignals", () => {
   it("is indexable in ALL THREE locales — the Task 0 #9 decision, pinned", () => {
-    // The page's robots tag AND the sitemap's three /rfq entries both rest on
-    // this. If the signals ever start deriving from DB inputs (the industry
-    // list is an INPUT, not content), this goes red and the decision resurfaces.
+    // This pins the PREDICATE only. The page-side wiring (that the rendered
+    // /rfq actually declares index,follow) is a separate proof —
+    // e2e/rfq.spec.ts's robots-meta test — because deleting the page's
+    // `robots:` line would keep this test green (3.2 review). If the signals
+    // ever start deriving from DB inputs (the industry list is an INPUT, not
+    // content), this goes red and the decision resurfaces.
     for (const locale of routing.locales) {
       expect(isIndexable(rfqSignals(locale)), locale).toBe(true);
     }

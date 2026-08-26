@@ -1,17 +1,24 @@
+import { createRef } from "react";
 import { describe, it, expect, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import en from "../../../messages/en.json";
 
 /**
  * Render-level contract of the RFQ form island (Story 3.2, AC5/AC6).
  *
- * ⚠️ HONEST SCOPE (AC12b): `renderToStaticMarkup` proves the INITIAL MARKUP —
- * labels, aria wiring, autocomplete tokens, the honeypot's anatomy, the live
- * region's presence from first render. It CANNOT exercise interactivity: blur
- * validation, focus management, the submit fetch, the confirmation swap and
- * chip add/remove behavior are proven by the resolver unit tests
- * (`@/lib/zod-resolver.test.ts`) and the e2e suite (`e2e/rfq.spec.ts`), not
- * here. An assertion in this file about behavior would be a test that cannot
- * fail — say what is proven, prove what is said.
+ * ⚠️ HONEST SCOPE (AC12b, corrected in the 3.2 review — the first version of
+ * this note claimed e2e coverage that did not exist, the project's signature
+ * failure mode): `renderToStaticMarkup` proves the INITIAL MARKUP — labels,
+ * aria wiring, autocomplete tokens, the honeypot's anatomy, the live region's
+ * presence from first render. Interactivity is proven elsewhere, PRECISELY:
+ * the resolver unit tests prove validation verdicts; `e2e/rfq.spec.ts` proves
+ * submit, the confirmation swap, focus-to-first-invalid, blur-triggered
+ * validation, chip add (Enter), chip REMOVE with focus-to-add-input and the
+ * removal announcement, and the draft-commit-at-submit path. STILL UNPROVEN
+ * anywhere: the multi-chip remove focus chain (focus moving to the NEXT
+ * chip's remove button — only the last-chip → add-input leg is e2e-covered).
+ * An assertion in this file about behavior would be a test that cannot fail —
+ * say what is proven, prove what is said.
  */
 
 vi.mock("next-intl", () => ({
@@ -80,8 +87,8 @@ describe("RfqForm — initial markup", () => {
 
   it("mounts the polite live region EMPTY from first render", () => {
     const html = render();
-    expect(html).toContain('role="status"');
-    expect(html).toContain('aria-atomic="true"');
+    // Present AND empty (3.2 review: the emptiness half was unasserted).
+    expect(html).toMatch(/<div role="status" aria-atomic="true"[^>]*><\/div>/);
     // Polite, not assertive — focus-to-first-invalid announces itself.
     expect(html).not.toContain('aria-live="assertive"');
     expect(html).not.toContain('role="alert"');
@@ -96,9 +103,12 @@ describe("RfqForm — initial markup", () => {
     expect(hidden).toContain('for="rfq-website"');
     expect(hidden).not.toContain("display:none");
     // Off-screen via clip, never the HTML `hidden` attribute (autofillers skip
-    // display:none/hidden fields, which would blind the trap).
+    // display:none/hidden fields, which would blind the trap). React
+    // serializes a boolean attribute as `hidden=""` — the first version of
+    // this regex demanded ` hidden[ >]` and could never fail (3.2 review;
+    // negative-proven by adding `hidden` to the input and watching it go red).
     expect(hidden).toContain("[clip:rect(0,0,0,0)]");
-    expect(hidden).not.toMatch(/<(input|div|label)[^>]* hidden[ >]/);
+    expect(hidden).not.toMatch(/<(input|div|label)[^>]* hidden(=""|=| |>)/);
   });
 
   it("the ONLY autocomplete=off on the page is the honeypot's", () => {
@@ -148,9 +158,16 @@ describe("RfqForm — initial markup", () => {
   });
 
   it("submit is the canvas verb with the note beside it", () => {
+    // Under the echo-translator mock, asserting rendered text only pins the
+    // KEY (tautological — 3.2 review). The markup half proves the key is
+    // rendered in the button; the REAL en.json half pins the canvas strings.
     const html = render();
     expect(html).toContain("submit</button>");
     expect(html).toContain("submitNote");
+    expect(en.Rfq.submit).toBe("Send project inquiry");
+    expect(en.Rfq.consent).toBe(
+      "I agree that GREENLIGHTHOUSE may process the details above to respond to my inquiry, per the Privacy Policy. We never gate documents or sell your data.",
+    );
   });
 });
 
@@ -159,8 +176,11 @@ describe("EquipmentChips — chips markup", () => {
     const html = renderToStaticMarkup(
       <EquipmentChips
         inputId="rfq-equipment"
+        inputRef={createRef<HTMLInputElement>()}
         items={[{ kind: "freeText", text: "20 t overhead crane" }]}
-        onAdd={() => {}}
+        draft=""
+        onDraftChange={() => {}}
+        onCommit={() => {}}
         onRemove={() => {}}
         announce={() => {}}
       />,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import { X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { buttonClasses } from "@/components/ui/buttonClasses";
@@ -16,32 +16,45 @@ import { controlClasses } from "./Field";
  * `Chip` primitive, whose `max-sm:` sizing would silently fail the floor on
  * desktop (AC6).
  *
+ * CONTROLLED, DELIBERATELY (3.2 review): the draft text and the add-input ref
+ * are the PARENT's, because submit must be able to commit a typed-but-
+ * unchipped draft (silently dropping it lost the one thing the buyer named)
+ * and the focus machinery must be able to land on this input when equipment is
+ * the first invalid field (it is setValue-driven and ref-less to RHF, so
+ * RHF's own focus pass can never reach it).
+ *
  * Focus on remove NEVER falls to `<body>`: it moves to the next chip's remove
- * button, else the previous one, else the add input — and the removal is
- * announced through the form's shared live region (`announce`), because the
- * focused element after removal is a DIFFERENT chip and says nothing about the
- * one that vanished.
+ * button, else the previous one, else the add input. Both add and remove are
+ * announced through the form's shared live region — the focused element after
+ * either says nothing about what just changed.
  */
 export function EquipmentChips({
   inputId,
+  inputRef,
   items,
-  onAdd,
+  draft,
+  onDraftChange,
+  onCommit,
   onRemove,
   announce,
   hasError = false,
 }: {
   /** The id the card's EQUIPMENT `<label>` points at (the add input). */
   inputId: string;
+  /** Parent-owned ref to the add input — the focus target for equipment errors. */
+  inputRef: RefObject<HTMLInputElement | null>;
   items: readonly { kind: "freeText"; text: string }[];
-  onAdd: (text: string) => void;
+  /** Parent-owned draft text (committed by Add, Enter, or form submit). */
+  draft: string;
+  onDraftChange: (draft: string) => void;
+  /** Commit the current draft as a chip (parent trims/ignores empty). */
+  onCommit: () => void;
   onRemove: (index: number) => void;
   announce: (message: string) => void;
   /** Array-level validation state — wires the add input's aria to Field's error. */
   hasError?: boolean;
 }) {
   const t = useTranslations("Rfq");
-  const [draft, setDraft] = useState("");
-  const addInputRef = useRef<HTMLInputElement>(null);
   const removeRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const pendingFocus = useRef<number | null>(null);
 
@@ -51,16 +64,8 @@ export function EquipmentChips({
     const target = removeRefs.current[pendingFocus.current];
     pendingFocus.current = null;
     if (target) target.focus();
-    else addInputRef.current?.focus();
-  }, [items.length]);
-
-  function add() {
-    const text = draft.trim();
-    if (!text) return;
-    onAdd(text);
-    setDraft("");
-    addInputRef.current?.focus();
-  }
+    else inputRef.current?.focus();
+  }, [items.length, inputRef]);
 
   function remove(index: number) {
     const label = items[index]?.text ?? "";
@@ -97,16 +102,16 @@ export function EquipmentChips({
       )}
       <div className="flex gap-2">
         <input
-          ref={addInputRef}
+          ref={inputRef}
           id={inputId}
           type="text"
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => onDraftChange(event.target.value)}
           onKeyDown={(event) => {
             // Enter adds the chip instead of submitting the whole form.
             if (event.key === "Enter") {
               event.preventDefault();
-              add();
+              onCommit();
             }
           }}
           aria-invalid={hasError || undefined}
@@ -116,7 +121,7 @@ export function EquipmentChips({
         {/* The canvas string carries its own "+" — no icon, or it doubles. */}
         <button
           type="button"
-          onClick={add}
+          onClick={onCommit}
           className={buttonClasses("secondary", "shrink-0 whitespace-nowrap")}
         >
           {t("equipmentAdd")}

@@ -145,7 +145,12 @@ export type LeadEquipmentItem =
        *  first-class case, not an error: GLH supplies well beyond what is
        *  listed, which is the whole premise of the RFQ. */
       kind: "freeText";
-      /** Exactly what the buyer typed, sanitized but never "corrected". */
+      /** Exactly what the buyer typed — never "corrected". What "sanitized"
+       *  means here, precisely (3.2 review — an earlier draft claimed
+       *  sanitization that did not exist): the write boundary
+       *  (`./schema.ts`) REJECTS hostile code points (NUL/C0, bidi
+       *  overrides, lone surrogates) with a 422 rather than stripping them;
+       *  text that stores is stored verbatim. */
       text: string;
     };
 

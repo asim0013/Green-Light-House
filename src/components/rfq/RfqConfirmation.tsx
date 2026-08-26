@@ -35,7 +35,10 @@ export function RfqConfirmation({ reference }: { reference: string }) {
       <h2
         ref={headingRef}
         tabIndex={-1}
-        className="font-heading text-2xl font-bold tracking-tight text-ink focus-visible:outline-hidden"
+        // The house ring, not bare outline suppression (3.2 review): after a
+        // keyboard-driven submit this focus IS keyboard-mode, and a sighted
+        // keyboard user needs to see where focus landed once the form vanished.
+        className="font-heading text-2xl font-bold tracking-tight text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
       >
         {t("confirmTitle")}
       </h2>

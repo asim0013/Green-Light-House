@@ -165,6 +165,7 @@
     "equipmentAdd": "+ Add equipment",
     "equipmentRemove": "Remove {label}",
     "equipmentRemoved": "{label} removed",
+    "equipmentAdded": "{label} added",
     "quantitiesLabel": "Quantities",
     "projectDetailsLabel": "Project description",
     "projectDetailsPlaceholder": "Scope, standards, site conditions, delivery location…",
@@ -203,7 +204,7 @@
     "title": "Privacy Policy",
     "version": "Policy version: {version}",
     "intro": "This is a provisional summary of how GREENLIGHTHOUSE handles the details you submit, in place until the full legal pages are published.",
-    "collect": "When you send a project inquiry, we store what you enter in the form: your name, company, work email, and any project description, equipment, quantities, phone number, country and preferred reply language you provide — together with the time of your consent and the version of this text you were shown.",
+    "collect": "When you send a project inquiry, we store what you enter in the form: your name, company, work email, and any industry, timeline, project description, equipment, quantities, phone number, country and preferred reply language you provide — together with the time of your consent and the version of this text you were shown.",
     "use": "We use these details for one purpose: to review your project and reply with a technical review and a specced proposal. We never gate documents behind forms and we never sell your data.",
     "retention": "Inquiries are kept as business records for as long as the project may reasonably need follow-up. To ask about, correct or remove your details, call us — the number is in the footer of every page."
   },

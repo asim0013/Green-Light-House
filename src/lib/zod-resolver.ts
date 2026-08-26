@@ -15,11 +15,14 @@ import type { z } from "zod";
  * - `message` carries the schema's STABLE ERROR KEY, never prose — render it
  *   through `t(`errors.${key}`)` (the shared-schema localization doctrine in
  *   `@/server/rfq/schema.ts`).
- * - Errors land on the TOP-LEVEL field (`issue.path[0]`): every registered RFQ
- *   field is top-level, and mapping a nested path (`equipment.2.text`) onto its
- *   parent guarantees the error reaches a field that exists in the DOM — which
- *   is what `shouldFocusError` needs to land focus somewhere real. First issue
- *   per field wins.
+ * - Errors land on the TOP-LEVEL field (`issue.path[0]`): mapping a nested
+ *   path (`equipment.2.text`) onto its parent guarantees the error reaches a
+ *   field the FORM can render. ⚠️ It does NOT guarantee focus (3.2 review
+ *   correction — an earlier draft claimed it did): `shouldFocusError` and
+ *   `setError`'s focus option only reach REGISTERED fields, and a
+ *   setValue-driven field like the RFQ's `equipment` has no ref — the consumer
+ *   must focus such fields explicitly (RfqForm focuses its add input). First
+ *   issue per field wins.
  * - On success the resolver returns the schema's PARSED OUTPUT (trimmed,
  *   defaulted, transformed), so `handleSubmit(onValid)` receives exactly what
  *   the endpoint's own `safeParse` would produce — one validation truth.

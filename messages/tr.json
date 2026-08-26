@@ -165,6 +165,7 @@
     "equipmentAdd": "+ Ekipman ekleyin",
     "equipmentRemove": "Kaldırın: {label}",
     "equipmentRemoved": "{label} kaldırıldı",
+    "equipmentAdded": "{label} eklendi",
     "quantitiesLabel": "Miktarlar",
     "projectDetailsLabel": "Proje açıklaması",
     "projectDetailsPlaceholder": "Kapsam, standartlar, saha koşulları, teslim yeri…",
@@ -203,7 +204,7 @@
     "title": "Gizlilik Politikası",
     "version": "Politika sürümü: {version}",
     "intro": "Bu sayfa, tam hukuki metinler yayımlanana kadar geçerli olan, GREENLIGHTHOUSE'un gönderdiğiniz bilgileri nasıl kullandığına dair geçici bir özettir.",
-    "collect": "Bir proje talebi gönderdiğinizde formda girdiklerinizi saklarız: adınız, şirketiniz, iş e-postanız ve paylaştığınız proje açıklaması, ekipman, miktarlar, telefon, ülke ve tercih ettiğiniz yanıt dili — onay verdiğiniz zaman ve size gösterilen bu metnin sürümüyle birlikte.",
+    "collect": "Bir proje talebi gönderdiğinizde formda girdiklerinizi saklarız: adınız, şirketiniz, iş e-postanız ve paylaştığınız sektör, zaman planı, proje açıklaması, ekipman, miktarlar, telefon, ülke ve tercih ettiğiniz yanıt dili — onay verdiğiniz zaman ve size gösterilen bu metnin sürümüyle birlikte.",
     "use": "Bu bilgileri tek bir amaçla kullanırız: projenizi incelemek ve teknik değerlendirme ile şartnameli bir teklifle yanıt vermek. Belgeleri forma bağlamayız, verilerinizi satmayız.",
     "retention": "Talepler, projenin takibi makul olarak gerektirdiği sürece ticari kayıt olarak saklanır. Bilgileriniz hakkında soru sormak, düzeltmek veya sildirmek için bizi arayın — numara her sayfanın alt bölümündedir."
   },
