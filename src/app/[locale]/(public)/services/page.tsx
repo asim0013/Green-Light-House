@@ -112,8 +112,8 @@ export default async function ServicesPage(props: { params: Promise<{ locale: st
       </section>
 
       {/* Every surface terminates at the RFQ or the phone (EXPERIENCE.md §
-          Surface closure); `/rfq` is the sanctioned phased-page exception until
-          Story 3.2 builds it.
+          Surface closure); `/rfq` is live since Story 3.2 (the phased-page
+          exception this band shipped under has expired).
 
           DarkBand + TwoColumn, not a hand-rolled light section (2.6 review).
           DESIGN.md § Elevation reserves the full-bleed `ink` band for stat bands,

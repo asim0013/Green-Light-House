@@ -23,9 +23,10 @@ import { SITE } from "@/config/site";
  *
  * ⚠️ THE DOORWAY PROMISES NOTHING IT CANNOT DO YET (Task 0 #3). The canvas puts
  * "We'll open an inquiry pre-filled with this project's scope — swap models,
- * adjust quantities and send" here. Pre-fill is Story 3.4 and `/rfq` itself is
- * Story 3.2, so shipping that sentence now would be a promise the site cannot
- * keep. The LABEL ships; the promise waits.
+ * adjust quantities and send" here. `/rfq` is live since Story 3.2, but
+ * pre-fill is STILL Story 3.4's — 3.2 reads no query params, so the sentence
+ * remains a promise the site cannot keep. The LABEL ships; the promise waits
+ * for 3.4.
  *
  * ⚠️ THE HREF CARRIES `?project=<slug>` ANYWAY (Task 0 #7), which is a different
  * thing from the copy. `project` is already frozen in `PREFILL_PARAMS`, the param

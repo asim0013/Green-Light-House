@@ -106,8 +106,9 @@ test.describe("the catalog page (AC1)", () => {
     await expect(page.locator('article a[href*="/products/"]')).toHaveCount(5);
     await expect(page.locator('article a[href^="/api/documents/"]')).toHaveCount(1);
 
-    // Still absent, and this is the half that never inverts: "Add to inquiry"
-    // waits for Epic 3's RFQ (DP-12 — never link a page that does not exist).
+    // Still absent — but the REASON moved in Story 3.2: /rfq now exists, so
+    // DP-12 no longer forbids the link; the card affordance itself is Story
+    // 3.4's doorway scope. This inverts when 3.4 lands, not before.
     for (const card of await page.locator("article").all()) {
       const cardText = (await card.innerText()).toLowerCase();
       expect(cardText).not.toContain("add to inquiry");

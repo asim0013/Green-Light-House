@@ -10,10 +10,9 @@ import { SITE } from "@/config/site";
  * empty known category, an unknown `?category` value, and (via `variant`) a
  * fully-empty catalog. Never a blank or broken grid.
  *
- * `/rfq` is the sanctioned phased-page exception — the Epic 2 preamble in the
- * epics file explicitly targets the Epic 3 RFQ route from these surfaces, and
- * EXPERIENCE.md § Surface closure requires every path to terminate at the RFQ or
- * the phone. The co-equal phone action rides along (FR31: everywhere the RFQ CTA
+ * `/rfq` is LIVE since Story 3.2 (the Epic 2 "sanctioned phased-page
+ * exception" this docstring used to invoke has expired), and EXPERIENCE.md
+ * § Surface closure requires every path to terminate at the RFQ or the phone. The co-equal phone action rides along (FR31: everywhere the RFQ CTA
  * appears). The mock's "search by model" affordance is Story 2.5's — not faked.
  */
 export function CatalogEmptyState({ variant = "category" }: { variant?: "category" | "catalog" }) {

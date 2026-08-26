@@ -24,10 +24,12 @@ import { buttonClasses } from "@/components/ui/buttonClasses";
  *  - Voice: "advantage, never an apology" — this does not say sorry.
  *  - `muted` fails AA for body text, so the lead uses `text-ink-2` (6.01:1).
  *
- * RECOVERY LINKS ARE DELIBERATELY LIMITED TO WHAT EXISTS. The nav destinations in
- * `src/config/site.ts` and `SITE.rfqHref` are not built until Epics 2/3/5, so
- * offering them here would send a lost visitor from one 404 to another. Home and
- * the phone number both work today. Revisit when `/rfq` lands (Story 3.2).
+ * RECOVERY LINKS ARE DELIBERATELY LIMITED TO WHAT EXISTS. When this froze
+ * (Story 1.6) the nav destinations and `SITE.rfqHref` all 404ed; the freeze
+ * named Story 3.2 as its expiry and 3.2 HAS NOW LANDED `/rfq` (with the nav
+ * routes built across Epic 2/3.1). The links here are still Home + phone —
+ * widening them (an RFQ action on the 404 is the obvious candidate) is a
+ * recorded follow-up in deferred-work.md, not a silent scope-grab by 3.2.
  */
 export function NotFoundContent() {
   const t = useTranslations("NotFound");

@@ -11,7 +11,7 @@ import { routing } from "@/i18n/routing";
  * label is contained in the accessible name (WCAG 2.5.3 "Label in Name"), voice
  * control can say either, and screen readers announce the full language name.
  */
-const LOCALE_LABELS: Record<(typeof routing.locales)[number], string> = {
+export const LOCALE_LABELS: Record<(typeof routing.locales)[number], string> = {
   en: "English",
   tr: "Türkçe",
   ru: "Русский",

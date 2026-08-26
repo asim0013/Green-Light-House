@@ -165,7 +165,8 @@ test.describe("wired surfaces (AC4, AC5)", () => {
     await expect(links).toContainText("Datasheet");
     await expect(links).toContainText("PDF");
 
-    // The OTHER half of the footer still waits for Epic 3 (DP-12).
+    // The OTHER half of the footer still waits — for Story 3.4's doorway
+    // (/rfq itself is live since 3.2, so DP-12 is no longer the reason).
     const visible = await page.locator("body").innerText();
     expect(visible.toLowerCase()).not.toContain("add to inquiry");
     // And still no price anywhere (FR2) — the footer must not have smuggled one in.

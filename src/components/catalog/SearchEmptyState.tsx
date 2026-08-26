@@ -21,9 +21,10 @@ import type { SearchSuggestion } from "@/server/repositories/product";
  * the data mono beside the name.
  *
  * THE RFQ PRE-FILL PARAM IS `q` — recorded as this story's contract with Story
- * 3.4 (doorway pre-fill): `/rfq?q=<encoded query>`. 3.4 reads it; nothing else
- * does yet. `/rfq` itself is the sanctioned phased-page exception (Epic 2
- * preamble). EXPERIENCE.md:82's register: "we may still supply it — request it".
+ * 3.4 (doorway pre-fill): `/rfq?q=<encoded query>`. `/rfq` is LIVE since Story
+ * 3.2, but 3.2 deliberately reads NO query params, so the value is accepted and
+ * DROPPED until 3.4 wires pre-fill — that window is disclosed, not a defect.
+ * EXPERIENCE.md:82's register: "we may still supply it — request it".
  */
 export function SearchEmptyState({
   query,

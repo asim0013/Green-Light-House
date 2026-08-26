@@ -26,10 +26,10 @@ import type { ProductDetail } from "@/server/repositories/product";
  * in Story 2.2 and is real.
  *
  * The CTAs are co-equal by design (UX-DR14 / FR31): a navy primary to the RFQ and
- * the phone number beside it, not buried. `/rfq` is the sanctioned phased-page
- * exception named in the Epic 2 preamble — it renders the localized 404 until
- * Story 3.2 builds it, which is the agreed trade for keeping the conversion path
- * visible on every surface.
+ * the phone number beside it, not buried. `/rfq` is LIVE since Story 3.2 — the
+ * Epic 2 "sanctioned phased-page exception" this card shipped under has expired;
+ * the conversion path it kept visible now lands on the real form. (The product
+ * doorway param `?product=` is Story 3.4's, so the href stays bare until then.)
  */
 export function ProductAnchorCard({ product }: { product: ProductDetail }) {
   const t = useTranslations("Product");

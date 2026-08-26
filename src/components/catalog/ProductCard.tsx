@@ -20,8 +20,10 @@ import type { ProductCardItem } from "@/server/repositories/product";
  * THE FOOTER IS HALF-DELIVERED, BY DESIGN. DESIGN.md's `gf9DY` footer carries an
  * ungated "Datasheet ↓" and an "Add to inquiry" outline button. Story 2.3 landed
  * the datasheet link (rendered only when the product HAS a public datasheet);
- * "Add to inquiry" still waits for Epic 3's RFQ (DP-12 — never link a page that
- * does not exist). The download href is the /api route — a plain <a>, NOT the
+ * "Add to inquiry" still waits — for Story 3.4's doorway now, not for the page:
+ * `/rfq` is live since 3.2, so DP-12 no longer applies; the card affordance and
+ * its equipment pre-fill are 3.4's scope (DP-12's original wording survives in
+ * the e2e absence assertion). The download href is the /api route — a plain <a>, NOT the
  * next-intl Link: /api URLs carry no locale segment.
  *
  * THE CARD IS NOW A LINK (Story 2.4) — to `/products/<slug>`, the detail page it

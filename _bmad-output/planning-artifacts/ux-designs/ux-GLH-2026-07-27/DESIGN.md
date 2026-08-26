@@ -26,6 +26,7 @@ tokens:
     status-review: "#C2870B"  # amber
     status-quoted: "#0E2F57"  # navy (= accent)
     status-closed: "#8A93A0"  # muted
+    error: "#B42318"          # form validation — error text + invalid-control borders (Story 3.2; 4.5:1+ on surface AND surface-2)
   typography:
     fontFamily:
       heading: "Geist"          # headings, card/section titles
@@ -108,6 +109,8 @@ Voice in the visual layer is terse and technical: UPPERCASE mono kickers, model 
 **On-dark set** (only inside `ink` bands/panels): `on-dark-text #C2C9D2` (body), `on-dark-border #2A3340` (hairlines/dividers), `on-dark-panel #1B222E` (raised panel, e.g. the industry "Typical applications" list). Kickers on dark use `accent-soft`; headings on dark use pure `#FFFFFF`.
 
 **Status palette** (admin leads, availability): New = `status-new` green, In review = `status-review` amber, Quoted = `status-quoted` navy, Closed = `status-closed` muted.
+
+**Error** (added by Story 3.2 — no error colour existed and `status-review` amber measures 3.10:1, an AA failure for error text): `error #B42318`, ≥4.5:1 on `surface` and `surface-2`. Use for form error text and invalid-control borders only; the error MESSAGE is the non-colour cue, and the colour is never a button or emphasis treatment.
 
 Usage rules:
 - **Green is sacred to the brand mark.** Do not use green for buttons, links, or emphasis. Its only non-logo use is the small "new/success" status dot and the cert `badge-check` glyph.

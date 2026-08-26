@@ -139,12 +139,22 @@ test.describe("sitemap.xml and robots.txt (AC3, AC4)", () => {
     // covers in full).
     expect(locs).toContain("http://localhost:3000/en/services");
 
-    // Scope guard: the nav still links to About and /rfq, neither of which exists
-    // until Epics 3/5. A sitemap of 404s is worse than a small sitemap, so their
-    // ABSENCE is the assertion. `/projects` left this list in Story 3.1.
-    for (const unbuilt of ["/about", "/rfq"]) {
-      expect(xml, `sitemap advertises unbuilt route ${unbuilt}`).not.toContain(`${unbuilt}<`);
+    // Scope guard: the nav still links to About, which does not exist until
+    // Epic 5. A sitemap of 404s is worse than a small sitemap, so its ABSENCE is
+    // the assertion. `/rfq` left this list in Story 3.2 (asserted present
+    // below); `/projects` left it in 3.1. `/privacy` exists since 3.2 but is a
+    // noindex placeholder, so its absence is asserted alongside About.
+    for (const unlisted of ["/about", "/privacy"]) {
+      expect(xml, `sitemap advertises unlisted route ${unlisted}`).not.toContain(`${unlisted}<`);
     }
+
+    // Story 3.2: /rfq is listed for ALL THREE locales — the first surface whose
+    // tr/ru index from day one (its copy is messages-complete by construction;
+    // page robots and sitemap share `rfqSignals`). The positive half matters:
+    // an absence-only regime here would stay green if the emitter were deleted.
+    expect(locs).toContain("http://localhost:3000/en/rfq");
+    expect(locs).toContain("http://localhost:3000/tr/rfq");
+    expect(locs).toContain("http://localhost:3000/ru/rfq");
 
     // Story 3.1: `/projects` is listed for EN and TR and ABSENT for RU — there are
     // zero `ru` project translations, so every row falls back and FR42a rates the

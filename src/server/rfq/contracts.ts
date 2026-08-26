@@ -9,8 +9,9 @@ import { isValidSlug } from "@/lib/slug";
  * `/rfq?q=` and pinned it in two e2e assertions before Story 3.4, which nominally
  * owns pre-fill, had any say. Freezing these here is what stops that recurring.
  *
- * Nothing in this file renders. Story 3.2 builds the form against it, 3.4 the
- * doorways, 3.7b the attachment states, and 4.7 the admin list. If you find
+ * Nothing in this file renders. Story 3.2 BUILT the form and endpoint against
+ * it (`./schema.ts` is the runtime half); 3.4 builds the doorways, 3.7b the
+ * attachment states, and 4.7 the admin list. If you find
  * yourself wanting to change a shape here, that is a cross-story decision — take
  * it deliberately rather than in the story that happens to notice.
  */

@@ -28,6 +28,11 @@
   --color-status-quoted: #0e2f57; /* navy (= accent) */
   --color-status-closed: #8a93a0; /* muted */
 
+  /* Form validation (Story 3.2 — the first form). Status amber measures 3.10:1
+     and fails AA for error text; this red clears 4.5:1 on BOTH surface and
+     surface-2. Error text + invalid-control borders only — never a button. */
+  --color-error: #b42318;
+
   /* Sharp corners everywhere — override Tailwind's radius scale to 0 (DESIGN.md). */
   --radius-xs: 0;
   --radius-sm: 0;
