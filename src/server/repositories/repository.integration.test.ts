@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/db";
 import { queryIndustries, queryIndustryBySlug } from "./industry";
-import { queryPublishedProjects } from "./project";
+import { queryPublishedProjects, queryProjectBySlug } from "./project";
 import {
   queryTopLevelCategories,
   queryCategoriesByIndustry,
@@ -1087,6 +1087,83 @@ describe("all services (integration)", () => {
     expect(services.length).toBeGreaterThan(0);
     for (const service of services) {
       expect(service.isFallback, service.slug).toBe(true);
+    }
+  });
+});
+
+/**
+ * Story 3.1 — the project detail read, against the real database.
+ *
+ * The mapping half (locale resolution, media parsing, null tolerance) is covered
+ * by the pure unit tests in `project.test.ts`, and the cache CONTRACT by
+ * `project-cache.test.ts`. What only a real round-trip can prove is the
+ * `status: "published"` filter and the `products` include — the first read in
+ * this repository ever to fetch `ProjectProduct`.
+ */
+describe("Story 3.1 — project detail read (integration)", () => {
+  const PROJECT_SLUG = "lng-terminal-fire-gas-upgrade";
+
+  it("resolves a published project by slug, with its supplied equipment", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    const project = await queryProjectBySlug(PROJECT_SLUG, "en");
+
+    expect(project).not.toBeNull();
+    expect(project?.slug).toBe(PROJECT_SLUG);
+    // NOT NULL in the schema, so this is the one field that may be asserted flatly.
+    expect(project?.title).toBeTruthy();
+    // The include that no previous read carried.
+    expect(Array.isArray(project?.products)).toBe(true);
+    expect(project!.products.length).toBeGreaterThan(0);
+    expect(project!.products[0]).toHaveProperty("model");
+  });
+
+  it("returns null for an unknown slug", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    expect(await queryProjectBySlug("zzz-no-such-project", "en")).toBeNull();
+  });
+
+  it("NEVER returns a draft project — an unpublished project is not readable by slug", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    // The load-bearing filter: without `status: "published"` anyone who guessed a
+    // slug could read unreleased client work. Proven with a real draft row rather
+    // than asserted about the query text.
+    const draft = await prisma.project.create({
+      data: {
+        slug: `${PROJECT_PREFIX}draft-project`,
+        status: "draft",
+        translations: { create: [{ locale: "en", title: "Draft project" }] },
+      },
+    });
+    try {
+      expect(await queryProjectBySlug(draft.slug, "en")).toBeNull();
+      // ...and the same row IS readable once published, so the null above is the
+      // filter talking and not a broken query.
+      await prisma.project.update({ where: { id: draft.id }, data: { status: "published" } });
+      expect(await queryProjectBySlug(draft.slug, "en")).not.toBeNull();
+    } finally {
+      await prisma.project.delete({ where: { id: draft.id } });
+    }
+  });
+
+  it("parses `media` on the way out — the column is raw JSONB", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    const project = await prisma.project.create({
+      data: {
+        slug: `${PROJECT_PREFIX}media-project`,
+        status: "published",
+        translations: { create: [{ locale: "en", title: "Media project" }] },
+        media: [
+          { id: "hero", storageKey: "k.jpg", mime: "image/jpeg", alt: { en: "A" }, sort: 1 },
+          { id: "svg", storageKey: "x.svg", mime: "image/svg+xml", alt: { en: "B" }, sort: 0 },
+        ],
+      },
+    });
+    try {
+      const read = await queryProjectBySlug(project.slug, "en");
+      // The SVG is dropped at the boundary; the survivor is the frozen shape.
+      expect(read?.media.map((m) => m.id)).toEqual(["hero"]);
+    } finally {
+      await prisma.project.delete({ where: { id: project.id } });
     }
   });
 });

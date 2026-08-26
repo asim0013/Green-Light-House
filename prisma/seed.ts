@@ -1,5 +1,6 @@
-import { PrismaClient, Locale, PublishStatus, DocumentType } from "@prisma/client";
+import { PrismaClient, Prisma, Locale, PublishStatus, DocumentType } from "@prisma/client";
 import { fixtureSize } from "../scripts/doc-fixtures";
+import { MEDIA_FIXTURES } from "../scripts/media-fixtures";
 
 const prisma = new PrismaClient();
 
@@ -261,37 +262,142 @@ async function main() {
     }
   }
 
-  // --- Projects (LNG terminal carries TR; links products) ---
+  // --- Projects ---
+  //
+  // ⚠️ TRANSLATIONS ARE UPSERTED PER LOCALE (Story 3.1). They used to be written
+  // ONLY inside `create`, with `update: {}` on the project — so on this long-lived
+  // dev database a re-seed could never repair a row or add a locale, while
+  // printing success. New copy simply never arrived. `deferred-work.md:120`
+  // prescribes exactly this helper shape.
   const oilGas = await prisma.industry.findUniqueOrThrow({ where: { slug: "oil-gas" } });
-  const lng = await prisma.project.upsert({
-    where: { slug: "lng-terminal-fire-gas-upgrade" },
-    update: {},
-    create: {
-      slug: "lng-terminal-fire-gas-upgrade",
-      status: PublishStatus.published,
-      industryId: oilGas.id,
-      deliveredAt: new Date("2024-06-01T00:00:00.000Z"),
-      translations: {
-        create: [
-          {
-            locale: Locale.en,
-            title: "LNG terminal fire & gas upgrade",
-            outcome: "142 field devices, ATEX Zone 1, delivered in six weeks.",
-          },
-          { locale: Locale.tr, title: "LNG terminali yangın ve gaz yükseltmesi" },
-        ],
+  const fireSafety = await prisma.industry.findUniqueOrThrow({ where: { slug: "fire-safety" } });
+
+  type ProjectSeed = {
+    slug: string;
+    industryId: string;
+    deliveredAt?: Date;
+    media?: unknown;
+    translations: { locale: Locale; title: string; description?: string; outcome?: string }[];
+  };
+
+  async function upsertProject({
+    slug,
+    industryId,
+    deliveredAt,
+    media,
+    translations,
+  }: ProjectSeed) {
+    const project = await prisma.project.upsert({
+      where: { slug },
+      // Repairable: every field a later edit might change is in BOTH branches.
+      update: {
+        status: PublishStatus.published,
+        industryId,
+        deliveredAt: deliveredAt ?? null,
+        // `ProjectMediaEntry[]` is not assignable to Prisma's `Json` input type,
+        // so the cast lives HERE, at the write boundary, and nowhere else. The
+        // shape is validated on the way OUT by `parseProjectMedia`.
+        ...(media === undefined ? {} : { media: media as Prisma.InputJsonValue }),
       },
-    },
+      create: {
+        slug,
+        status: PublishStatus.published,
+        industryId,
+        deliveredAt: deliveredAt ?? null,
+        ...(media === undefined ? {} : { media: media as Prisma.InputJsonValue }),
+      },
+    });
+
+    for (const { locale, title, description, outcome } of translations) {
+      await prisma.projectTranslation.upsert({
+        where: { projectId_locale: { projectId: project.id, locale } },
+        update: { title, description: description ?? null, outcome: outcome ?? null },
+        create: {
+          projectId: project.id,
+          locale,
+          title,
+          description: description ?? null,
+          outcome: outcome ?? null,
+        },
+      });
+    }
+
+    return project;
+  }
+
+  const lng = await upsertProject({
+    slug: "lng-terminal-fire-gas-upgrade",
+    industryId: oilGas.id,
+    deliveredAt: new Date("2024-06-01T00:00:00.000Z"),
+    translations: [
+      {
+        locale: Locale.en,
+        title: "LNG terminal fire & gas upgrade",
+        outcome: "142 field devices, ATEX Zone 1, delivered in six weeks.",
+      },
+      {
+        locale: Locale.tr,
+        title: "LNG terminali yangın ve gaz yükseltmesi",
+        // ⚠️ `outcome` is deliberately LEFT OUT here. It is the live fixture for
+        // the per-field fallback (Story 3.1, AC2b): a `tr` row that exists but
+        // leaves a body field NULL, which used to make the outcome vanish on /tr
+        // with no marker at all. Do not "complete" this translation — the gap is
+        // the test subject.
+      },
+    ],
   });
-  await prisma.project.upsert({
-    where: { slug: "refinery-gas-detection-retrofit" },
-    update: {},
-    create: {
-      slug: "refinery-gas-detection-retrofit",
-      status: PublishStatus.published,
-      industryId: oilGas.id,
-      translations: { create: [{ locale: Locale.en, title: "Refinery gas-detection retrofit" }] },
-    },
+
+  await upsertProject({
+    slug: "refinery-gas-detection-retrofit",
+    industryId: oilGas.id,
+    translations: [{ locale: Locale.en, title: "Refinery gas-detection retrofit" }],
+  });
+
+  /**
+   * The SECOND INDUSTRY and the ONLY project with photos (Story 3.1, AC17).
+   *
+   * ⚠️ `fire-safety` IS A CONSTRAINED CHOICE, NOT A FREE ONE. `e2e/seo.spec.ts`
+   * asserts that `construction`, `manufacturing` and `nuclear` are THIN and
+   * therefore absent from the sitemap — seeding a project into any of them
+   * un-thins it and destroys that FR42a negative proof. `fire-safety` already has
+   * 3 published products and a certificate, so its indexability does not change.
+   *
+   * ⚠️ DATED BEFORE THE LNG PROJECT, DELIBERATELY. `HomeHero` renders `projects[0]`
+   * under `deliveredAt DESC NULLS LAST`, so a later date here would silently steal
+   * the homepage hero and redden three shipped assertions that name the LNG
+   * project. 2023 keeps the hero where it is.
+   *
+   * ⚠️ oil-gas IS LEFT AT 2 PROJECTS. `PROJECT_LIMIT` is 3, so a third would sit
+   * exactly on the cap and a fourth would clip silently with no view-all
+   * affordance — the `SERVICE_LIMIT` failure Story 2.6 shipped.
+   */
+  await upsertProject({
+    slug: "hospital-fire-suppression",
+    industryId: fireSafety.id,
+    deliveredAt: new Date("2023-09-01T00:00:00.000Z"),
+    media: MEDIA_FIXTURES.map((fixture, index) => ({
+      id: fixture.id,
+      storageKey: fixture.key,
+      mime: fixture.mime,
+      alt: { en: fixture.altEn, tr: fixture.altTr },
+      sort: index,
+    })),
+    translations: [
+      {
+        locale: Locale.en,
+        title: "Hospital clean-agent suppression",
+        description:
+          "A clean-agent suppression and detection package for a 400-bed hospital, specified around occupied-space discharge limits and commissioned ward by ward without closing a floor.",
+        outcome: "Zero wards closed during commissioning; handover on the contracted date.",
+      },
+      {
+        locale: Locale.tr,
+        title: "Hastane temiz gazlı söndürme",
+        description:
+          "400 yataklı bir hastane için temiz gazlı söndürme ve algılama paketi; dolu hacim boşaltma sınırlarına göre belirlendi ve hiçbir kat kapatılmadan servis servis devreye alındı.",
+        outcome: "Devreye alma sırasında hiçbir servis kapatılmadı; teslim sözleşme tarihinde.",
+      },
+    ],
   });
   for (const slug of ["fd-9500", "gd-410"]) {
     const prod = await prisma.product.findUniqueOrThrow({ where: { slug } });

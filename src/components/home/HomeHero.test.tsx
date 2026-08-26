@@ -45,6 +45,8 @@ const FULL: ProjectListItem = {
   description: null,
   outcome: "142 field devices, ATEX Zone 1, delivered in six weeks.",
   isFallback: false,
+  descriptionIsFallback: false,
+  outcomeIsFallback: false,
   industry: { slug: "oil-gas", name: "Oil & Gas" },
   deliveredAt: new Date("2024-06-01T00:00:00.000Z"),
   media: [],

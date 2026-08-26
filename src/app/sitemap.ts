@@ -17,6 +17,8 @@ import { listProductSignals } from "@/server/repositories/product";
 import { signalsFromRow, productHref } from "@/server/product-page";
 import { listServices } from "@/server/repositories/service";
 import { servicesSignals } from "@/server/services-page";
+import { projectsIndexSignals, projectSignals, projectHref } from "@/server/project-page";
+import { isValidSlug } from "@/lib/slug";
 
 /**
  * `/sitemap.xml` (Story 1.9 — FR42, FR42a).
@@ -33,13 +35,15 @@ import { servicesSignals } from "@/server/services-page";
 export const dynamic = "force-dynamic";
 
 /**
- * Scope: the three locale homepages, the `/industries` index, and every INDEXABLE
- * `/industries/<slug>` (Story 2.1 extended this).
+ * Scope: the three locale homepages, the `/industries` index and every INDEXABLE
+ * `/industries/<slug>` (Story 2.1), `/products` and every indexable
+ * `/products/<slug>` (2.2/2.4), `/services` (2.6), and `/projects` plus every
+ * indexable `/projects/<slug>` (Story 3.1).
  *
- * The nav and footer in `src/config/site.ts` also point at Products/Projects/
- * Services/About, `/rfq` and the legal pages — none of which exist until Epic 2/3/5.
- * Listing them would publish a sitemap of 404s, which is worse for indexation than
- * publishing nothing. Each later story extends the loop below as its surface lands.
+ * The nav and footer in `src/config/site.ts` still point at About, `/rfq` and the
+ * legal pages, none of which exist until Epics 3/5. Listing them would publish a
+ * sitemap of 404s, which is worse for indexation than publishing nothing. Each
+ * later story extends the loop below as its surface lands.
  *
  * FR42a ("the sitemap lists only populated pages") is enforced with the SAME
  * predicate the page's `robots` metadata uses — `isIndexable` for the collection
@@ -56,24 +60,42 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // awaiting each in turn, which tripled this route's latency for no reason.
   const perLocale = await Promise.all(
     routing.locales.map(async (locale) => {
-      const [projects, industries, categories, manufacturers, categoryTree, productRows, services] =
-        await Promise.all([
-          listPublishedProjects(locale, 1),
-          listIndustries(locale),
-          listTopLevelCategories(locale),
-          listManufacturers(locale),
-          // One tree read is the WHOLE catalog gate (Story 2.2): catalogSignals is
-          // deliberately tree-only, so /products costs no per-product reads here.
-          listCategoryTree(locale),
-          // ONE query for every published product (Story 2.4 decision Q3). A
-          // per-product read would make /sitemap.xml scale with the catalogue,
-          // repeating the industry N+1 already deferred above — and React cache()
-          // cannot rescue it, being INERT in Route Handlers (measured, Story 2.1).
-          listProductSignals(locale),
-          // The Services page's own read (Story 2.6) — one query, and the SAME
-          // predicate its generateMetadata calls.
-          listServices(locale),
-        ]);
+      const [
+        projects,
+        industries,
+        categories,
+        manufacturers,
+        categoryTree,
+        productRows,
+        services,
+        allProjects,
+      ] = await Promise.all([
+        listPublishedProjects(locale, 1),
+        listIndustries(locale),
+        listTopLevelCategories(locale),
+        listManufacturers(locale),
+        // One tree read is the WHOLE catalog gate (Story 2.2): catalogSignals is
+        // deliberately tree-only, so /products costs no per-product reads here.
+        listCategoryTree(locale),
+        // ONE query for every published product (Story 2.4 decision Q3). A
+        // per-product read would make /sitemap.xml scale with the catalogue,
+        // repeating the industry N+1 already deferred above — and React cache()
+        // cannot rescue it, being INERT in Route Handlers (measured, Story 2.1).
+        listProductSignals(locale),
+        // The Services page's own read (Story 2.6) — one query, and the SAME
+        // predicate its generateMetadata calls.
+        listServices(locale),
+        // ⚠️ A SEPARATE, FULL read for the Projects surfaces (Story 3.1) — NOT
+        // the `listPublishedProjects(locale, 1)` above. The limit is part of the
+        // cache key, so that entry holds at most ONE row: reusing it would report
+        // `itemCount: 1` forever and emit exactly one project URL. That read is
+        // the HOMEPAGE indexability signal and nothing else.
+        //
+        // One query per locale, and per-project signals are computed from these
+        // rows — no per-project page read, so `/sitemap.xml` does not scale with
+        // the project count the way the per-industry N+1 above still does.
+        listPublishedProjects(locale),
+      ]);
 
       const translated = [...projects, ...industries, ...categories, ...manufacturers];
       const collectionsIndexable = isIndexable({
@@ -110,6 +132,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         // One predicate per surface: `servicesSignals` is what /services' robots
         // metadata uses, so page and sitemap cannot disagree.
         servicesIndexable: isIndexable(servicesSignals(locale, services)),
+        // One predicate per surface (Story 3.1): `projectsIndexSignals` is what
+        // /projects' robots metadata uses. On today's seed this is TRUE for en/tr
+        // and FALSE for ru — zero `ru` project translations means every row falls
+        // back and the page is fallback-only. Page and sitemap agree by construction.
+        projectsIndexable: isIndexable(projectsIndexSignals(locale, allProjects)),
+        // Per-project gates from the SAME function the detail page calls, computed
+        // from the batched rows above. `isValidSlug` filters AT THE DATA SOURCE:
+        // the sitemap does no XML escaping, so a slug that could break the document
+        // must never reach the emitter (the gate Story 2.4 added for products).
+        indexableProjectSlugs: allProjects
+          .filter((project) => isValidSlug(project.slug))
+          .filter((project) => isIndexable(projectSignals(locale, project)))
+          .map((project) => project.slug),
         // Per-product gates from the SAME function the detail page metadata calls
         // (signalsFromRow / signalsFromPageData both delegate to productSignals),
         // computed from the batched rows — no extra read per product.
@@ -140,16 +175,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       indexableIndustrySlugs,
       indexableProductSlugs,
       servicesIndexable,
+      projectsIndexable,
+      indexableProjectSlugs,
     }) => [
       ...(collectionsIndexable ? [entry(locale, "/")] : []),
       ...(indexIndexable ? [entry(locale, "/industries")] : []),
       ...(catalogIndexable ? [entry(locale, "/products")] : []),
       ...(servicesIndexable ? [entry(locale, "/services")] : []),
+      ...(projectsIndexable ? [entry(locale, "/projects")] : []),
       // `industryHref`, not a template literal: Next does NOT escape sitemap URLs,
       // so an unencoded `&` or `<` in a slug makes the WHOLE FILE malformed XML.
       ...indexableIndustrySlugs.map((slug) => entry(locale, industryHref(slug))),
       // , not a template literal — same XML-escaping reason.
       ...indexableProductSlugs.map((slug) => entry(locale, productHref(slug))),
+      // `projectHref`, not a template literal — same XML-escaping reason (Story 3.1).
+      ...indexableProjectSlugs.map((slug) => entry(locale, projectHref(slug))),
     ],
   );
 }

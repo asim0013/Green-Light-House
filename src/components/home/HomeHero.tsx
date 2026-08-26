@@ -6,6 +6,7 @@ import { buttonClasses } from "@/components/ui/buttonClasses";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { CONTAINER } from "@/components/layout/container";
 import { SITE } from "@/config/site";
+import { projectHref } from "@/lib/project-href";
 import type { ProjectListItem } from "@/server/repositories/project";
 
 /**
@@ -91,15 +92,37 @@ function ProofCard({
   const hasMeta = Boolean(project.industry ?? project.deliveredAt);
 
   return (
-    <div className="border border-border-subtle bg-surface p-6">
+    /**
+     * LINKED AS OF STORY 3.1. This card was an unlinked `<div>` with
+     * `project.slug` already resolved and unused, while EXPERIENCE.md:97 calls the
+     * doorway from here into the case study "the single most important
+     * interaction on the site". `/projects/<slug>` did not exist until this story,
+     * which is why it was correct to leave it inert (DP-12: never link a route
+     * that 404s) and is why it must not stay that way now.
+     *
+     * `relative` anchors the heading link's stretched overlay — the ProductCard
+     * idiom, so the whole card is clickable while the accessible name stays the
+     * project's own title. NO CLIENT JS: this is the LCP surface, so it uses
+     * `Link` + classes rather than the `"use client"` `<Button>`.
+     */
+    <div className="relative border border-border-subtle bg-surface p-6 transition-colors hover:border-ink-2">
       <Kicker tone="ink">{t("proofKicker")}</Kicker>
       <h2 className="mt-3 font-heading text-xl font-bold leading-snug tracking-tight text-ink">
-        <span lang={lang}>{project.title}</span>
+        <Link
+          href={projectHref(project.slug)}
+          className="after:absolute after:inset-0 hover:text-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+        >
+          <span lang={lang}>{project.title}</span>
+        </Link>
+        {/* Outside the link: the notice is ABOUT the title, not part of it. */}
         <FallbackNotice isFallback={project.isFallback} />
       </h2>
 
       {project.outcome && (
-        <p lang={lang} className="mt-4 text-[15px] leading-relaxed text-ink-2">
+        <p
+          lang={project.outcomeIsFallback ? "en" : undefined}
+          className="mt-4 text-[15px] leading-relaxed text-ink-2"
+        >
           {project.outcome}
         </p>
       )}

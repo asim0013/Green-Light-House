@@ -5,6 +5,7 @@ import {
   HeadBucketCommand,
 } from "@aws-sdk/client-s3";
 import { DOC_FIXTURES, tinyPdf } from "./doc-fixtures";
+import { MEDIA_FIXTURES, solidPng, FIXTURE_WIDTH, FIXTURE_HEIGHT } from "./media-fixtures";
 
 /**
  * Storage fixture seeder (Story 2.3) — `npx tsx scripts/seed-storage.ts`.
@@ -91,6 +92,20 @@ async function main() {
       }),
     );
     console.log(`uploaded ${key} (${pdf.length} bytes)`);
+  }
+
+  /**
+   * Project photos (Story 3.1). Before this, the bucket held ZERO images and both
+   * seeded projects had an empty `media` column — so the photo branch of the
+   * project page had no fixture at all and every assertion about it would have
+   * been vacuous. Same generated-not-committed approach as the PDFs above; the
+   * keys come from the SAME module `prisma/seed.ts` writes into `Project.media`,
+   * so the two cannot drift.
+   */
+  for (const { key, mime, rgb } of MEDIA_FIXTURES) {
+    const png = solidPng(FIXTURE_WIDTH, FIXTURE_HEIGHT, rgb);
+    await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: png, ContentType: mime }));
+    console.log(`uploaded ${key} (${png.length} bytes)`);
   }
 }
 

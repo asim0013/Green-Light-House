@@ -287,7 +287,7 @@ export function toProductCardItem(product: ProductCardRow, locale: Locale): Prod
  * slug tiebreak, take 1) so the mapper's `[0]` pick is deterministic by
  * construction — no in-memory sorting to drift.
  */
-const CARD_INCLUDE = {
+export const CARD_INCLUDE = {
   translations: true,
   manufacturer: { include: { translations: true } },
   documents: {

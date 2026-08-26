@@ -139,12 +139,31 @@ test.describe("sitemap.xml and robots.txt (AC3, AC4)", () => {
     // covers in full).
     expect(locs).toContain("http://localhost:3000/en/services");
 
-    // Scope guard: the nav still links to Projects/About and /rfq, none of which
-    // exist until Epics 3/5. A sitemap of 404s is worse than a small sitemap, so
-    // their ABSENCE is the assertion.
-    for (const unbuilt of ["/projects", "/about", "/rfq"]) {
+    // Scope guard: the nav still links to About and /rfq, neither of which exists
+    // until Epics 3/5. A sitemap of 404s is worse than a small sitemap, so their
+    // ABSENCE is the assertion. `/projects` left this list in Story 3.1.
+    for (const unbuilt of ["/about", "/rfq"]) {
       expect(xml, `sitemap advertises unbuilt route ${unbuilt}`).not.toContain(`${unbuilt}<`);
     }
+
+    // Story 3.1: `/projects` is listed for EN and TR and ABSENT for RU — there are
+    // zero `ru` project translations, so every row falls back and FR42a rates the
+    // page fallback-only. Page and sitemap agree because both call
+    // `projectsIndexSignals`. The positive half matters: an absence-only assertion
+    // would stay green if the emitter were deleted entirely.
+    expect(locs).toContain("http://localhost:3000/en/projects");
+    expect(locs).toContain("http://localhost:3000/tr/projects");
+    expect(locs).not.toContain("http://localhost:3000/ru/projects");
+
+    // ...and the per-project URLs. ⚠️ The `${unbuilt}<` form above CANNOT see
+    // these: `/projects/<slug><` never matches `/projects<`, so a sitemap full of
+    // detail URLs would leave that loop green either way.
+    expect(locs).toContain("http://localhost:3000/en/projects/lng-terminal-fire-gas-upgrade");
+    expect(locs).toContain("http://localhost:3000/en/projects/hospital-fire-suppression");
+    // `refinery-gas-detection-retrofit` has no description, no outcome and no
+    // photos, so it is thin by FR42a and must NOT be listed — the negative half,
+    // on a real row rather than a hypothetical one.
+    expect(locs).not.toContain("http://localhost:3000/en/projects/refinery-gas-detection-retrofit");
 
     // Story 2.2: the catalog appears for EN and TR — and is correctly ABSENT for
     // RU, where no category has a translation, so every rendered string falls

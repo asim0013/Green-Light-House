@@ -99,12 +99,21 @@ test("discovery items link only to routes that EXIST (FR8)", async ({ page }) =>
   // the bare-404 problem the 1.6 review escalated).
   const main = page.getByRole("main");
 
-  // Still unbuilt — Projects is Epic 3, manufacturer pages are phased (FR20).
+  // Still unbuilt — manufacturer pages are phased (FR20).
   // (/products left this list in Story 2.2, which built the catalog and wired the
-  // category tiles to it.)
-  for (const route of ["/projects", "/manufacturers"]) {
+  // category tiles to it. /projects left it in Story 3.1, which built the section
+  // and finally linked the hero proof card — EXPERIENCE.md:97 calls that doorway
+  // the single most important interaction on the site.)
+  //
+  // ⚠️ KEEP THE LOOP. Deleting it to "fix" the /projects entry would silently drop
+  // the still-valid /manufacturers guard with it.
+  for (const route of ["/manufacturers"]) {
     await expect(main.locator(`a[href*="${route}"]`)).toHaveCount(0);
   }
+
+  // The hero proof card now resolves (Story 3.1). Exactly one: the hero renders
+  // `projects[0]`, so a second would mean something else started linking out.
+  await expect(main.locator('a[href^="/en/projects/"]')).toHaveCount(1);
 
   // The industry cards now resolve. Six seeded industries, six links.
   await expect(main.locator('a[href^="/en/industries/"]')).toHaveCount(6);
@@ -114,15 +123,25 @@ test("discovery items link only to routes that EXIST (FR8)", async ({ page }) =>
   const hrefs = await main
     .locator("a")
     .evaluateAll((els) => els.map((el) => el.getAttribute("href") ?? ""));
-  expect(
-    hrefs.every(
-      (h) =>
+  // ⚠️ THIS LIST MUST STAY EXHAUSTIVE. It is an ALLOWLIST, so the two lazy ways to
+  // make a new href pass — appending a term for anything that shows up, or
+  // deleting the check — both leave it unable to fail. `/projects/` was added in
+  // Story 3.1 because the hero proof card genuinely links there now; anything else
+  // appearing in `main` is a real finding, and the assertion below names the
+  // offender rather than just failing.
+  const disallowed = hrefs.filter(
+    (h) =>
+      !(
         h.includes("/rfq") ||
         h.startsWith("tel:") ||
         h.includes("/industries/") ||
-        h.includes("/products?category="),
-    ),
-  ).toBe(true);
+        h.includes("/products?category=") ||
+        h.includes("/projects/")
+      ),
+  );
+  expect(disallowed, `homepage main links outside the allowlist: ${disallowed.join(", ")}`).toEqual(
+    [],
+  );
 });
 
 test("every homepage industry link actually resolves (no new 404s)", async ({ page, request }) => {

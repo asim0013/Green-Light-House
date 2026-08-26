@@ -1,7 +1,8 @@
 import { BadgeCheck } from "lucide-react";
-import { useFormatter, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
+import { ProjectCard } from "@/components/projects/ProjectCard";
 import { formatDocMeta } from "@/lib/doc-meta";
 import { ProductCard } from "@/components/catalog/ProductCard";
 import { ServiceList } from "@/components/services/ServiceList";
@@ -176,7 +177,6 @@ export function IndustryProducts({ products }: { products: ProductCardItem[] }) 
 /** Delivered projects — the proof beat. Published only, newest delivered first. */
 export function IndustryProjects({ projects }: { projects: ProjectListItem[] }) {
   const t = useTranslations("Industry");
-  const format = useFormatter();
 
   return (
     <IndustrySection
@@ -186,32 +186,13 @@ export function IndustryProjects({ projects }: { projects: ProjectListItem[] }) 
       isEmpty={projects.length === 0}
       fill="surface-2"
     >
-      {/* Same 3 -> 2 -> 1 ladder; this one skipped the 2-col step. */}
+      {/* Same 3 -> 2 -> 1 ladder; this one skipped the 2-col step.
+          The card body moved to `ProjectCard` in Story 3.1 so the index and this
+          block cannot drift — and so these entries finally LINK somewhere, which
+          EXPERIENCE.md:97 calls the site's most important interaction. */}
       <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {projects.map((project) => (
-          <li key={project.id} className="border border-border-subtle bg-surface p-5">
-            <h3 className="font-heading text-base font-semibold leading-snug text-ink">
-              <span lang={project.isFallback ? "en" : undefined}>{project.title}</span>
-              <FallbackNotice isFallback={project.isFallback} />
-            </h3>
-            {project.outcome && (
-              <p
-                lang={project.isFallback ? "en" : undefined}
-                className="mt-3 leading-relaxed text-ink-2"
-              >
-                {project.outcome}
-              </p>
-            )}
-            {project.deliveredAt && (
-              /* One message with a {date} placeholder, never label + date
-                 concatenated — the order and punctuation differ per language. */
-              <p className="mt-4 border-t border-border-subtle pt-4 font-data text-xs text-ink-2">
-                {t("deliveredOn", {
-                  date: format.dateTime(project.deliveredAt, { year: "numeric", month: "long" }),
-                })}
-              </p>
-            )}
-          </li>
+          <ProjectCard key={project.id} project={project} />
         ))}
       </ul>
     </IndustrySection>

@@ -4,18 +4,26 @@ import { probeDbReady, warmUp } from "./dbReady";
 /**
  * Story 2.1 — industry landing pages, end to end.
  *
- * FIXTURES ARE THE SEED, MEASURED not assumed (live SQL; certificates column
- * re-measured 2026-08-22 after the Story 2.3 seed):
+ * FIXTURES ARE THE SEED, MEASURED not assumed (live SQL; projects column
+ * re-measured 2026-08-25 after the Story 3.1 seed):
  *
  *   industry        products(pub)  projects(pub)  certificates  services
  *   oil-gas               5              2              1           5
- *   fire-safety           3              0              1           0
+ *   fire-safety           3              1              1           0
  *   energy                1              0              0           0
  *   construction          0              0              0           0
  *   manufacturing         0              0              0           0
  *   nuclear               0              0              0           0
  *
  * So `oil-gas` is the populated case and `construction` is the fully empty one.
+ *
+ * STORY 3.1 ADDED ONE PROJECT, TO `fire-safety`, AND THE INDUSTRY WAS CONSTRAINED.
+ * `e2e/seo.spec.ts` asserts that `construction`, `manufacturing` and `nuclear` are
+ * THIN and therefore absent from the sitemap; a project in any of them un-thins it
+ * and destroys that FR42a proof. `construction` would additionally break this
+ * file's five-empty-blocks assertion. `fire-safety` already had products and a
+ * certificate, so its indexability is unchanged and `oil-gas` stays at 2 — one
+ * below `PROJECT_LIMIT`, which is 3.
  *
  * SERVICES BECAME FIVE, NOT FOUR (Story 2.6). FR23 names five competencies and
  * the seed had merged two of them into one `kitting-logistics` row; 2.6 split it
