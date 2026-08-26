@@ -38,7 +38,7 @@ vi.mock("@/i18n/navigation", () => ({
   ),
 }));
 
-const { RfqForm } = await import("./RfqForm");
+const { RfqForm, failureKeyOf } = await import("./RfqForm");
 const { EquipmentChips } = await import("./EquipmentChips");
 
 const INDUSTRIES = [
@@ -168,6 +168,17 @@ describe("RfqForm — initial markup", () => {
     expect(en.Rfq.consent).toBe(
       "I agree that GREENLIGHTHOUSE may process the details above to respond to my inquiry, per the Privacy Policy. We never gate documents or sell your data.",
     );
+  });
+});
+
+describe("failureKeyOf — the 429 branch (Story 3.7a)", () => {
+  it("429 selects rateLimited; everything else falls to submitFailed", () => {
+    // Before this branch existed a 429 rendered submitFailed's "please try
+    // again" — an invitation to immediately re-trip the limiter.
+    expect(failureKeyOf(429)).toBe("rateLimited");
+    expect(failureKeyOf(500)).toBe("submitFailed");
+    expect(failureKeyOf(503)).toBe("submitFailed");
+    expect(failureKeyOf(418)).toBe("submitFailed");
   });
 });
 

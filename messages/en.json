@@ -197,6 +197,7 @@
       "tooLong": "This entry is too long.",
       "invalid": "This value is not valid.",
       "consentRequired": "To send the inquiry, please agree to the data use above.",
+      "rateLimited": "Too many inquiries from your connection right now. Please wait up to an hour, or call us instead.",
       "submitFailed": "The inquiry could not be sent — nothing you entered was lost. Please try again."
     }
   },

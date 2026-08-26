@@ -40,4 +40,33 @@ export default async function globalTeardown() {
   } catch {
     // No DB (the suite skipped) — nothing to sweep.
   }
+
+  // Rate-limit counters (Story 3.7a): pure hygiene, not correctness — every
+  // test buckets on its own spoofed IP, and unswept counters expire in 1h
+  // anyway. Reported so the census line shows what a run minted. The bounded
+  // client is the cache-flush.mjs recipe: node-redis's default reconnect makes
+  // connect() never settle against a dead target.
+  try {
+    const url = process.env.REDIS_URL?.trim();
+    if (!url) return;
+    const { createClient } = await import("redis");
+    const redis = createClient({
+      url,
+      socket: { connectTimeout: 3000, reconnectStrategy: false },
+    });
+    redis.on("error", () => {});
+    await redis.connect();
+    try {
+      let swept = 0;
+      for await (const keys of redis.scanIterator({ MATCH: "rfq:rl:*", COUNT: 500 })) {
+        const batch = Array.isArray(keys) ? keys : [keys];
+        if (batch.length > 0) swept += await redis.del(batch);
+      }
+      console.log(`[pollution-gate] rfq:rl counters swept=${swept}`);
+    } finally {
+      redis.destroy();
+    }
+  } catch {
+    // Redis down or unset — counters are disposable; nothing to report.
+  }
 }

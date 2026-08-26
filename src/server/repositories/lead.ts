@@ -44,10 +44,24 @@ export interface CreatedLead {
 
 /**
  * Insert one lead and return ONLY the DB-minted reference. `select` keeps the
- * response surface minimal on purpose: the success payload 3.7a's honeypot must
- * later counterfeit is exactly `{ reference }`, and returning the full row here
- * would invite the handler to widen it.
+ * response surface minimal on purpose: the success payload the honeypot path
+ * counterfeits (Story 3.7a) is exactly `{ reference }`, and returning the full
+ * row here would invite the handler to widen it.
  */
 export async function createLead(data: LeadCreateData): Promise<CreatedLead> {
   return prisma.lead.create({ data, select: { reference: true } });
+}
+
+/**
+ * Burn one `lead_reference_seq` value and return it formatted — the honeypot
+ * path's fake reference (Story 3.7a, Task 0 #1). Burning a REAL nextval is what
+ * makes the fake globally unique among all references past and future (a
+ * burned value can never be re-issued), byte-identical in format, and
+ * collision-proof — a made-up number could later collide with a genuine lead a
+ * buyer quotes on the phone. Sequence gaps are sanctioned doctrine
+ * (schema.prisma's `Lead.reference` note): never diagnose one as a lost lead.
+ */
+export async function burnLeadReference(): Promise<string> {
+  const rows = await prisma.$queryRaw<{ nextval: bigint }[]>`SELECT nextval('lead_reference_seq')`;
+  return `GLH-RFQ-${rows[0].nextval}`;
 }

@@ -1,5 +1,6 @@
 import type { Locale, Prisma } from "@prisma/client";
 import { siteOrigin } from "@/lib/seo";
+import { checkRateLimit, clientKeyFromForwardedFor } from "@/lib/rate-limit";
 import {
   rfqSchema,
   issueDetails,
@@ -7,15 +8,17 @@ import {
   type RfqInput,
 } from "@/server/rfq/schema";
 import type { LeadEquipmentItem } from "@/server/rfq/contracts";
-import { createLead, type LeadCreateData } from "@/server/repositories/lead";
+import { burnLeadReference, createLead, type LeadCreateData } from "@/server/repositories/lead";
 import { listIndustries } from "@/server/repositories/industry";
 import { getProductBySlug } from "@/server/repositories/product";
 import { listCategoryTree, type CategoryTreeNode } from "@/server/repositories/category";
 
 /**
  * `POST /api/rfq` — the app's first unauthenticated write endpoint (Story 3.2,
- * AC3/AC4). Persist-first: success IS the Prisma commit. The handler imports NO
- * Redis client — only Postgres-down loses a lead, and that path writes nothing.
+ * AC3/AC4; anti-abuse landed by Story 3.7a). Persist-first: success IS the
+ * Prisma commit. The ONLY Redis touch is the rate limiter, which FAILS OPEN and
+ * can never reach the persist path — only Postgres-down loses a lead, and that
+ * path writes nothing.
  *
  * EVERYTHING PROTECTIVE LIVES IN THIS HANDLER. `src/proxy.ts` provably excludes
  * `/api`, so middleware placement fails open with no log (architecture:213) —
@@ -32,11 +35,34 @@ import { listCategoryTree, type CategoryTreeNode } from "@/server/repositories/c
  *      ("https://GLH.example", ":443") would 403 every real buyer — a silent,
  *      total funnel outage. DISCLOSED AC3 DEVIATION: AC3 says "does not match
  *      the request host", but this compares against `siteOrigin()` (SITE_URL),
- *      deliberately — trusting the request's Host/X-Forwarded-Host is exactly
- *      the trusted-proxy policy Story 3.7a owns, and half-implementing it here
- *      would let a spoofed Host defeat the check. A deployment whose serving
- *      origin differs from SITE_URL rejects browser POSTs; SITE_URL being
- *      right is already load-bearing for every canonical/hreflang on the site.
+ *      deliberately — and 3.7a's trusted-proxy policy below does NOT change
+ *      that: the policy governs the rate-limit KEY, where a spoof only
+ *      self-buckets the spoofer; an auth-adjacent comparison trusting
+ *      Host/X-Forwarded-Host would let a spoofed header defeat the check. A
+ *      deployment whose serving origin differs from SITE_URL rejects browser
+ *      POSTs; SITE_URL being right is already load-bearing for every
+ *      canonical/hreflang on the site.
+ *   2.5 rate limiter (Story 3.7a — FR32) → 429, BEFORE the body is read:
+ *      fixed window of 5 per client per hour on the CACHE Redis
+ *      (`rfq:rl:<client>`, `REDIS_URL`, never the durable queue instance),
+ *      with `Retry-After` from the window's remaining TTL. Fails OPEN, coded
+ *      and bounded (`@/lib/rate-limit` — `[rfq-rl]` in the logs), so a Redis
+ *      outage can never cost a lead (FR27). Note the seam consequence: 415s
+ *      and 403s above never consume budget; 422s below DO (counting happens
+ *      before the body is even read).
+ *
+ *      THE WRITTEN TRUSTED-PROXY POLICY (epics:938; Task 0 #6): the client key
+ *      is the RIGHTMOST `x-forwarded-for` entry — production runs behind
+ *      exactly ONE trusted edge that appends (or replaces) the header, so the
+ *      rightmost entry is edge-written and every hop left of it is ignored as
+ *      client-supplied noise. Entries are `net.isIP`-validated and length-
+ *      capped; anything malformed shares the single `"unknown"` bucket, so
+ *      junk can never mint keys. Next's standalone server fills the header
+ *      from the socket when absent (proven live at implementation), so
+ *      direct-connect dev still buckets per socket — but there a client-sent
+ *      header passes through untouched, so HONESTLY: the spoof-resistance
+ *      guarantee holds BEHIND THE TRUSTED EDGE; the shipped docker-compose is
+ *      direct-connect and gets best-effort throttling of naive bots only.
  *   3. self-imposed 64 KB body cap → 413. Route handlers have NO built-in limit
  *      (`bodySizeLimit` is Server-Actions-only): Content-Length is checked
  *      first, then the stream is read with a byte counter because chunked
@@ -47,24 +73,21 @@ import { listCategoryTree, type CategoryTreeNode } from "@/server/repositories/c
  *      Consent is `z.literal(true)` INSIDE the schema, so a `consent: false`
  *      POST dies here — the create below is unreachable without it.
  *
- * ── STORY 3.7a SEAM ──────────────────────────────────────────────────────────
- * The rate limiter and the honeypot check land BETWEEN guards 2 and 5:
- *   - the limiter runs BEFORE the body is read (guard 3) — a self-contained
- *     early-return whose counters live on the CACHE Redis (`rfq:rl:*`,
- *     REDIS_URL, never the durable queue instance) and whose Redis failure
- *     must fail OPEN without ever reaching the persist path;
- *   - the honeypot check reads the `website` field off the parsed body (the
- *     shared zod schema STRIPS it, so read it from the raw parse, after guard
- *     4). A honeypot hit returns THIS route's exact success shape —
- *     `{ reference }`, 201 — with NO row written; 3.7a owns the fabrication
- *     strategy for that fake reference. ⚠️ TREAT A FILLED HONEYPOT AS A SOFT
- *     SIGNAL, not an unconditional silent drop (3.2 review): Chrome ignores
- *     `autocomplete="off"`, and profile-autofill on a form whose real fields
- *     carry name/organization/email/tel tokens can populate a labeled
- *     "Website" input for a REAL buyer — a silent drop would eat their lead.
- * Neither exists in 3.2: no limiter, no counter, no 429, by the sprint
- * proposal's split (3.7a is merge-gated to this story on the same branch).
- * ─────────────────────────────────────────────────────────────────────────────
+ * THE HONEYPOT (Story 3.7a — FR32's other half; Task 0 #1, an ASIM decision):
+ * a non-empty `website` value — read off the RAW parse, because the shared
+ * schema STRIPS the field and a check on `parsed.data` could never fire — runs
+ * the ENTIRE validation chain and diverges only at the persist step: instead
+ * of a row, a real `nextval('lead_reference_seq')` is BURNED (sanctioned gap
+ * doctrine, schema.prisma — a burned value can never collide with a real
+ * lead's) and the route's exact success shape returns, `201 { reference }`.
+ * SILENT DROP + RECOVERY LOG: the epics mandate the drop; the 3.2 review's
+ * autofill warning (a form-filler CAN populate the hidden field for a real
+ * buyer) is answered by the log line, which carries the fabricated reference —
+ * a buyer phoning in a reference that matches nothing reconciles to that line.
+ * The log never carries the field's value or the submitter's PII: the drop
+ * decision means we deliberately hold none. If the burn itself throws
+ * (Postgres down), the response is the route's exact 500 — indistinguishable
+ * from the real path in failure as well as success.
  *
  * After validation, the handler resolves against the DB: `industry` must be a
  * real PID slug (`listIndustries` — AC2), and `product`/`category` equipment
@@ -77,11 +100,16 @@ import { listCategoryTree, type CategoryTreeNode } from "@/server/repositories/c
  * HONEST COST ACCOUNTING (3.2 review — an earlier draft claimed "not
  * attacker-amplified", which was wrong): per-REQUEST cost is bounded (≤20
  * validated items, catalog slugs deduplicated before resolution so one slug
- * costs one lookup) but request RATE is not, until 3.7a's limiter merges.
- * Unknown-but-valid-shaped product slugs each mint a cached-null id-hop entry
- * (the 2.2 slug-gate bounds shape, never cardinality) — the limiter is what
- * bounds the minting rate.
+ * costs one lookup) and request RATE is now bounded too — 5 per client per
+ * hour (3.7a) — WITH the policy's honest scope: behind the trusted edge that
+ * bound is per-IP; in direct-connect it is best-effort. Unknown-but-valid-
+ * shaped product slugs still mint cached-null id-hop entries within budget
+ * (the 2.2 slug-gate bounds shape, never cardinality).
  */
+
+/** FR32's numbers (prd:153): the window's 6th submission is rejected. */
+const RFQ_RATE_LIMIT = 5;
+const RFQ_RATE_WINDOW_SECONDS = 3600;
 
 /** AC3's self-imposed cap. Attachments are 3.7b's and arrive multipart — 415'd. */
 const BODY_LIMIT_BYTES = 64 * 1024;
@@ -92,10 +120,11 @@ function fail(
   code: string,
   message: string,
   details?: { path: string; key: string }[],
+  headers?: Record<string, string>,
 ): Response {
   return Response.json(
     { error: details ? { code, message, details } : { code, message } },
-    { status },
+    { status, headers },
   );
 }
 
@@ -200,8 +229,26 @@ export async function POST(request: Request) {
     return fail(403, "invalid_origin", "Cross-origin submissions are not accepted.");
   }
 
-  // ── 3.7a seam: the rate limiter's early return belongs HERE, before the body
-  // is read. See the module docstring for the whole inherited contract. ──
+  // Guard 2.5 — the rate limiter (Story 3.7a), BEFORE the body is read:
+  // epics:934's placement, so a rejected-later request still consumed budget
+  // and a junk content-type (already 415'd above) never did. Fail-open lives
+  // inside checkRateLimit; a Redis outage cannot reach the persist path.
+  const rate = await checkRateLimit({
+    keyspace: "rfq:rl:",
+    client: clientKeyFromForwardedFor(request.headers.get("x-forwarded-for")),
+    limit: RFQ_RATE_LIMIT,
+    windowSeconds: RFQ_RATE_WINDOW_SECONDS,
+    label: "rfq-rl",
+  });
+  if (!rate.allowed) {
+    return fail(
+      429,
+      "rate_limited",
+      "Too many submissions from this client. Please wait before trying again.",
+      undefined,
+      { "Retry-After": String(rate.retryAfterSeconds ?? RFQ_RATE_WINDOW_SECONDS) },
+    );
+  }
 
   // Guard 3 — size.
   const body = await readBodyCapped(request);
@@ -224,8 +271,14 @@ export async function POST(request: Request) {
     return fail(422, "invalid_body", "Request body must be a JSON object.");
   }
 
-  // ── 3.7a seam: the honeypot check reads `website` off `json` HERE — after the
-  // parse, before validation strips it. ──
+  // The honeypot FLAG (Story 3.7a) is read HERE — off the RAW parse, because
+  // the shared schema strips `website` and a later read could never fire. The
+  // DIVERGENCE happens at the persist step below: the full validation chain
+  // runs first, so a bot posting garbage sees the same 422s as anyone
+  // (indistinguishability — see the module docstring).
+  const honeypotFilled =
+    typeof (json as Record<string, unknown>).website === "string" &&
+    ((json as Record<string, unknown>).website as string).trim() !== "";
 
   // Guard 5 — the shared schema. Consent (`z.literal(true)`) fails here, so
   // every rejection path above and including this one is provably row-free.
@@ -280,6 +333,25 @@ export async function POST(request: Request) {
     consentVersion: `${PRIVACY_POLICY_VERSION}:${input.uiLocale}`,
   };
 
+  // The honeypot divergence (Task 0 #1/#2 — silent drop + recovery log): same
+  // chain, same success shape, no row — a burned sequence value instead. The
+  // log line is the recovery path: it never carries the field's value or the
+  // submitter's PII, only the fabricated reference a false-positive buyer
+  // might later quote.
+  if (honeypotFilled) {
+    let fakeReference;
+    try {
+      fakeReference = await burnLeadReference();
+    } catch (error) {
+      // Postgres down: mirror the real path's failure exactly.
+      console.error("[rfq] lead insert failed:", error);
+      return fail(500, "internal_error", "The inquiry could not be saved. Please try again.");
+    }
+    const websiteLength = ((json as Record<string, unknown>).website as string).length;
+    console.warn(`[rfq] honeypot_filled ref=${fakeReference} len=${websiteLength}`);
+    return Response.json({ reference: fakeReference }, { status: 201 });
+  }
+
   let created;
   try {
     created = await createLead(data);
@@ -290,6 +362,6 @@ export async function POST(request: Request) {
     return fail(500, "internal_error", "The inquiry could not be saved. Please try again.");
   }
 
-  // The frozen success shape (3.7a counterfeits exactly this — keep it minimal).
+  // The frozen success shape (the honeypot path above counterfeits exactly this).
   return Response.json({ reference: created.reference }, { status: 201 });
 }

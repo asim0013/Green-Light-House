@@ -197,6 +197,7 @@
       "tooLong": "Bu giriş çok uzun.",
       "invalid": "Bu değer geçerli değil.",
       "consentRequired": "Talebi göndermek için lütfen yukarıdaki veri kullanımını kabul edin.",
+      "rateLimited": "Bağlantınızdan şu anda çok fazla talep gönderildi. Lütfen bir saate kadar bekleyin veya bizi arayın.",
       "submitFailed": "Talep gönderilemedi — girdikleriniz kaybolmadı. Lütfen tekrar deneyin."
     }
   },

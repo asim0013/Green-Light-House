@@ -67,6 +67,16 @@ function isFieldName(value: string): value is FieldName {
 }
 
 /**
+ * Which failure copy a non-201/non-field-error response earns (Story 3.7a).
+ * Extracted so the 429 branch is unit-testable — `renderToStaticMarkup`
+ * cannot exercise the submit fetch, and an untested branch here is exactly
+ * how a 429 fell through to "please try again" before this existed.
+ */
+export function failureKeyOf(status: number): "rateLimited" | "submitFailed" {
+  return status === 429 ? "rateLimited" : "submitFailed";
+}
+
+/**
  * `RfqForm` — the app's FIRST client form (Story 3.2, AC5/AC6/AC7).
  *
  * SELF-CONTAINED AND SLOT-MOUNTABLE: Story 3.8 mounts this same island on
@@ -97,8 +107,9 @@ function isFieldName(value: string): value is FieldName {
  * INSIDE the hidden wrapper so a virtual cursor never meets an orphan label. It
  * is NOT registered with react-hook-form: it must never appear in the error
  * surface, the live region, or focus order. Its value travels in the JSON
- * payload; the schema strips it; 3.7a's server check reads it from the raw
- * parse. 3.2 renders the field and sends the value — nothing more.
+ * payload; the schema strips it; the server check (Story 3.7a, LIVE) reads it
+ * off the raw parse and answers a filled value with a fabricated success and
+ * a recovery log — the enforcement contract lives in the route docstring.
  */
 export function RfqForm({
   industries,
@@ -258,8 +269,12 @@ export function RfqForm({
         }
       }
 
-      setSubmitError(t("errors.submitFailed"));
-      announce(t("errors.submitFailed"));
+      // 429 gets its OWN copy (Story 3.7a): the generic submitFailed says
+      // "please try again", which against a rate limit is an invitation to
+      // immediately re-trip it. Inputs are preserved either way.
+      const failureKey = failureKeyOf(response.status);
+      setSubmitError(t(`errors.${failureKey}`));
+      announce(t(`errors.${failureKey}`));
     } catch {
       // Network failure — the entered values stay on screen for the retry.
       setSubmitError(t("errors.submitFailed"));

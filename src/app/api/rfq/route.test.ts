@@ -17,13 +17,25 @@ vi.mock("@/i18n/navigation", () => ({
 }));
 
 const createLead = vi.fn();
+const burnLeadReference = vi.fn();
 const listIndustries = vi.fn();
 const getProductBySlug = vi.fn();
 const listCategoryTree = vi.fn();
+const checkRateLimit = vi.fn();
 
 vi.mock("@/server/repositories/lead", () => ({
   createLead: (data: unknown) => createLead(data),
+  burnLeadReference: () => burnLeadReference(),
 }));
+// The limiter is mocked default-ALLOW (Story 3.7a): this file issues 28 POSTs
+// and vitest loads `.env`, so an unmocked limiter would both 429 the later
+// tests AND mutate the developer's LIVE cache Redis. The key derivation stays
+// REAL (importOriginal) — the client-identity tests below exercise it through
+// the route.
+vi.mock("@/lib/rate-limit", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/rate-limit")>();
+  return { ...actual, checkRateLimit: (options: unknown) => checkRateLimit(options) };
+});
 vi.mock("@/server/repositories/industry", () => ({
   listIndustries: (locale: string) => listIndustries(locale),
 }));
@@ -76,13 +88,17 @@ async function errorOf(res: Response) {
 
 beforeEach(() => {
   createLead.mockReset();
+  burnLeadReference.mockReset();
   listIndustries.mockReset();
   getProductBySlug.mockReset();
   listCategoryTree.mockReset();
+  checkRateLimit.mockReset();
   createLead.mockResolvedValue({ reference: "GLH-RFQ-2042" });
+  burnLeadReference.mockResolvedValue("GLH-RFQ-9001");
   listIndustries.mockResolvedValue([{ slug: "fire-safety" }, { slug: "oil-gas" }]);
   getProductBySlug.mockResolvedValue(null);
   listCategoryTree.mockResolvedValue([]);
+  checkRateLimit.mockResolvedValue({ allowed: true });
 });
 
 describe("POST /api/rfq — guard chain", () => {
@@ -310,6 +326,9 @@ describe("POST /api/rfq — the create-args centrepiece (AC4)", () => {
   });
 
   it("a body smuggling source/reference/status/consentAt/attachments still writes the defaults", async () => {
+    // `website` is EMPTY here deliberately (3.7a split this test): a filled
+    // honeypot no longer writes at all — that path has its own describe below.
+    // Empty-but-present proves the schema still STRIPS the travelling field.
     const res = await post({
       ...VALID,
       source: "project",
@@ -318,7 +337,7 @@ describe("POST /api/rfq — the create-args centrepiece (AC4)", () => {
       consentAt: "1999-01-01T00:00:00.000Z",
       consentVersion: "forged",
       attachmentKey: "evil",
-      website: "https://filled-by-a-bot.example",
+      website: "",
     });
     expect(res.status).toBe(201);
     const args = createLead.mock.calls[0][0];
@@ -354,6 +373,98 @@ describe("POST /api/rfq — the create-args centrepiece (AC4)", () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     createLead.mockRejectedValue(new Error("connection refused"));
     const res = await post(VALID);
+    expect(res.status).toBe(500);
+    expect((await errorOf(res)).code).toBe("internal_error");
+    consoleError.mockRestore();
+  });
+});
+
+describe("POST /api/rfq — the rate limiter seam (Story 3.7a)", () => {
+  it("limited → 429 with the envelope code, Retry-After from the TTL, and NO write", async () => {
+    checkRateLimit.mockResolvedValue({ allowed: false, retryAfterSeconds: 1234 });
+    const res = await post(VALID);
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("1234");
+    expect((await errorOf(res)).code).toBe("rate_limited");
+    expect(createLead).not.toHaveBeenCalled();
+  });
+
+  it("counts BEFORE the body is read: a limited client gets 429 even for malformed JSON", async () => {
+    // If the limiter ran after the parse, this would be a 422 — the ordering
+    // is epics:934's "before the request body is parsed", pinned.
+    checkRateLimit.mockResolvedValue({ allowed: false, retryAfterSeconds: 60 });
+    const res = await post("{not json");
+    expect(res.status).toBe(429);
+  });
+
+  it("SEAM POSITION: 415 and 403 rejections never consume budget — the limiter is not invoked", async () => {
+    // Load-bearing for every POST-budget in both suites and for the abuse
+    // economics; goes red if the guard order is ever shuffled.
+    await post("junk", { contentType: "text/plain" });
+    expect(checkRateLimit).not.toHaveBeenCalled();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await post(VALID, { origin: "https://evil.example" });
+    expect(checkRateLimit).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("calls the limiter with the FR32 numbers and the policy-derived client key", async () => {
+    await post(VALID, { headers: { "x-forwarded-for": "6.6.6.6, spoofed, 203.0.113.77" } });
+    expect(checkRateLimit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        keyspace: "rfq:rl:",
+        client: "203.0.113.77",
+        limit: 5,
+        windowSeconds: 3600,
+        label: "rfq-rl",
+      }),
+    );
+  });
+
+  it("no x-forwarded-for (hand-built Request) → the shared 'unknown' bucket", async () => {
+    await post(VALID);
+    expect(checkRateLimit).toHaveBeenCalledWith(expect.objectContaining({ client: "unknown" }));
+  });
+});
+
+describe("POST /api/rfq — the honeypot (Story 3.7a, Task 0 #1: silent drop + recovery log)", () => {
+  it("filled honeypot + VALID body → fake 201 from a burned nextval, NO row, the recovery log", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const res = await post({ ...VALID, website: "https://spam.example" });
+    expect(res.status).toBe(201);
+    // The burned-sequence fake, byte-identical in shape to a real success.
+    expect(await res.json()).toEqual({ reference: "GLH-RFQ-9001" });
+    expect(burnLeadReference).toHaveBeenCalledTimes(1);
+    expect(createLead).not.toHaveBeenCalled();
+    // The recovery line: the fabricated reference (reconcilable when quoted),
+    // the value's LENGTH only — never the value, never PII.
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("honeypot_filled ref=GLH-RFQ-9001 len=20"),
+    );
+    const logged = (warn.mock.calls[0]?.[0] as string) ?? "";
+    expect(logged).not.toContain("spam.example");
+    expect(logged).not.toContain(VALID.email);
+    warn.mockRestore();
+  });
+
+  it("filled honeypot + INVALID body → the SAME 422 as anyone (full chain runs first)", async () => {
+    const res = await post({ ...VALID, consent: false, website: "https://spam.example" });
+    expect(res.status).toBe(422);
+    expect(burnLeadReference).not.toHaveBeenCalled();
+    expect(createLead).not.toHaveBeenCalled();
+  });
+
+  it("whitespace-only website is a CLEAN path — the trap fires on substance, not spaces", async () => {
+    const res = await post({ ...VALID, website: "   " });
+    expect(res.status).toBe(201);
+    expect(createLead).toHaveBeenCalledTimes(1);
+    expect(burnLeadReference).not.toHaveBeenCalled();
+  });
+
+  it("burn failure (Postgres down) mirrors the real path's 500 exactly", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    burnLeadReference.mockRejectedValue(new Error("connection refused"));
+    const res = await post({ ...VALID, website: "x" });
     expect(res.status).toBe(500);
     expect((await errorOf(res)).code).toBe("internal_error");
     consoleError.mockRestore();

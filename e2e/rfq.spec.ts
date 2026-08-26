@@ -81,6 +81,23 @@ function uniqueEmail(workerIndex: number): string {
   return `${E2E_EMAIL_PREFIX}w${workerIndex}-p${process.pid}-${Date.now()}@example.com`;
 }
 
+let ipSeq = 0;
+
+/**
+ * A globally-unique, `net.isIP`-valid client bucket for the rate limiter
+ * (Story 3.7a). Next's server passes a client-sent `x-forwarded-for` through
+ * UNTOUCHED in direct-connect, and the route's policy keys on the rightmost
+ * entry — so every test that POSTs gets its OWN counter bucket, which is what
+ * makes the suite order-independent, same-hour-rerun-proof and CI-retry-proof
+ * (counters persist in Redis for 1h; the shared-socket bucket arithmetic
+ * could not fit even one clean re-run). Documentation range (2001:db8::/32),
+ * pid+time+seq so two concurrent or back-to-back runs never share a bucket.
+ */
+function fakeClientIp(workerIndex: number): string {
+  ipSeq += 1;
+  return `2001:db8:${(process.pid % 0xffff).toString(16)}:${workerIndex}:${ipSeq}:${(Date.now() % 0xffff).toString(16)}::1`;
+}
+
 let dbReady = true;
 
 test.beforeAll(async ({ baseURL }) => {
@@ -148,6 +165,10 @@ test.describe("persist-first submission (AC7, AC12c)", () => {
   }, testInfo) => {
     if (!dbReady) testInfo.skip();
     const email = uniqueEmail(testInfo.workerIndex);
+    // Own limiter bucket (3.7a): consuming POSTs must never share the socket bucket.
+    await page
+      .context()
+      .setExtraHTTPHeaders({ "x-forwarded-for": fakeClientIp(testInfo.workerIndex) });
 
     await openRfq(page);
     await page.getByLabel("Industry").selectOption("fire-safety");
@@ -196,6 +217,10 @@ test.describe("persist-first submission (AC7, AC12c)", () => {
   }, testInfo) => {
     if (!dbReady) testInfo.skip();
     const email = uniqueEmail(testInfo.workerIndex);
+    // Own limiter bucket (3.7a): consuming POSTs must never share the socket bucket.
+    await page
+      .context()
+      .setExtraHTTPHeaders({ "x-forwarded-for": fakeClientIp(testInfo.workerIndex) });
 
     await openRfq(page);
     await fillMinimalForm(page, email);
@@ -277,13 +302,17 @@ test.describe("persist failure (AC3/AC7's other half)", () => {
   }, testInfo) => {
     if (!dbReady) testInfo.skip();
     const email = uniqueEmail(testInfo.workerIndex);
+    // Own limiter bucket (3.7a): consuming POSTs must never share the socket bucket.
+    await page
+      .context()
+      .setExtraHTTPHeaders({ "x-forwarded-for": fakeClientIp(testInfo.workerIndex) });
 
     // Postgres-down without touching Postgres: intercept the POST at the
     // network layer and answer with the route's real 500 envelope. The
     // intercept doubles as the HONEYPOT-CONTRACT proof (3.2 review): the
-    // posted JSON must carry `website` — merge-gated 3.7a reads it off the
-    // raw parse, and dropping it from the payload would blind that check
-    // silently.
+    // posted JSON must carry `website` — the server's honeypot check (Story
+    // 3.7a, live) reads it off the raw parse, and dropping it from the
+    // payload would blind the trap silently.
     let postedBody: Record<string, unknown> | null = null;
     await page.route("**/api/rfq", (route) => {
       postedBody = route.request().postDataJSON() as Record<string, unknown>;
@@ -451,7 +480,12 @@ test.describe("the 3.4 seam holds (AC8) + endpoint edges via direct requests", (
     if (!dbReady) testInfo.skip();
     const email = uniqueEmail(testInfo.workerIndex);
     const res = await request.post("/api/rfq", {
-      headers: { "content-type": "application/json" },
+      // Own bucket: a 422 still CONSUMES limiter budget (counting happens
+      // before the body is read — 3.7a), so this must not share the socket.
+      headers: {
+        "content-type": "application/json",
+        "x-forwarded-for": fakeClientIp(testInfo.workerIndex),
+      },
       data: {
         name: "Elena Petrova",
         company: "Enka EPC",
@@ -488,5 +522,190 @@ test.describe("the /privacy stub (AC9)", () => {
       // rendering privacy-2026-08-stub-r2-WRONG must fail here.
       await expect(page.locator('p[translate="no"]')).toHaveText(/privacy-2026-08-stub-r2$/);
     }
+  });
+});
+
+test.describe("rate limiting (Story 3.7a — FR32: the six real POSTs)", () => {
+  const jsonHeaders = (ip: string) => ({
+    "content-type": "application/json",
+    "x-forwarded-for": ip,
+  });
+  const validBody = (email: string) => ({
+    name: "Elena Petrova",
+    company: "Enka EPC",
+    email,
+    locale: "en",
+    uiLocale: "en",
+    consent: true,
+  });
+
+  test("SIX REAL POSTS: five 201s, the sixth → 429 + Retry-After + NO row; an unspoofed POST then proves bucket isolation live", async ({
+    request,
+  }, testInfo) => {
+    // epics:936: "The proof is six real POSTs against a running server; a unit
+    // test of the counter function alone does not satisfy this AC." This is
+    // also the ONLY gate that goes red if the limiter is ever moved to
+    // middleware (proxy.ts excludes /api — it would fail open, silently) —
+    // never interception-mock it.
+    if (!dbReady) testInfo.skip();
+    const bucket = fakeClientIp(testInfo.workerIndex);
+
+    for (let i = 0; i < 5; i++) {
+      const res = await request.post("/api/rfq", {
+        headers: jsonHeaders(bucket),
+        data: validBody(uniqueEmail(testInfo.workerIndex)),
+      });
+      expect(res.status(), `POST ${i + 1} of 5 must be unaffected`).toBe(201);
+    }
+
+    const sixthEmail = uniqueEmail(testInfo.workerIndex);
+    const sixth = await request.post("/api/rfq", {
+      headers: jsonHeaders(bucket),
+      data: validBody(sixthEmail),
+    });
+    expect(sixth.status()).toBe(429);
+    expect(Number(sixth.headers()["retry-after"])).toBeGreaterThan(0);
+    const body = (await sixth.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("rate_limited");
+    expect(await withPrisma((db) => db.lead.count({ where: { email: sixthEmail } }))).toBe(0);
+
+    // The live passthrough/socket-fill proof (Task 0 #6's P5): an UNSPOOFED
+    // POST lands in the socket-filled bucket, not this exhausted one — if
+    // Next did not pass the spoofed header through (or did not fill the
+    // absent one from the socket), this request would be the 7th on ONE
+    // shared bucket and 429.
+    const unspoofed = await request.post("/api/rfq", {
+      headers: { "content-type": "application/json" },
+      data: validBody(uniqueEmail(testInfo.workerIndex)),
+    });
+    expect(unspoofed.status()).toBe(201);
+  });
+
+  test("a REJECTED submission still consumes budget — counting happens BEFORE the body is read", async ({
+    request,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+    const bucket = fakeClientIp(testInfo.workerIndex);
+
+    for (let i = 0; i < 5; i++) {
+      const res = await request.post("/api/rfq", {
+        headers: jsonHeaders(bucket),
+        data: { ...validBody(uniqueEmail(testInfo.workerIndex)), consent: false },
+      });
+      expect(res.status(), `422 number ${i + 1}`).toBe(422);
+    }
+    // The sixth is VALID — but five rejected submissions already spent the
+    // window, which is exactly what "checked before the request body is
+    // parsed" (epics:934) buys: validation outcome cannot refund budget.
+    const email = uniqueEmail(testInfo.workerIndex);
+    const sixth = await request.post("/api/rfq", {
+      headers: jsonHeaders(bucket),
+      data: validBody(email),
+    });
+    expect(sixth.status()).toBe(429);
+    expect(await withPrisma((db) => db.lead.count({ where: { email } }))).toBe(0);
+  });
+
+  test("pre-limiter rejections never consume: six 415s cost the bucket nothing", async ({
+    request,
+  }, testInfo) => {
+    // The seam position (guard 1 → guard 2 → limiter): junk content-types are
+    // rejected before counting, so they can neither starve a bucket nor be
+    // used to lock a victim IP out.
+    if (!dbReady) testInfo.skip();
+    const bucket = fakeClientIp(testInfo.workerIndex);
+
+    for (let i = 0; i < 6; i++) {
+      const res = await request.post("/api/rfq", {
+        headers: { "content-type": "text/plain", "x-forwarded-for": bucket },
+        data: "junk",
+      });
+      expect(res.status()).toBe(415);
+    }
+    const valid = await request.post("/api/rfq", {
+      headers: jsonHeaders(bucket),
+      data: validBody(uniqueEmail(testInfo.workerIndex)),
+    });
+    expect(valid.status()).toBe(201);
+  });
+
+  test("the UI shows the rate-limited copy — never submitFailed's retry invitation — and inputs survive", async ({
+    page,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+    const email = uniqueEmail(testInfo.workerIndex);
+
+    await page.route("**/api/rfq", (route) =>
+      route.fulfill({
+        status: 429,
+        contentType: "application/json",
+        headers: { "Retry-After": "1800" },
+        body: JSON.stringify({
+          error: { code: "rate_limited", message: "Too many submissions from this client." },
+        }),
+      }),
+    );
+
+    await openRfq(page);
+    await fillMinimalForm(page, email);
+    await page.getByRole("button", { name: "Send project inquiry" }).click();
+
+    const alert = page.getByRole("alert").filter({ hasText: "Too many inquiries" });
+    await expect(alert).toContainText("call us");
+    await expect(alert).not.toContainText("try again");
+    await expect(page.getByLabel("Work email")).toHaveValue(email);
+  });
+});
+
+test.describe("the honeypot (Story 3.7a — Task 0 #1: silent drop + recovery log)", () => {
+  test("filled honeypot → fake 201 with NO row; a real submission then out-references the burned fake", async ({
+    request,
+  }, testInfo) => {
+    // Direct POST only: the field is aria-hidden + tabindex=-1, unreachable by
+    // label/role locators BY CONSTRUCTION — never try to fill it in a browser.
+    if (!dbReady) testInfo.skip();
+    const bucket = fakeClientIp(testInfo.workerIndex);
+    const trapEmail = uniqueEmail(testInfo.workerIndex);
+
+    const trapped = await request.post("/api/rfq", {
+      headers: { "content-type": "application/json", "x-forwarded-for": bucket },
+      data: {
+        name: "Bot Botsson",
+        company: "Spam GmbH",
+        email: trapEmail,
+        locale: "en",
+        uiLocale: "en",
+        consent: true,
+        website: "https://definitely-a-bot.example",
+      },
+    });
+    expect(trapped.status()).toBe(201);
+    const fake = ((await trapped.json()) as { reference: string }).reference;
+    // Ordinary success shape, format-identical — indistinguishable (epics:950).
+    expect(fake).toMatch(/^GLH-RFQ-\d{4,}$/);
+    // …but NOTHING was written: no row by email, no row behind the reference.
+    expect(await withPrisma((db) => db.lead.count({ where: { email: trapEmail } }))).toBe(0);
+    expect(await withPrisma((db) => db.lead.findUnique({ where: { reference: fake } }))).toBeNull();
+
+    // The burn proof: the fake came from the REAL sequence, so the next
+    // genuine lead's reference is numerically greater. (Never assert
+    // contiguity — gaps are doctrine.)
+    const realEmail = uniqueEmail(testInfo.workerIndex);
+    const real = await request.post("/api/rfq", {
+      headers: { "content-type": "application/json", "x-forwarded-for": bucket },
+      data: {
+        name: "Elena Petrova",
+        company: "Enka EPC",
+        email: realEmail,
+        locale: "en",
+        uiLocale: "en",
+        consent: true,
+        website: "",
+      },
+    });
+    expect(real.status()).toBe(201);
+    const realReference = ((await real.json()) as { reference: string }).reference;
+    const numberOf = (reference: string) => Number(reference.slice("GLH-RFQ-".length));
+    expect(numberOf(realReference)).toBeGreaterThan(numberOf(fake));
   });
 });
