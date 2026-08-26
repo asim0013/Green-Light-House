@@ -2,6 +2,8 @@ import { createRef } from "react";
 import { describe, it, expect, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import en from "../../../messages/en.json";
+import tr from "../../../messages/tr.json";
+import ru from "../../../messages/ru.json";
 
 /**
  * Render-level contract of the RFQ form island (Story 3.2, AC5/AC6).
@@ -38,8 +40,9 @@ vi.mock("@/i18n/navigation", () => ({
   ),
 }));
 
-const { RfqForm, failureKeyOf } = await import("./RfqForm");
+const { RfqForm, failureKeyOf, precheckAttachment } = await import("./RfqForm");
 const { EquipmentChips } = await import("./EquipmentChips");
+const { AttachmentField } = await import("./AttachmentField");
 
 const INDUSTRIES = [
   { slug: "fire-safety", name: "Fire Safety", isFallback: false },
@@ -201,5 +204,191 @@ describe("EquipmentChips — chips markup", () => {
     expect(html).toContain("min-h-11 min-w-11");
     // The icon is decorative; the aria-label carries the name.
     expect(html).toContain('aria-hidden="true"');
+  });
+});
+
+describe("the attachment field (Story 3.7b, AC7)", () => {
+  const html = () => render();
+
+  it("is a REAL file input, not a div pretending to be one", () => {
+    // Drag-and-drop is an enhancement. If the only drop target were a styled
+    // div, the field would be unreachable by keyboard, invisible to a screen
+    // reader and impossible on a phone.
+    expect(html()).toContain('type="file"');
+    expect(html()).toContain('id="rfq-attachment"');
+  });
+
+  it("carries a real label and the 44px target on the file button", () => {
+    expect(html()).toContain('for="rfq-attachment"');
+    expect(html()).toContain("file:min-h-11");
+  });
+
+  it("accepts exactly the three formats, derived from the server table", () => {
+    expect(html()).toContain('accept=".pdf,.xlsx,.dwg"');
+  });
+
+  it("describes itself with the CONSTRAINTS line, so the rule is announced too", () => {
+    // A sighted user reads the limits under the control; a screen-reader user
+    // gets them only if the control points at them.
+    expect(html()).toContain('aria-describedby="rfq-attachment-constraints"');
+    expect(html()).toContain('id="rfq-attachment-constraints"');
+  });
+
+  it("uses border-ink-2 for its own borders — asserted on the STANDALONE render", () => {
+    // ⚠️ Rewritten in the 3.7b review: the first version was titled "NEVER
+    // border-muted" while asserting only that ink-2 was PRESENT — and the
+    // whole-form markup legitimately contains border-muted on every OTHER
+    // control (the 3.2 white-card recipe), so absence could never be asserted
+    // here and the title overclaimed. The absence half now lives in the
+    // standalone AttachmentField suite below, where "no border-muted" is
+    // literally true of the component's own markup.
+    expect(html()).toContain("border-ink-2");
+  });
+
+  it("renders no progress bar while idle", () => {
+    // The in-flight state is opt-in: a submission with no file must never show
+    // an upload bar, and neither must an untouched form.
+    expect(html()).not.toContain("<progress");
+  });
+});
+
+describe("the constraint copy is DERIVED, not written down (Task 0 #13 / AC8)", () => {
+  it("passes the SERVER constants into the message at the call site", () => {
+    // Under the echo-translator mock the interpolated values are visible, so
+    // this pins what the component actually hands to `t()`. The literals here
+    // are deliberate and this is the ONE place they appear: changing the limit
+    // or the format table must force a conscious edit to exactly one test.
+    // `unitMegabytes` echoes as its KEY here (the mock translator returns keys),
+    // which is itself the proof that the unit is a message rather than a
+    // hard-coded "MB"; the real value is pinned against en.json below.
+    expect(render()).toContain("attachmentConstraints:PDF · XLSX · DWG,15,unitMegabytes");
+  });
+
+  it("the MESSAGE is an ICU shell in all three locales — a baked value cannot pass", () => {
+    // This is the structural half, and it is the one that matters. AC13 as
+    // originally specified pinned the rendered literal "PDF / XLSX, <= 15 MB",
+    // which could never fail: that fragment is Latin and identical in all three
+    // locales by default, so it stays green the moment a translator
+    // copy-pastes. Asserting the PLACEHOLDERS instead makes drift impossible —
+    // a catalogue that hard-codes 15, or the format names, goes red here.
+    for (const [locale, messages] of [
+      ["en", en],
+      ["tr", tr],
+      ["ru", ru],
+    ] as const) {
+      const shell = messages.Rfq.attachmentConstraints;
+      expect(shell, `${locale} formats`).toContain("{formats}");
+      expect(shell, `${locale} size`).toContain("{size}");
+      expect(shell, `${locale} unit`).toContain("{unit}");
+      expect(shell, `${locale} must not bake the number`).not.toMatch(/\d/);
+      expect(shell, `${locale} must not bake the format names`).not.toMatch(/PDF|XLSX|DWG/);
+      // The canvas glyphs: U+2264, not "<=" and not a look-alike.
+      expect(shell, `${locale} uses U+2264`).toContain(String.fromCharCode(0x2264));
+    }
+  });
+
+  it("the size and type ERRORS interpolate too — epics:970 wants the limit named", () => {
+    for (const [locale, messages] of [
+      ["en", en],
+      ["tr", tr],
+      ["ru", ru],
+    ] as const) {
+      expect(messages.Rfq.errors.fileTooLarge, `${locale} names the size`).toContain("{size}");
+      expect(messages.Rfq.errors.fileTooLarge, `${locale} names the unit`).toContain("{unit}");
+      expect(messages.Rfq.errors.fileTooLarge, `${locale} bakes no number`).not.toMatch(/\d/);
+      expect(messages.Rfq.errors.fileType, `${locale} names the formats`).toContain("{formats}");
+    }
+  });
+
+  it("the megabyte unit is LOCALIZED — Russian does not say MB", () => {
+    // The one value in the derived line that is genuinely translatable. If all
+    // three read "MB" the derivation would still work and the Russian copy
+    // would still be wrong.
+    expect(en.Rfq.unitMegabytes).toBe("MB");
+    expect(ru.Rfq.unitMegabytes).not.toBe(en.Rfq.unitMegabytes);
+  });
+});
+
+describe("precheckAttachment — the client-side courtesy (AC7)", () => {
+  const fileOf = (name: string, size: number) => {
+    const file = new File(["x"], name);
+    // jsdom computes `size` from the parts; override it so a 16 MB case does
+    // not require allocating 16 MB in a unit test.
+    Object.defineProperty(file, "size", { value: size });
+    return file;
+  };
+
+  it("catches the two failures it can see WITHOUT reading the bytes", () => {
+    expect(precheckAttachment(fileOf("huge.pdf", 16 * 1024 * 1024))).toBe("fileTooLarge");
+    expect(precheckAttachment(fileOf("macro.docx", 1000))).toBe("fileType");
+    expect(precheckAttachment(fileOf("spec.pdf", 1000))).toBeUndefined();
+  });
+
+  it("does NOT attempt magic bytes — that is deliberately the server's job", () => {
+    // A file whose NAME is fine passes here even if its bytes are not. Moving
+    // the container check to the client would make it skippable, and would let
+    // a reader mistake this for a security boundary.
+    expect(precheckAttachment(fileOf("actually-a-zip.pdf", 1000))).toBeUndefined();
+  });
+
+  it("shares the server's boundary exactly — at the limit is fine, one over is not", () => {
+    expect(precheckAttachment(fileOf("edge.pdf", 15 * 1024 * 1024))).toBeUndefined();
+    expect(precheckAttachment(fileOf("edge.pdf", 15 * 1024 * 1024 + 1))).toBe("fileTooLarge");
+  });
+});
+
+describe("AttachmentField standalone — the in-flight state and the border token (3.7b review)", () => {
+  const renderField = (props: { file?: File | null; uploadPercent?: number | null } = {}) =>
+    renderToStaticMarkup(
+      <AttachmentField
+        id="rfq-attachment"
+        inputRef={createRef<HTMLInputElement>()}
+        file={props.file ?? null}
+        onSelect={() => {}}
+        uploadPercent={props.uploadPercent}
+        announce={() => {}}
+      />,
+    );
+
+  it("contains NO border-muted anywhere in its own markup — the absence half", () => {
+    // The whole-form test above cannot assert this (every other control
+    // legitimately uses border-muted on the white card fill); the component's
+    // OWN markup is where "never border-muted" is a checkable claim. This is
+    // the assertion that failed against the pre-review markup, whose file
+    // button carried `file:border-muted`.
+    expect(renderField()).not.toContain("border-muted");
+    expect(renderField({ file: new File(["x"], "spec.pdf") })).not.toContain("border-muted");
+  });
+
+  it("DETERMINATE upload: <progress> carries the value, the region is aria-busy, the percent line names the file", () => {
+    // The review found AC7's in-flight state had no positive test at any layer
+    // — only the idle "no progress bar" case was asserted, so deleting the
+    // whole uploading branch kept every suite green.
+    const html = renderField({ file: new File(["x"], "spec.pdf"), uploadPercent: 42 });
+    expect(html).toContain("<progress");
+    expect(html).toContain('value="42"');
+    expect(html).toContain('max="100"');
+    expect(html).toContain('aria-busy="true"');
+    // The visible line: the uploading message with name + percent (echo mock).
+    expect(html).toContain("attachmentUploading:spec.pdf,42");
+  });
+
+  it("INDETERMINATE upload (unknown total): the progress element renders WITHOUT a value", () => {
+    // `null` percent = the browser reported no total; an unvalued <progress>
+    // is how HTML expresses indeterminate. A hard-coded value here would turn
+    // a stalled upload into a confident-looking lie.
+    const html = renderField({ file: new File(["x"], "spec.pdf"), uploadPercent: null });
+    expect(html).toContain("<progress");
+    expect(html).not.toContain('value="');
+    expect(html).toContain('aria-busy="true"');
+  });
+
+  it("idle: no progress, no aria-busy — the in-flight state is strictly opt-in", () => {
+    const html = renderField({ file: new File(["x"], "spec.pdf") });
+    expect(html).not.toContain("<progress");
+    expect(html).not.toContain("aria-busy");
+    // Idle-with-file shows the filename and the remove control instead.
+    expect(html).toContain("spec.pdf");
+    expect(html).toContain("attachmentRemove");
   });
 });

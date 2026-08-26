@@ -9,11 +9,14 @@ import { zodResolver } from "@/lib/zod-resolver";
 import { buttonClasses } from "@/components/ui/buttonClasses";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { LOCALE_LABELS } from "@/components/i18n/LanguageSwitcher";
+import { ATTACHMENT_FORMATS, ATTACHMENT_MAX_BYTES, extensionOf } from "@/server/rfq/attachment";
 import { FormSectionCard } from "./FormSectionCard";
 import { Field, fieldAria, controlClasses } from "./Field";
 import { EquipmentChips } from "./EquipmentChips";
 import { ConsentRow } from "./ConsentRow";
+import { AttachmentField } from "./AttachmentField";
 import { RfqConfirmation } from "./RfqConfirmation";
+import { submitRfq } from "./submit-rfq";
 
 type AppLocale = (typeof routing.locales)[number];
 
@@ -77,6 +80,20 @@ export function failureKeyOf(status: number): "rateLimited" | "submitFailed" {
 }
 
 /**
+ * A COURTESY pre-check on the picked file (Story 3.7b, AC7): it saves a buyer
+ * from spending two minutes uploading a 40 MB file only to be told no. It is
+ * NOT a gate — the server re-derives all of this from the same constants, and
+ * magic-byte inspection is deliberately left there, where it belongs and where
+ * it cannot be skipped. Returns a stable error key, never a sentence.
+ */
+export function precheckAttachment(file: File): "fileTooLarge" | "fileType" | undefined {
+  if (file.size > ATTACHMENT_MAX_BYTES) return "fileTooLarge";
+  const extension = extensionOf(file.name);
+  if (!ATTACHMENT_FORMATS.some((format) => format.extension === extension)) return "fileType";
+  return undefined;
+}
+
+/**
  * `RfqForm` — the app's FIRST client form (Story 3.2, AC5/AC6/AC7).
  *
  * SELF-CONTAINED AND SLOT-MOUNTABLE: Story 3.8 mounts this same island on
@@ -133,6 +150,16 @@ export function RfqForm({
   const [equipmentDraft, setEquipmentDraft] = useState("");
   const equipmentInputRef = useRef<HTMLInputElement>(null);
   const honeypotRef = useRef<HTMLInputElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
+  // The attachment lives OUTSIDE react-hook-form (Story 3.7b): a `File` is not
+  // a form value the shared zod schema knows about — the schema validates the
+  // JSON payload, and the file rides beside it as a separate multipart part
+  // (Task 0 #2). Its error is a stable KEY, mapped from either the local
+  // pre-check or the server's `{ path: "attachment", key }` detail.
+  const [file, setFile] = useState<File | null>(null);
+  const [attachmentErrorKey, setAttachmentErrorKey] = useState<string | undefined>(undefined);
+  // `undefined` = idle, `null` = in flight with an unknown total, 0-100 = live.
+  const [uploadPercent, setUploadPercent] = useState<number | null | undefined>(undefined);
 
   const normalize = useCallback(
     (values: RfqFormValues) => ({
@@ -221,24 +248,42 @@ export function RfqForm({
 
   const onValid = async (data: RfqInput) => {
     setSubmitError(null);
+    setAttachmentErrorKey(undefined);
+    // A local pre-check failure never reaches the wire: there is no point
+    // uploading 40 MB to be told it is 40 MB.
+    if (file) {
+      const localKey = precheckAttachment(file);
+      if (localKey) {
+        setAttachmentErrorKey(localKey);
+        announce(t("errorsSummary", { count: 1 }));
+        attachmentInputRef.current?.focus();
+        return;
+      }
+    }
     try {
-      const response = await fetch("/api/rfq", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...data, website: honeypotRef.current?.value ?? "" }),
-      });
+      const response = await submitRfq(
+        { ...data, website: honeypotRef.current?.value ?? "" },
+        file,
+        // Only ever called on the multipart path; the JSON path stays idle, so
+        // a submission with no file renders no progress bar at all.
+        (percent) => setUploadPercent(percent),
+      );
 
       if (response.status === 201) {
-        const body = (await response.json()) as { reference: string };
-        setReference(body.reference);
+        setReference((response.body as { reference: string }).reference);
         return;
       }
 
       if (response.status === 422) {
-        const body = (await response.json().catch(() => null)) as {
+        const body = response.body as {
           error?: { details?: { path: string; key: string }[] };
         } | null;
         const details = body?.error?.details ?? [];
+        // The attachment is not a react-hook-form field, so its detail is
+        // pulled out before the RHF mapping below rather than being silently
+        // dropped by `isFieldName`.
+        const attachmentDetail = details.find((detail) => detail.path === "attachment");
+        if (attachmentDetail) setAttachmentErrorKey(attachmentDetail.key);
         // DOM order, not zod issue order (3.2 review): FIELD_NAMES is declared
         // in render order, so "first invalid" means what a sighted user sees.
         const byField = new Map<FieldName, string>();
@@ -263,8 +308,13 @@ export function RfqForm({
           if (first && field === "equipment") equipmentInputRef.current?.focus();
           first = false;
         }
-        if (byField.size > 0) {
-          announce(t("errorsSummary", { count: byField.size }));
+        const count = byField.size + (attachmentDetail ? 1 : 0);
+        if (count > 0) {
+          // The attachment takes focus only when it is the SOLE problem: when a
+          // required field is also wrong, that field is earlier in DOM order
+          // and the loop above has already focused it.
+          if (byField.size === 0 && attachmentDetail) attachmentInputRef.current?.focus();
+          announce(t("errorsSummary", { count }));
           return;
         }
       }
@@ -279,6 +329,11 @@ export function RfqForm({
       // Network failure — the entered values stay on screen for the retry.
       setSubmitError(t("errors.submitFailed"));
       announce(t("errors.submitFailed"));
+    } finally {
+      // Back to idle on EVERY exit, including the 201 (the confirmation
+      // replaces the form) and the throw. Leaving a progress bar frozen at 97%
+      // under an error message is its own small lie about what happened.
+      setUploadPercent(undefined);
     }
   };
 
@@ -399,6 +454,24 @@ export function RfqForm({
                 className={controlClasses(!!errors.projectDetails, "py-3 leading-relaxed")}
               />
             </Field>
+
+            {/* Story 3.7b. Last in section 1 because it is the optional
+                supporting artefact for everything above it — a buyer who has
+                just described the project is the one with a spec to attach. */}
+            <AttachmentField
+              id="rfq-attachment"
+              inputRef={attachmentInputRef}
+              file={file}
+              onSelect={(next) => {
+                setFile(next);
+                // Clear a stale verdict the moment the subject changes: the
+                // previous file's rejection says nothing about this one.
+                setAttachmentErrorKey(next ? precheckAttachment(next) : undefined);
+              }}
+              errorKey={attachmentErrorKey}
+              uploadPercent={uploadPercent}
+              announce={announce}
+            />
           </FormSectionCard>
 
           <FormSectionCard title={t("sectionDetails")}>

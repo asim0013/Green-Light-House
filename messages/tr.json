@@ -169,6 +169,13 @@
     "quantitiesLabel": "Miktarlar",
     "projectDetailsLabel": "Proje açıklaması",
     "projectDetailsPlaceholder": "Kapsam, standartlar, saha koşulları, teslim yeri…",
+    "attachmentLabel": "Ek dosya",
+    "attachmentAction": "Dosya seçin veya buraya bırakın",
+    "attachmentConstraints": "{formats}, ≤ {size} {unit}",
+    "attachmentSelected": "{name} eklendi",
+    "attachmentRemove": "Eki kaldırın",
+    "attachmentUploading": "{name} yükleniyor — %{percent}",
+    "unitMegabytes": "MB",
     "nameLabel": "Ad soyad",
     "namePlaceholder": "örn. Elena Petrova",
     "companyLabel": "Şirket",
@@ -198,14 +205,18 @@
       "invalid": "Bu değer geçerli değil.",
       "consentRequired": "Talebi göndermek için lütfen yukarıdaki veri kullanımını kabul edin.",
       "rateLimited": "Bağlantınızdan şu anda çok fazla talep gönderildi. Lütfen bir saate kadar bekleyin veya bizi arayın.",
-      "submitFailed": "Talep gönderilemedi — girdikleriniz kaybolmadı. Lütfen tekrar deneyin."
+      "submitFailed": "Talep gönderilemedi — girdikleriniz kaybolmadı. Lütfen tekrar deneyin.",
+      "fileTooLarge": "Bu dosya {size} {unit} sınırını aşıyor.",
+      "fileType": "Yalnızca {formats} dosyaları kabul edilir.",
+      "fileCorrupt": "Bu dosya, adının belirttiği biçimde okunamadı. Lütfen yeniden dışa aktarıp tekrar deneyin.",
+      "scanFailed": "Bu dosya güvenlik denetiminden geçemediği için kabul edilemedi. Talebinizi dosyasız gönderin veya başka bir dosya ekleyin."
     }
   },
   "Legal": {
     "title": "Gizlilik Politikası",
     "version": "Politika sürümü: {version}",
     "intro": "Bu sayfa, tam hukuki metinler yayımlanana kadar geçerli olan, GREENLIGHTHOUSE'un gönderdiğiniz bilgileri nasıl kullandığına dair geçici bir özettir.",
-    "collect": "Bir proje talebi gönderdiğinizde formda girdiklerinizi saklarız: adınız, şirketiniz, iş e-postanız ve paylaştığınız sektör, zaman planı, proje açıklaması, ekipman, miktarlar, telefon, ülke ve tercih ettiğiniz yanıt dili — onay verdiğiniz zaman ve size gösterilen bu metnin sürümüyle birlikte.",
+    "collect": "Bir proje talebi gönderdiğinizde formda girdiklerinizi saklarız: adınız, şirketiniz, iş e-postanız ve paylaştığınız sektör, zaman planı, proje açıklaması, ekipman, miktarlar, telefon, ülke ve tercih ettiğiniz yanıt dili ve eklediğiniz dosya (içeriği ve dosya adı) — onay verdiğiniz zaman ve size gösterilen bu metnin sürümüyle birlikte.",
     "use": "Bu bilgileri tek bir amaçla kullanırız: projenizi incelemek ve teknik değerlendirme ile şartnameli bir teklifle yanıt vermek. Belgeleri forma bağlamayız, verilerinizi satmayız.",
     "retention": "Talepler, projenin takibi makul olarak gerektirdiği sürece ticari kayıt olarak saklanır. Bilgileriniz hakkında soru sormak, düzeltmek veya sildirmek için bizi arayın — numara her sayfanın alt bölümündedir."
   },

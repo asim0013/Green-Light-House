@@ -29,6 +29,16 @@ export const RFQ_ERROR_KEYS = [
   "tooLong",
   "invalid",
   "consentRequired",
+  // Story 3.7b's attachment rejections (Task 0 #12). Each names ONE cause, so
+  // the client can say what actually went wrong — epics:970 asks for "a message
+  // naming the specific limit that was hit", which a shared generic key cannot
+  // do. `scanFailed` deliberately covers BOTH "clamd found something" and
+  // "clamd could not tell us": the buyer's next action is identical, and
+  // separating them would report a signature match back to whoever sent it.
+  "fileTooLarge",
+  "fileType",
+  "fileCorrupt",
+  "scanFailed",
 ] as const;
 
 export type RfqErrorKey = (typeof RFQ_ERROR_KEYS)[number];
@@ -50,9 +60,12 @@ export type TimelineKey = (typeof TIMELINE_KEYS)[number];
  * `consentVersion` stamp, so the two can never drift. BUMP THIS whenever the
  * `Legal` namespace's wording changes (the /privacy docstring carries the
  * rule). `-r2`: the 3.2 review added `industry` and `timeline` to the
- * disclosure — they were stored but undeclared.
+ * disclosure — they were stored but undeclared. `-r3`: Story 3.7b added the
+ * ATTACHMENT — its contents and its filename — for exactly the same reason,
+ * surfaced by that story's guard audit rather than by the greps before it
+ * (`Legal.collect` contains none of the words an attachment audit searches for).
  */
-export const PRIVACY_POLICY_VERSION = "privacy-2026-08-stub-r2";
+export const PRIVACY_POLICY_VERSION = "privacy-2026-08-stub-r3";
 
 /**
  * Code points no legitimate buyer input contains, and which this stack cannot
@@ -87,7 +100,14 @@ function hasLoneSurrogate(value: string): boolean {
   return false;
 }
 
-function isStorableText(value: string): boolean {
+/**
+ * Exported for Story 3.7b: an attachment's ORIGINAL FILENAME is stored in
+ * `Lead.attachmentName`, so it is subject to exactly the same rule as every
+ * other stored string. A filename carrying a NUL would otherwise die inside
+ * `prisma.lead.create` — the 3.2 review's hostile-code-point HIGH, reached
+ * through a field that did not exist when that fix was written.
+ */
+export function isStorableText(value: string): boolean {
   return !HOSTILE_CODEPOINTS.test(value) && !hasLoneSurrogate(value);
 }
 

@@ -35,6 +35,12 @@ vi.mock("@aws-sdk/client-s3", () => ({
   HeadObjectCommand: class {
     constructor(readonly input: unknown) {}
   },
+  PutObjectCommand: class {
+    constructor(readonly input: unknown) {}
+  },
+  DeleteObjectCommand: class {
+    constructor(readonly input: unknown) {}
+  },
   NoSuchKey: MockNoSuchKey,
 }));
 
@@ -46,7 +52,7 @@ function serviceError(name: string, httpStatusCode: number): Error {
   return error;
 }
 
-const { getObjectStream, headObject } = await import("./storage");
+const { getObjectStream, headObject, putObject, deleteObject } = await import("./storage");
 
 beforeEach(() => {
   send.mockReset();
@@ -111,5 +117,66 @@ describe("headObject", () => {
 
     send.mockRejectedValue(serviceError("NotFound", 404));
     await expect(headObject("docs/x.pdf")).resolves.toBeNull();
+  });
+});
+
+/**
+ * The WRITE primitives (Story 3.7b, AC4/AC10).
+ *
+ * Deliberately the mirror image of the read contract above: reads absorb a
+ * missing object into `null`, writes absorb nothing. There is no "missing" case
+ * for a write, so every error is an operator error the caller must decide about
+ * — and for `putObject` the caller (the RFQ handler) decides to keep the lead
+ * and record `failed`, which is a decision it can only make if it is told.
+ */
+describe("putObject", () => {
+  it("sends the key, the bytes and the SERVER-derived mime", async () => {
+    send.mockResolvedValue({});
+    const bytes = new Uint8Array([1, 2, 3]);
+    await putObject("quarantine/abc.pdf", bytes, "application/pdf");
+    const input = send.mock.calls[0][0].input as {
+      Key: string;
+      Body: Uint8Array;
+      ContentType: string;
+    };
+    expect(input.Key).toBe("quarantine/abc.pdf");
+    expect(input.Body).toBe(bytes);
+    expect(input.ContentType).toBe("application/pdf");
+  });
+
+  it("THROWS on any failure — a write has no `missing` case to absorb", async () => {
+    // If this ever returned null-for-404 like the reads do, an upload into a
+    // mistyped bucket would look like success and the lead would record
+    // `clean` with a key pointing at nothing.
+    send.mockRejectedValue(serviceError("NoSuchBucket", 404));
+    await expect(
+      putObject("quarantine/abc.pdf", new Uint8Array(1), "application/pdf"),
+    ).rejects.toThrow("NoSuchBucket");
+
+    send.mockRejectedValue(new Error("connect ECONNREFUSED 127.0.0.1:9000"));
+    await expect(
+      putObject("quarantine/abc.pdf", new Uint8Array(1), "application/pdf"),
+    ).rejects.toThrow("ECONNREFUSED");
+  });
+});
+
+describe("deleteObject", () => {
+  it("deletes by key", async () => {
+    send.mockResolvedValue({});
+    await deleteObject("quarantine/abc.pdf");
+    expect((send.mock.calls[0][0].input as { Key: string }).Key).toBe("quarantine/abc.pdf");
+  });
+
+  it("a missing key is SUCCESS — erasure must be retryable", async () => {
+    // S3 DELETE is idempotent and that is the behaviour we want: an erasure
+    // request that is retried after a partial failure must not fail because
+    // the first attempt already removed the object.
+    send.mockResolvedValue({});
+    await expect(deleteObject("quarantine/already-gone.pdf")).resolves.toBeUndefined();
+  });
+
+  it("THROWS on an operator error, so a half-done erasure cannot report success", async () => {
+    send.mockRejectedValue(serviceError("AccessDenied", 403));
+    await expect(deleteObject("quarantine/abc.pdf")).rejects.toThrow("AccessDenied");
   });
 });

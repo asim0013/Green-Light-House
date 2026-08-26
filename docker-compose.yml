@@ -14,13 +14,16 @@ services:
       - "3000:3000"
     env_file: .env
     # `.env` carries HOST addresses (localhost:...), which are unreachable from
-    # inside a container. Override the service addresses here (Story 3.0). Only
-    # the Redis pair is corrected in this story — DATABASE_URL, S3_ENDPOINT and
-    # CLAMAV_HOST have the same pre-existing defect and are logged in
-    # deferred-work.md; Story 3.3 needs DATABASE_URL fixed for the worker.
+    # inside a container. Override the service addresses here (Story 3.0).
+    # CLAMAV_HOST is corrected by Story 3.7b, which made `app` a clamd CLIENT —
+    # the RFQ handler scans attachments in-process, so a `localhost` here would
+    # refuse every connection and reject every attachment as `scanFailed`.
+    # DATABASE_URL and S3_ENDPOINT still carry the same pre-existing defect and
+    # stay logged in deferred-work.md; Story 3.3 needs DATABASE_URL for the worker.
     environment:
       REDIS_URL: redis://redis:6379
       REDIS_QUEUE_URL: redis://redis-queue:6379
+      CLAMAV_HOST: clamav
     depends_on:
       postgres:
         condition: service_healthy
@@ -30,6 +33,10 @@ services:
       redis-queue:
         condition: service_healthy
       minio:
+        condition: service_healthy
+      # Story 3.7b: `app` scans RFQ attachments IN THE REQUEST HANDLER, so it is
+      # a clamd client in its own right — not only the worker.
+      clamav:
         condition: service_healthy
 
   worker:
@@ -120,9 +127,20 @@ services:
 
   clamav:
     # Pinned off :latest for reproducibility. The explicit healthcheck mirrors the
-    # image's built-in clamd readiness probe with a generous start_period — freshclam
-    # downloads virus DBs on first boot (minutes), during which clamd reports
-    # "starting"; worker depends_on this via condition: service_healthy.
+    # image's built-in clamd readiness probe.
+    #
+    # ⚠️ CORRECTED IN STORY 3.7b — the previous comment here claimed the 360s
+    # start_period was needed because "freshclam downloads virus DBs on first
+    # boot (minutes)". That is FALSE for this image: the signature databases are
+    # BAKED IN (verified on the running container — `main.cvd` and
+    # `bytecode.cvd` carry the image's build date, and only `daily.cld` is
+    # fetched afterwards), so clamd can start scanning immediately. The 360s
+    # stays as free slack on a slow machine, not as a documented requirement.
+    # Do NOT "optimize" this to the `_base` tag: that is the variant that ships
+    # WITHOUT signatures and genuinely does pay the multi-minute download.
+    #
+    # Both `app` (Story 3.7b, in-handler scanning) and `worker` depend on this
+    # via condition: service_healthy.
     image: clamav/clamav@sha256:24cab211a882e9f767b84b76afe197d82554306ad6d43b782f80cd6aa1e61427
     ports:
       - "3310:3310"

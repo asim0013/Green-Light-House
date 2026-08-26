@@ -235,3 +235,48 @@ describe("conditional requests — what makes must-revalidate mean anything", ()
     error.mockRestore();
   });
 });
+
+describe("the key-prefix assertion (Story 3.7b, AC9)", () => {
+  it("refuses a fileKey outside docs/ — including a quarantined attachment", async () => {
+    // Before this guard, "no shipped route can serve a quarantined attachment"
+    // was true only because no Document row happens to point outside `docs/`.
+    // `fileKey` is a plain string column an Epic 4 admin form will populate, so
+    // circumstance was the only thing standing between a malware quarantine and
+    // an ungated public download URL.
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    getDocumentBySlug.mockResolvedValue({
+      ...PDF,
+      fileKey: "quarantine/6f1a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8.pdf",
+    });
+    const res = await call("fd-9500-datasheet");
+    expect(res.status).toBe(404);
+    // Storage is never even consulted: the refusal happens before any read.
+    expect(getObjectStream).not.toHaveBeenCalled();
+    expect(headObject).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("outside docs/"));
+    error.mockRestore();
+  });
+
+  it("refuses prefix LOOK-ALIKES, not just foreign prefixes", async () => {
+    // `startsWith` is the whole check, so the interesting cases are the ones
+    // that nearly match: a sibling bucket path and a traversal-shaped key.
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    for (const fileKey of ["docs-archive/x.pdf", "../docs/x.pdf", "projects/lng/hero.jpg"]) {
+      getDocumentBySlug.mockResolvedValue({ ...PDF, fileKey });
+      expect((await call("fd-9500-datasheet")).status, fileKey).toBe(404);
+    }
+    error.mockRestore();
+  });
+
+  it("still serves a legitimate docs/ key — the guard is not a blanket 404", async () => {
+    // The half that proves the test above is not vacuous.
+    getDocumentBySlug.mockResolvedValue(PDF);
+    getObjectStream.mockResolvedValue({
+      stream: body(),
+      contentLength: 602,
+      etag: ETAG,
+      lastModified: LAST_MODIFIED,
+    });
+    expect((await call("fd-9500-datasheet")).status).toBe(200);
+  });
+});

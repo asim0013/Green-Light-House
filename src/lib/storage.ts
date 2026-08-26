@@ -1,4 +1,11 @@
-import { S3Client, GetObjectCommand, HeadObjectCommand, NoSuchKey } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  NoSuchKey,
+} from "@aws-sdk/client-s3";
 
 /**
  * S3-compatible object storage (Story 2.3) — the architecture's `lib/ storage(S3)`
@@ -98,6 +105,49 @@ export async function headObject(key: string): Promise<ObjectValidators | null> 
     if (isMissingKey(error)) return null;
     throw error;
   }
+}
+
+/**
+ * Write one object (Story 3.7b). THROWS on any failure — there is no "missing"
+ * case for a write, and every error here (bad credentials, wrong bucket, dead
+ * endpoint) is an operator error the caller must decide about rather than a
+ * value it can absorb. `scripts/seed-storage.ts:86-93` is the PutObject
+ * convention this follows.
+ *
+ * The RFQ path calls this ONLY after ClamAV has returned `clean` (Task 0 #7),
+ * so an infected file never reaches the bucket at all — which is what makes
+ * FR32a's "malware-scanned before storage" literally true rather than
+ * approximately true.
+ */
+export async function putObject(key: string, body: Uint8Array, contentType: string): Promise<void> {
+  await s3().send(
+    new PutObjectCommand({
+      Bucket: process.env.S3_BUCKET,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+    }),
+  );
+}
+
+/**
+ * Delete one object (Story 3.7b — AC10's erasure primitive).
+ *
+ * ⚠️ THE ORDERING CONTRACT, written down here because Story 4.7 builds the UI
+ * that consumes it: **delete the OBJECT BEFORE the row.** Row-first leaves an
+ * object no row references — unfindable, therefore un-erasable, which is
+ * strictly worse than not deleting at all when the request is a data-subject
+ * erasure (FR45). Object-first leaves at worst a row pointing at a gone key,
+ * which the serving path already handles as a miss and an operator can see.
+ * `deleteLeadWithAttachment` in `server/repositories/lead.ts` is the shipped
+ * expression of this rule.
+ *
+ * S3 DELETE is idempotent: deleting a key that does not exist succeeds. That is
+ * the desired behaviour — a retried erasure must not fail — so unlike the read
+ * paths above there is no `null`-for-missing branch. Operator errors still throw.
+ */
+export async function deleteObject(key: string): Promise<void> {
+  await s3().send(new DeleteObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key }));
 }
 
 /**

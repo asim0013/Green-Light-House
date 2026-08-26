@@ -40,6 +40,87 @@ function loadEnv(): void {
   }
 }
 
+/** One lazily-built S3 client for the read helpers below. Imported lazily so a
+ *  missing dependency cannot break test collection (the rule this file
+ *  already followed inside `probeStorageReady`). */
+async function s3Client() {
+  loadEnv();
+  const { S3Client } = await import("@aws-sdk/client-s3");
+  return new S3Client({
+    endpoint: process.env.S3_ENDPOINT,
+    region: process.env.S3_REGION ?? "us-east-1",
+    forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
+    credentials: {
+      accessKeyId: process.env.S3_ACCESS_KEY_ID ?? "",
+      secretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? "",
+    },
+  });
+}
+
+/**
+ * AC9's STORAGE-LAYER RETRIEVABILITY PROBE (Story 3.7b).
+ *
+ * Story 3.7b ships no route that serves a quarantined attachment — deliberately
+ * (Story 4.7 owns that, behind 4.1's auth). So "the key we stored is the key
+ * that can be read back" cannot be proven through the app at all. Asking
+ * storage directly is what stops Story 4.7 discovering a wrong key months from
+ * now, with no way to tell a bad key from a bad route.
+ */
+export async function storageKeyExists(key: string): Promise<boolean> {
+  const { HeadObjectCommand } = await import("@aws-sdk/client-s3");
+  const client = await s3Client();
+  try {
+    await client.send(new HeadObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key }));
+    return true;
+  } catch {
+    return false;
+  } finally {
+    client.destroy();
+  }
+}
+
+/** Every key under `prefix`. Used by the quarantine census in the pollution
+ *  gate and by the "no object was written" half of the EICAR proof. */
+export async function listStorageKeys(prefix: string): Promise<string[]> {
+  const { ListObjectsV2Command } = await import("@aws-sdk/client-s3");
+  const client = await s3Client();
+  const keys: string[] = [];
+  try {
+    let token: string | undefined;
+    do {
+      const page = await client.send(
+        new ListObjectsV2Command({
+          Bucket: process.env.S3_BUCKET,
+          Prefix: prefix,
+          ContinuationToken: token,
+        }),
+      );
+      for (const object of page.Contents ?? []) if (object.Key) keys.push(object.Key);
+      token = page.IsTruncated ? page.NextContinuationToken : undefined;
+    } while (token);
+  } catch {
+    // Storage unreachable — the caller's assertion, not a connection error, is
+    // what should fail.
+  } finally {
+    client.destroy();
+  }
+  return keys;
+}
+
+/** Remove one object. The attachment e2e cleans up after itself, so a run does
+ *  not leave real files in the bucket for the next one to trip over. */
+export async function deleteStorageKey(key: string): Promise<void> {
+  const { DeleteObjectCommand } = await import("@aws-sdk/client-s3");
+  const client = await s3Client();
+  try {
+    await client.send(new DeleteObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key }));
+  } catch {
+    // Best effort: the pollution gate reports whatever survives.
+  } finally {
+    client.destroy();
+  }
+}
+
 /**
  * True when the seeded storage fixture is reachable in object storage itself.
  * Independent of the app: this never issues an HTTP request to the site.

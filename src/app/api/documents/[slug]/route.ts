@@ -2,6 +2,9 @@ import { getObjectStream, headObject, type ObjectValidators } from "@/lib/storag
 import { isValidSlug } from "@/lib/slug";
 import { getDocumentBySlug } from "@/server/repositories/document";
 
+/** The ONLY storage prefix this route will serve from (Story 3.7b, AC9). */
+const DOCUMENT_KEY_PREFIX = "docs/";
+
 /**
  * `GET /api/documents/<slug>` — the ungated, versioned document download
  * (Story 2.3; FR24/FR25/FR25a; architecture:171 binds this exact placement).
@@ -125,6 +128,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
 
   const document = await getDocumentBySlug(slug);
   if (!document) return notFound();
+
+  // KEY-PREFIX ASSERTION (Story 3.7b, AC9). Until now "no route can serve a
+  // quarantined attachment" was true only CIRCUMSTANTIALLY — because no
+  // `Document.fileKey` happens to point outside `docs/`. This makes it
+  // structural: whatever a row (or a future admin form, or a bad migration)
+  // puts in `fileKey`, this handler serves objects from ONE prefix and nothing
+  // else. Three lines, and it turns an accident into a guarantee.
+  if (!document.fileKey.startsWith(DOCUMENT_KEY_PREFIX)) {
+    console.error(
+      `[documents] refusing to serve ${slug}: fileKey is outside ${DOCUMENT_KEY_PREFIX}`,
+    );
+    return notFound();
+  }
 
   const ifNoneMatch = request.headers.get("if-none-match");
   const ifModifiedSince = request.headers.get("if-modified-since");

@@ -169,6 +169,13 @@
     "quantitiesLabel": "Quantities",
     "projectDetailsLabel": "Project description",
     "projectDetailsPlaceholder": "Scope, standards, site conditions, delivery location…",
+    "attachmentLabel": "Attachment",
+    "attachmentAction": "Choose a file, or drop one here",
+    "attachmentConstraints": "{formats}, ≤ {size} {unit}",
+    "attachmentSelected": "{name} attached",
+    "attachmentRemove": "Remove attachment",
+    "attachmentUploading": "Uploading {name} — {percent}%",
+    "unitMegabytes": "MB",
     "nameLabel": "Full name",
     "namePlaceholder": "e.g. Elena Petrova",
     "companyLabel": "Company",
@@ -198,14 +205,18 @@
       "invalid": "This value is not valid.",
       "consentRequired": "To send the inquiry, please agree to the data use above.",
       "rateLimited": "Too many inquiries from your connection right now. Please wait up to an hour, or call us instead.",
-      "submitFailed": "The inquiry could not be sent — nothing you entered was lost. Please try again."
+      "submitFailed": "The inquiry could not be sent — nothing you entered was lost. Please try again.",
+      "fileTooLarge": "This file is larger than the {size} {unit} limit.",
+      "fileType": "Only {formats} files are accepted.",
+      "fileCorrupt": "This file could not be read as the format its name claims. Please re-export it and try again.",
+      "scanFailed": "This file could not be accepted after a security check. Send your inquiry without it, or attach a different file."
     }
   },
   "Legal": {
     "title": "Privacy Policy",
     "version": "Policy version: {version}",
     "intro": "This is a provisional summary of how GREENLIGHTHOUSE handles the details you submit, in place until the full legal pages are published.",
-    "collect": "When you send a project inquiry, we store what you enter in the form: your name, company, work email, and any industry, timeline, project description, equipment, quantities, phone number, country and preferred reply language you provide — together with the time of your consent and the version of this text you were shown.",
+    "collect": "When you send a project inquiry, we store what you enter in the form: your name, company, work email, and any industry, timeline, project description, equipment, quantities, phone number, country and preferred reply language you provide, plus any file you attach (its contents and its filename) — together with the time of your consent and the version of this text you were shown.",
     "use": "We use these details for one purpose: to review your project and reply with a technical review and a specced proposal. We never gate documents behind forms and we never sell your data.",
     "retention": "Inquiries are kept as business records for as long as the project may reasonably need follow-up. To ask about, correct or remove your details, call us — the number is in the footer of every page."
   },

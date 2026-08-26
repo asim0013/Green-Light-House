@@ -1,5 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { probeDbReady, warmUp } from "./dbReady";
+import { probeClamavReady } from "./clamavReady";
+import { storageKeyExists, listStorageKeys, deleteStorageKey } from "./storageReady";
+import { cleanPdf, eicarPdf, plainZip } from "../scripts/attachment-fixtures";
 
 /**
  * Story 3.2 — the RFQ form and its persist-first write path, end to end.
@@ -52,6 +55,12 @@ interface PrismaLike {
       consentVersion: string | null;
       source: string;
       reference: string;
+      attachmentKey: string | null;
+      attachmentName: string | null;
+      attachmentMime: string | null;
+      attachmentSizeBytes: number | null;
+      attachmentScanStatus: string | null;
+      attachmentScannedAt: Date | null;
     } | null>;
     count(args: { where: { email: string } }): Promise<number>;
     deleteMany(args: { where: { email: { startsWith: string } } }): Promise<{ count: number }>;
@@ -147,13 +156,23 @@ function fakeClientIp(workerIndex: number): string {
 }
 
 let dbReady = true;
+let clamavReady = true;
 
 test.beforeAll(async ({ baseURL }) => {
   dbReady = await probeDbReady();
+  clamavReady = await probeClamavReady();
   if (process.env.CI) {
     expect(
       dbReady,
       "CI provisions Postgres — an unreachable DB here is a defect, not an environment",
+    ).toBe(true);
+    // Story 3.7b: `ci.yml` provisions a clamav service container, so the
+    // skip path is CLOSED here exactly as it is for Postgres. A
+    // malware-detection test that skips in the merge gate is
+    // indistinguishable from one that passes (Story 2.3's lesson).
+    expect(
+      clamavReady,
+      "CI provisions ClamAV — an unreachable scanner here is a defect, not an environment",
     ).toBe(true);
   }
   await warmUp(baseURL, ["/en/rfq", "/en/privacy", "/tr/rfq"]);
@@ -255,7 +274,7 @@ test.describe("persist-first submission (AC7, AC12c)", () => {
     expect(row!.locale).toBe("en");
     expect(row!.consent).toBe(true);
     expect(row!.consentAt).not.toBeNull();
-    expect(row!.consentVersion).toBe("privacy-2026-08-stub-r2:en");
+    expect(row!.consentVersion).toBe("privacy-2026-08-stub-r3:en");
     // Task 0 #7: no pre-fill exists yet, so source is the DB default.
     expect(row!.source).toBe("direct");
   });
@@ -515,14 +534,43 @@ test.describe("the 3.4 seam holds (AC8) + endpoint edges via direct requests", (
     await expect(robots).not.toHaveAttribute("content", /noindex/);
   });
 
-  test("multipart POST is rejected outright with NO row — attachments are 3.7b's", async ({
+  test("multipart POST is ACCEPTED and writes a lead — the 3.7b inversion", async ({
     request,
   }, testInfo) => {
+    // ⚠️ PLANNED INVERSION (Story 3.7b, AC14). This test was literally named
+    // for the fact that attachments were 3.7b's problem: it asserted 415 and
+    // no row. 3.7b makes multipart a first-class transport, so the assertion
+    // flips. What survives unchanged is the CLAIM the suite needs — that the
+    // media-type gate decides, and decides correctly.
     if (!dbReady) testInfo.skip();
     const email = uniqueEmail(testInfo.workerIndex);
     const res = await request.post("/api/rfq", {
-      headers: { "content-type": "multipart/form-data; boundary=x" },
-      data: `--x\r\nContent-Disposition: form-data; name="email"\r\n\r\n${email}\r\n--x--`,
+      headers: { "x-forwarded-for": fakeClientIp(testInfo.workerIndex) },
+      multipart: {
+        payload: JSON.stringify({
+          name: "Elena Petrova",
+          company: "Enka EPC",
+          email,
+          locale: "en",
+          uiLocale: "en",
+          consent: true,
+        }),
+      },
+    });
+    expect(res.status()).toBe(201);
+    expect(await withPrisma((db) => db.lead.count({ where: { email } }))).toBe(1);
+  });
+
+  test("an unaccepted content type is still refused outright, with NO row", async ({
+    request,
+  }, testInfo) => {
+    // The gate has to still BE a gate after the widening — otherwise the
+    // inversion above would read as `guard 1 was deleted`.
+    if (!dbReady) testInfo.skip();
+    const email = uniqueEmail(testInfo.workerIndex);
+    const res = await request.post("/api/rfq", {
+      headers: { "content-type": "text/plain" },
+      data: email,
     });
     expect(res.status()).toBe(415);
     expect(await withPrisma((db) => db.lead.count({ where: { email } }))).toBe(0);
@@ -573,8 +621,8 @@ test.describe("the /privacy stub (AC9)", () => {
       await expect(robots).toHaveAttribute("content", /noindex/);
       // The version line carries the EXACT token the endpoint writes into
       // Lead.consentVersion — anchored, not substring (3.2 review): a page
-      // rendering privacy-2026-08-stub-r2-WRONG must fail here.
-      await expect(page.locator('p[translate="no"]')).toHaveText(/privacy-2026-08-stub-r2$/);
+      // rendering privacy-2026-08-stub-r3-WRONG must fail here.
+      await expect(page.locator('p[translate="no"]')).toHaveText(/privacy-2026-08-stub-r3$/);
     }
   });
 });
@@ -801,5 +849,171 @@ test.describe("the honeypot (Story 3.7a — Task 0 #1: silent drop + recovery lo
     // doctrine, and this run burns values by design.)
     expect(numberOf(fake)).toBeGreaterThan(numberOf(beforeReference));
     expect(numberOf(realReference)).toBeGreaterThan(numberOf(fake));
+  });
+});
+
+test.describe("attachments (Story 3.7b — FR32a)", () => {
+  // SERIAL, deliberately (3.7b review). The EICAR proof compares whole-bucket
+  // `quarantine/` listings before and after its POST, and under fullyParallel
+  // the KEYSTONE test's upload from another worker can land BETWEEN the two
+  // listings — a false RED that reads as "an object was written". KEYSTONE is
+  // the suite's ONLY quarantine writer and lives in this same describe, so
+  // serializing these three tests removes the sole concurrent mutator; every
+  // other suite is untouched and stays parallel.
+  test.describe.configure({ mode: "serial" });
+
+  /** Keys this suite created, cleaned up in afterAll so a run leaves the bucket
+   *  as it found it (the storage half of the pollution gate). */
+  const created: string[] = [];
+
+  test.afterAll(async () => {
+    for (const key of created) await deleteStorageKey(key);
+  });
+
+  test("KEYSTONE: a real browser upload is scanned, stored under quarantine/, and the row records it", async ({
+    page,
+    request,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+    if (!clamavReady) testInfo.skip();
+    const email = uniqueEmail(testInfo.workerIndex);
+    await page
+      .context()
+      .setExtraHTTPHeaders({ "x-forwarded-for": fakeClientIp(testInfo.workerIndex) });
+
+    const pdf = cleanPdf("Hospital wing retrofit datasheet");
+    await openRfq(page);
+    await fillMinimalForm(page, email);
+    // A REAL file input, driven the way a buyer drives it. Drag-and-drop is an
+    // enhancement; if this stopped working the field would be unusable by
+    // keyboard and on mobile, so this is the path worth proving.
+    await page.getByLabel("Attachment").setInputFiles({
+      name: "datasheet.pdf",
+      mimeType: "application/pdf",
+      buffer: pdf,
+    });
+    // TWO assertions, because the filename legitimately appears twice and a
+    // bare `getByText` hit both (strict-mode violation — which is itself the
+    // evidence that the announcement fires). AC7 wants the selection announced
+    // through the form's existing live region AND shown on screen.
+    await expect(page.getByRole("status")).toContainText("datasheet.pdf attached");
+    await expect(page.getByText("datasheet.pdf", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Send project inquiry" }).click();
+
+    await expect(page.getByRole("heading", { name: "Inquiry sent" })).toBeVisible();
+    const referenceText = await page.getByText(/^GLH-RFQ-\d+$/).innerText();
+    const row = await withPrisma((db) =>
+      db.lead.findUnique({ where: { reference: referenceText } }),
+    );
+
+    expect(row, `no lead row for ${referenceText}`).not.toBeNull();
+    // All six columns, written in the SAME insert as the lead (Task 0 #6).
+    expect(row!.attachmentKey).toMatch(/^quarantine\/[0-9a-f-]{36}\.pdf$/);
+    expect(row!.attachmentName).toBe("datasheet.pdf");
+    // SERVER-derived: the browser sent application/pdf here, but the value must
+    // come from the format table either way — see the smuggle test in the unit
+    // suite for the case where the client lies.
+    expect(row!.attachmentMime).toBe("application/pdf");
+    expect(row!.attachmentSizeBytes).toBe(pdf.length);
+    expect(row!.attachmentScanStatus).toBe("clean");
+    expect(row!.attachmentScannedAt).not.toBeNull();
+    created.push(row!.attachmentKey!);
+
+    // AC9, first half — RETRIEVABILITY, proven at the STORAGE layer because no
+    // shipped route serves this key (Story 4.7 owns that, behind 4.1's auth).
+    // Without this, a wrong key would sit undetected until 4.7 tried to read it.
+    expect(
+      await storageKeyExists(row!.attachmentKey!),
+      `stored key ${row!.attachmentKey} is not readable back`,
+    ).toBe(true);
+
+    // AC9, second half — NOTHING SERVES IT. The uuid is slug-shaped, so these
+    // are the requests someone would actually try, not strawmen.
+    const uuid = row!.attachmentKey!.slice("quarantine/".length).replace(/\.pdf$/, "");
+    for (const url of [
+      `/api/documents/${uuid}`,
+      `/api/projects/hospital-fire-suppression/media/${uuid}`,
+      `/${row!.attachmentKey}`,
+      `/api/${row!.attachmentKey}`,
+    ]) {
+      expect((await request.get(url)).status(), url).toBe(404);
+    }
+  });
+
+  test("EICAR: rejected with scanFailed, NO row, and NO object written", async ({
+    request,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+    if (!clamavReady) testInfo.skip();
+    const email = uniqueEmail(testInfo.workerIndex);
+    const before = await listStorageKeys("quarantine/");
+
+    // ⚠️ THE FIXTURE MUST REACH CLAMD, AND THE OBVIOUS FIXTURE DOES NOT.
+    // AC13 warns that an EICAR test can pass because the upload was rejected at
+    // INTAKE — and prescribes a bare `%PDF-` prefix as the fix. Measured against
+    // the live container, that concatenation scans **clean**: clamd types it as
+    // a PDF, runs the PDF parser, and the signature never fires. `eicarPdf()`
+    // puts the signature inside a real PDF `stream` object, which IS detected
+    // (`Eicar-Signature FOUND`). The `scanFailed` key below is what proves the
+    // rejection came from the SCANNER and not from validation — an
+    // intake-rejected file would carry `fileType` or `fileCorrupt` instead.
+    const res = await request.post("/api/rfq", {
+      headers: { "x-forwarded-for": fakeClientIp(testInfo.workerIndex) },
+      multipart: {
+        payload: JSON.stringify({
+          name: "Elena Petrova",
+          company: "Enka EPC",
+          email,
+          locale: "en",
+          uiLocale: "en",
+          consent: true,
+        }),
+        attachment: { name: "spec.pdf", mimeType: "application/pdf", buffer: eicarPdf() },
+      },
+    });
+
+    expect(res.status()).toBe(422);
+    const body = (await res.json()) as { error: { details: { path: string; key: string }[] } };
+    expect(body.error.details).toContainEqual({ path: "attachment", key: "scanFailed" });
+
+    // Persist-first does NOT mean persist-anything: an infected submission
+    // writes no lead at all.
+    expect(await withPrisma((db) => db.lead.count({ where: { email } }))).toBe(0);
+    // And the file never reached the bucket — which is what makes FR32a's
+    // "scanned before storage" literally true rather than approximately true.
+    expect(await listStorageKeys("quarantine/")).toEqual(before);
+  });
+
+  test("a disguised .xlsx is rejected at INTAKE, with a different key — never scanned", async ({
+    request,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+    const email = uniqueEmail(testInfo.workerIndex);
+    const res = await request.post("/api/rfq", {
+      headers: { "x-forwarded-for": fakeClientIp(testInfo.workerIndex) },
+      multipart: {
+        payload: JSON.stringify({
+          name: "Elena Petrova",
+          company: "Enka EPC",
+          email,
+          locale: "en",
+          uiLocale: "en",
+          consent: true,
+        }),
+        // A REAL zip with the right magic bytes and the right extension. Only
+        // the OPC container scan rejects it — and the key it earns is what
+        // distinguishes this from the EICAR case above, so the two tests
+        // genuinely cover different layers rather than the same 422 twice.
+        attachment: {
+          name: "bill-of-quantities.xlsx",
+          mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          buffer: plainZip(),
+        },
+      },
+    });
+    expect(res.status()).toBe(422);
+    const body = (await res.json()) as { error: { details: { path: string; key: string }[] } };
+    expect(body.error.details).toContainEqual({ path: "attachment", key: "fileCorrupt" });
+    expect(await withPrisma((db) => db.lead.count({ where: { email } }))).toBe(0);
   });
 });

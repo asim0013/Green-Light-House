@@ -185,3 +185,45 @@ describe("GET /api/projects/[slug]/media/[id]", () => {
     expect(getProjectBySlug).toHaveBeenCalledWith("lng-terminal-fire-gas-upgrade", DEFAULT_LOCALE);
   });
 });
+
+describe("the key-prefix assertion (Story 3.7b, AC9)", () => {
+  it("refuses a storageKey outside projects/ — including a quarantined attachment", async () => {
+    // `parseProjectMedia` allowlists the MIME but accepts ANY non-empty
+    // `storageKey`, and `Project.media` is free-form JSONB an Epic 4 admin form
+    // will populate. Without this guard, one bad row turns an image route into
+    // a public reader for the malware quarantine.
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    getProjectBySlug.mockResolvedValue(
+      project({
+        media: [{ ...PHOTO, storageKey: "quarantine/6f1a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8.pdf" }],
+      }),
+    );
+    const res = await call("lng-terminal-fire-gas-upgrade", "hero");
+    expect(res.status).toBe(404);
+    // Storage is never consulted: the refusal precedes any read.
+    expect(getObjectStream).not.toHaveBeenCalled();
+    expect(headObject).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("outside projects/"));
+    error.mockRestore();
+  });
+
+  it("refuses prefix LOOK-ALIKES, not just foreign prefixes", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    for (const storageKey of ["projects-old/x.png", "../projects/x.png", "docs/x.pdf"]) {
+      getProjectBySlug.mockResolvedValue(project({ media: [{ ...PHOTO, storageKey }] }));
+      expect((await call("lng-terminal-fire-gas-upgrade", "hero")).status, storageKey).toBe(404);
+    }
+    error.mockRestore();
+  });
+
+  it("still serves a legitimate projects/ key — the guard is not a blanket 404", async () => {
+    getProjectBySlug.mockResolvedValue(project());
+    getObjectStream.mockResolvedValue({
+      stream: body(),
+      contentLength: 120,
+      etag: ETAG,
+      lastModified: LAST_MODIFIED,
+    });
+    expect((await call("lng-terminal-fire-gas-upgrade", "hero")).status).toBe(200);
+  });
+});

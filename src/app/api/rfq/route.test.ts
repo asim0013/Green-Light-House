@@ -1,4 +1,16 @@
+// @vitest-environment node
+//
+// ⚠️ NOT jsdom, and this is load-bearing as of Story 3.7b — it took a confusing
+// hour to find. The project default is jsdom (vitest.config.ts), which replaces
+// the global `File` with JSDOM's. undici's multipart parser CONSTRUCTS parts
+// using that global and then validates them with its own `webidl.is.File`
+// brand check, which JSDOM's File fails — so `formData()` THROWS on any body
+// containing a file part. The handler's own `catch` then answers 422
+// `invalid_body`, so every attachment test failed with a plausible-looking
+// validation error and nothing pointed at the environment. This file exercises
+// a Node route handler; jsdom was never needed here.
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { cleanPdf, cleanXlsx, cleanDwg, plainZip } from "../../../../scripts/attachment-fixtures";
 
 /**
  * The RFQ handler's response contract (Story 3.2, AC3/AC4) — the media-route
@@ -22,6 +34,19 @@ const listIndustries = vi.fn();
 const getProductBySlug = vi.fn();
 const listCategoryTree = vi.fn();
 const checkRateLimit = vi.fn();
+const scanBuffer = vi.fn();
+const putObject = vi.fn();
+
+// Story 3.7b: BOTH must be mocked. vitest loads `.env` (vitest.setup.ts), so an
+// unmocked clamav client would open a real socket to the developer's container
+// and an unmocked putObject would write dozens of junk objects into the real
+// MinIO bucket on every test run — the pollution the storage gate then reports.
+vi.mock("@/lib/clamav", () => ({
+  scanBuffer: (bytes: unknown, options?: unknown) => scanBuffer(bytes, options),
+}));
+vi.mock("@/lib/storage", () => ({
+  putObject: (key: string, body: unknown, mime: string) => putObject(key, body, mime),
+}));
 
 vi.mock("@/server/repositories/lead", () => ({
   createLead: (data: unknown) => createLead(data),
@@ -78,6 +103,73 @@ function post(
   );
 }
 
+const CRLF = String.fromCharCode(13, 10);
+const BOUNDARY = "glh37bboundary";
+
+/**
+ * A REAL multipart request (Story 3.7b), with the body assembled BY HAND.
+ *
+ * ⚠️ THE OBVIOUS VERSION DOES NOT WORK HERE, AND ITS FAILURE IS MISLEADING.
+ * Under vitest's jsdom environment both `FormData` and `File` are JSDOM's, not
+ * undici's. `form.set(name, jsdomFile)` fails undici's blob-like check and
+ * coerces the value to the STRING "[object File]" — so every attachment test
+ * 422s as `invalid` and the whole suite reads as a validator bug rather than a
+ * harness one. Swapping in `node:buffer`'s Blob inverts the problem: JSDOM's
+ * FormData then rejects IT as "not of type 'Blob'".
+ *
+ * Assembling the bytes here sidesteps both. The parser under test is still the
+ * real one — the handler calls the platform's `formData()` on these bytes — and
+ * the framing is now explicit enough to read, which matters for a suite whose
+ * whole subject is what arrives on the wire.
+ */
+function multipartBody(payload: string, file?: { name: string; bytes: Uint8Array; type: string }) {
+  const parts: Uint8Array[] = [];
+  const text = (value: string) => parts.push(Buffer.from(value, "utf8"));
+
+  text(`--${BOUNDARY}${CRLF}`);
+  text(`Content-Disposition: form-data; name="payload"${CRLF}${CRLF}`);
+  text(`${payload}${CRLF}`);
+
+  if (file) {
+    text(`--${BOUNDARY}${CRLF}`);
+    text(
+      `Content-Disposition: form-data; name="attachment"; filename="${file.name}"${CRLF}` +
+        `Content-Type: ${file.type}${CRLF}${CRLF}`,
+    );
+    parts.push(file.bytes);
+    text(CRLF);
+  }
+
+  text(`--${BOUNDARY}--${CRLF}`);
+  return Buffer.concat(parts.map((part) => Buffer.from(part)));
+}
+
+function postMultipart(
+  payload: unknown,
+  file?: { name: string; bytes: Uint8Array; type?: string },
+  init: { headers?: Record<string, string>; origin?: string } = {},
+) {
+  const body = multipartBody(
+    typeof payload === "string" ? payload : JSON.stringify(payload),
+    file && {
+      ...file,
+      // Deliberately a LIE by default: the handler must never consult the
+      // client's Content-Type, for validation or for storage.
+      type: file.type ?? "application/octet-stream",
+    },
+  );
+  const headers = new Headers(init.headers);
+  headers.set("content-type", `multipart/form-data; boundary=${BOUNDARY}`);
+  if (init.origin) headers.set("origin", init.origin);
+  return POST(
+    new Request(`${SELF_ORIGIN}/api/rfq`, {
+      method: "POST",
+      headers,
+      body: new Uint8Array(body),
+    }),
+  );
+}
+
 async function errorOf(res: Response) {
   return (await res.json()).error as {
     code: string;
@@ -93,6 +185,10 @@ beforeEach(() => {
   getProductBySlug.mockReset();
   listCategoryTree.mockReset();
   checkRateLimit.mockReset();
+  scanBuffer.mockReset();
+  putObject.mockReset();
+  scanBuffer.mockResolvedValue({ status: "clean" });
+  putObject.mockResolvedValue(undefined);
   createLead.mockResolvedValue({ reference: "GLH-RFQ-2042" });
   burnLeadReference.mockResolvedValue("GLH-RFQ-9001");
   listIndustries.mockResolvedValue([{ slug: "fire-safety" }, { slug: "oil-gas" }]);
@@ -102,11 +198,23 @@ beforeEach(() => {
 });
 
 describe("POST /api/rfq — guard chain", () => {
-  it("415s any non-JSON content type BEFORE reading the body", async () => {
-    const res = await post("field=value", { contentType: "multipart/form-data" });
+  it("415s an unaccepted content type BEFORE reading the body", async () => {
+    // ⚠️ PLANNED INVERSION (Story 3.7b, AC14). This test used `multipart/
+    // form-data` as its vehicle, which 3.7b now ACCEPTS. The vehicle changed;
+    // the claim did not — the gate still refuses everything outside the two
+    // accepted types, which is what keeps guard 1 a gate rather than a formality.
+    const res = await post("field=value", { contentType: "text/plain" });
     expect(res.status).toBe(415);
     expect((await errorOf(res)).code).toBe("unsupported_media_type");
     expect(createLead).not.toHaveBeenCalled();
+  });
+
+  it("415s a made-up type that merely CONTAINS an accepted one", async () => {
+    // `split(";")[0]` is an exact media-type match, not a substring test.
+    for (const type of ["application/json-patch+json", "x-multipart/form-data"]) {
+      const res = await post(VALID, { contentType: type });
+      expect(res.status, type).toBe(415);
+    }
   });
 
   it("accepts application/json WITH parameters (charset)", async () => {
@@ -295,7 +403,7 @@ describe("POST /api/rfq — the create-args centrepiece (AC4)", () => {
       locale: "ru",
       consent: true,
       consentAt: expect.any(Date),
-      consentVersion: "privacy-2026-08-stub-r2:en",
+      consentVersion: "privacy-2026-08-stub-r3:en",
     });
     // Server-stamped, never client time.
     expect((args.consentAt as Date).getTime()).toBeGreaterThanOrEqual(before);
@@ -321,7 +429,7 @@ describe("POST /api/rfq — the create-args centrepiece (AC4)", () => {
       locale: "ru",
       consent: true,
       consentAt: expect.any(Date),
-      consentVersion: "privacy-2026-08-stub-r2:en",
+      consentVersion: "privacy-2026-08-stub-r3:en",
     });
   });
 
@@ -348,14 +456,14 @@ describe("POST /api/rfq — the create-args centrepiece (AC4)", () => {
     expect(args).not.toHaveProperty("prefillContext");
     expect(args).not.toHaveProperty("attachmentKey");
     expect(args).not.toHaveProperty("website");
-    expect(args.consentVersion).toBe("privacy-2026-08-stub-r2:en");
+    expect(args.consentVersion).toBe("privacy-2026-08-stub-r3:en");
     expect((args.consentAt as Date).getFullYear()).toBeGreaterThan(2000);
   });
 
   it("consentVersion carries the ACTUAL uiLocale — a hard-coded ':en' cannot pass (3.2 review)", async () => {
     const res = await post({ ...VALID, uiLocale: "ru" });
     expect(res.status).toBe(201);
-    expect(createLead.mock.calls[0][0].consentVersion).toBe("privacy-2026-08-stub-r2:ru");
+    expect(createLead.mock.calls[0][0].consentVersion).toBe("privacy-2026-08-stub-r3:ru");
   });
 
   it("keeps the client label when a catalog slug no longer resolves", async () => {
@@ -479,5 +587,352 @@ describe("POST /api/rfq — the honeypot (Story 3.7a, Task 0 #1: silent drop + r
     expect(res.status).toBe(500);
     expect((await errorOf(res)).code).toBe("internal_error");
     consoleError.mockRestore();
+  });
+});
+
+describe("POST /api/rfq — multipart intake (Story 3.7b, AC1/AC2)", () => {
+  it("accepts multipart and writes the lead — the branch the 415 test no longer covers", async () => {
+    const res = await postMultipart(VALID);
+    expect(res.status).toBe(201);
+    expect(createLead).toHaveBeenCalledTimes(1);
+  });
+
+  it("a multipart submission WITHOUT a file writes no attachment columns at all", async () => {
+    // `attachment_scan_status = null` means NO ATTACHMENT, never "unscanned"
+    // (schema.prisma:65-67). Absent keys, not null keys — the same distinction
+    // the create-args centrepiece makes for `source` and `reference`.
+    await postMultipart(VALID);
+    const args = createLead.mock.calls[0][0];
+    for (const column of [
+      "attachmentKey",
+      "attachmentName",
+      "attachmentMime",
+      "attachmentSizeBytes",
+      "attachmentScanStatus",
+      "attachmentScannedAt",
+    ]) {
+      expect(args, column).not.toHaveProperty(column);
+    }
+    expect(scanBuffer).not.toHaveBeenCalled();
+    expect(putObject).not.toHaveBeenCalled();
+  });
+
+  it("the JSON branch KEEPS its 64 KB cap — a JSON POST declaring 15 MB still 413s", async () => {
+    // The regression this guards: widening one constant for both branches would
+    // have handed every JSON body a 15 MB allowance, silently, with no test red.
+    const res = await post(VALID, { headers: { "content-length": String(15 * 1024 * 1024) } });
+    expect(res.status).toBe(413);
+  });
+
+  it("the multipart ceiling is HIGHER than the JSON one — the same declaration passes", async () => {
+    // The other half of branch isolation: if both branches shared the 64 KB
+    // limit, every real attachment would 413 and the test above would still be
+    // green. One assertion cannot prove a split; two can.
+    const res = await postMultipart(VALID, undefined, {
+      headers: { "content-length": String(15 * 1024 * 1024) },
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it("413s a multipart body whose declared length exceeds the multipart ceiling", async () => {
+    const res = await postMultipart(VALID, undefined, {
+      headers: { "content-length": String(64 * 1024 * 1024) },
+    });
+    expect(res.status).toBe(413);
+    expect(createLead).not.toHaveBeenCalled();
+  });
+
+  it("422s malformed multipart framing as invalid_body, never a 500", async () => {
+    const crlf = String.fromCharCode(13) + String.fromCharCode(10);
+    const res = await POST(
+      new Request(`${SELF_ORIGIN}/api/rfq`, {
+        method: "POST",
+        headers: { "content-type": "multipart/form-data; boundary=zzz" },
+        body: ["--zzz", "this is not a valid part", ""].join(crlf),
+      }),
+    );
+    expect(res.status).toBe(422);
+    expect((await errorOf(res)).code).toBe("invalid_body");
+  });
+
+  it("422s a multipart body with no `payload` part", async () => {
+    const body = Buffer.concat([
+      Buffer.from(`--${BOUNDARY}${CRLF}`, "utf8"),
+      Buffer.from(
+        `Content-Disposition: form-data; name="attachment"; filename="spec.pdf"${CRLF}${CRLF}`,
+        "utf8",
+      ),
+      cleanPdf(),
+      Buffer.from(`${CRLF}--${BOUNDARY}--${CRLF}`, "utf8"),
+    ]);
+    const res = await POST(
+      new Request(`${SELF_ORIGIN}/api/rfq`, {
+        method: "POST",
+        headers: { "content-type": `multipart/form-data; boundary=${BOUNDARY}` },
+        body: new Uint8Array(body),
+      }),
+    );
+    expect(res.status).toBe(422);
+    expect((await errorOf(res)).code).toBe("invalid_body");
+    expect(createLead).not.toHaveBeenCalled();
+  });
+
+  it("413s an oversize `payload` part even inside a legal-sized multipart body", async () => {
+    // The payload part carries the JSON branch own ceiling, so multipart is not
+    // a way to smuggle a 15 MB JSON document past the 64 KB rule.
+    const res = await postMultipart({ ...VALID, projectDetails: "x".repeat(70 * 1024) });
+    expect(res.status).toBe(413);
+  });
+});
+
+describe("POST /api/rfq — attachment validation (Story 3.7b, AC3)", () => {
+  const rejections: [string, string, Uint8Array, string][] = [
+    ["an unaccepted extension", "macro.docx", cleanXlsx(), "fileType"],
+    ["bytes contradicting the name", "spec.pdf", cleanXlsx(), "fileCorrupt"],
+    ["a real ZIP disguised as a workbook", "boq.xlsx", plainZip(), "fileCorrupt"],
+    ["an empty file", "spec.pdf", new Uint8Array(0), "fileCorrupt"],
+  ];
+
+  it.each(rejections)("422s %s with its OWN key", async (_label, name, bytes, key) => {
+    const res = await postMultipart(VALID, { name, bytes });
+    expect(res.status).toBe(422);
+    const error = await errorOf(res);
+    expect(error.code).toBe("validation_failed");
+    expect(error.details).toContainEqual({ path: "attachment", key });
+    expect(createLead).not.toHaveBeenCalled();
+    // Nothing was scanned and nothing was stored: intake rejects before either.
+    expect(scanBuffer).not.toHaveBeenCalled();
+    expect(putObject).not.toHaveBeenCalled();
+  });
+
+  it("an attachment just over the FILE limit gets `fileTooLarge`, and is never scanned", async () => {
+    // The two ceilings are deliberately different, and the gap between them is
+    // what makes this key reachable at all: the BODY ceiling is the file limit
+    // plus the payload limit plus framing, so a 15 MB + 1 attachment slips past
+    // the stream guard and is caught by the file rule — which is the better
+    // outcome, because 413 names no cause and this names one.
+    const oversize = new Uint8Array(15 * 1024 * 1024 + 1);
+    oversize.set(cleanPdf());
+    const res = await postMultipart(VALID, { name: "huge.pdf", bytes: oversize });
+    expect(res.status).toBe(422);
+    expect((await errorOf(res)).details).toContainEqual({
+      path: "attachment",
+      key: "fileTooLarge",
+    });
+    // Nothing that large is ever handed to clamd or to the bucket.
+    expect(scanBuffer).not.toHaveBeenCalled();
+    expect(putObject).not.toHaveBeenCalled();
+    expect(createLead).not.toHaveBeenCalled();
+  });
+
+  it("an attachment past the BODY ceiling dies on the stream, before parsing", async () => {
+    // The other side of the gap: far enough over and the byte counter cancels
+    // the read mid-stream, so nothing is buffered, parsed or validated. This is
+    // AC2's "aborted at the ceiling" half, and it uses NO content-length header
+    // so it cannot be satisfied by the declaration short-circuit.
+    const huge = new Uint8Array(16 * 1024 * 1024);
+    huge.set(cleanPdf());
+    const res = await postMultipart(VALID, { name: "huge.pdf", bytes: huge });
+    expect(res.status).toBe(413);
+    expect(scanBuffer).not.toHaveBeenCalled();
+    expect(createLead).not.toHaveBeenCalled();
+  });
+
+  it("reports FIELD errors and the ATTACHMENT error in one response", async () => {
+    // A buyer with a missing name and a wrong file hears about both at once,
+    // rather than fixing one and being told about the other on the next round.
+    const res = await postMultipart({ ...VALID, name: "" }, { name: "x.exe", bytes: cleanPdf() });
+    expect(res.status).toBe(422);
+    const details = (await errorOf(res)).details!;
+    expect(details).toContainEqual({ path: "name", key: "required" });
+    expect(details).toContainEqual({ path: "attachment", key: "fileType" });
+  });
+
+  it("refuses a filename this stack cannot store — the 500-at-the-insert class", async () => {
+    // Built by char code: writing control characters as escapes in source is
+    // what has repeatedly planted RAW control bytes in this repository.
+    const res = await postMultipart(VALID, {
+      name: `spec${String.fromCharCode(0)}.pdf`,
+      bytes: cleanPdf(),
+    });
+    expect(res.status).toBe(422);
+    expect((await errorOf(res)).details).toContainEqual({ path: "attachment", key: "invalid" });
+    expect(createLead).not.toHaveBeenCalled();
+  });
+
+  it("an `attachment` sent as a TEXT field is malformed, not empty", async () => {
+    const form = new FormData();
+    form.set("payload", JSON.stringify(VALID));
+    form.set("attachment", "../../etc/passwd");
+    const res = await POST(new Request(`${SELF_ORIGIN}/api/rfq`, { method: "POST", body: form }));
+    expect(res.status).toBe(422);
+    expect((await errorOf(res)).details).toContainEqual({ path: "attachment", key: "invalid" });
+  });
+});
+
+describe("POST /api/rfq — the scan gate (Story 3.7b, AC4/AC5)", () => {
+  it("INFECTED → 422 scanFailed, NO upload, NO row", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    scanBuffer.mockResolvedValue({ status: "infected", signature: "Eicar-Signature" });
+    const res = await postMultipart(VALID, { name: "spec.pdf", bytes: cleanPdf() });
+    expect(res.status).toBe(422);
+    expect((await errorOf(res)).details).toContainEqual({ path: "attachment", key: "scanFailed" });
+    // The file never reaches the bucket — that is what makes FR32a "scanned
+    // before storage" literally true rather than approximately true.
+    expect(putObject).not.toHaveBeenCalled();
+    expect(createLead).not.toHaveBeenCalled();
+    // The signature is logged for US and withheld from the sender.
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Eicar-Signature"));
+    warn.mockRestore();
+  });
+
+  it("SCANNER DOWN → the same 422 and the same key, never a stored unscanned file", async () => {
+    // Fail-closed on the attachment, and ONLY on the attachment: a submission
+    // without a file is untouched by a clamd outage (proven by the no-file test
+    // above, which never calls the scanner at all).
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    scanBuffer.mockResolvedValue({ status: "failed", reason: "unreachable" });
+    const res = await postMultipart(VALID, { name: "spec.pdf", bytes: cleanPdf() });
+    expect(res.status).toBe(422);
+    expect((await errorOf(res)).details).toContainEqual({ path: "attachment", key: "scanFailed" });
+    expect(putObject).not.toHaveBeenCalled();
+    expect(createLead).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("infected and scanner-down are INDISTINGUISHABLE to the sender", async () => {
+    // Deliberate (Task 0 #12): a distinct key would turn this endpoint into a
+    // free malware-detection oracle. Compared as whole response bodies, so a
+    // future divergence anywhere in the envelope goes red.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    scanBuffer.mockResolvedValue({ status: "infected", signature: "Win.Test.EICAR_HDB-1" });
+    const infected = await (
+      await postMultipart(VALID, { name: "a.pdf", bytes: cleanPdf() })
+    ).json();
+    scanBuffer.mockResolvedValue({ status: "failed", reason: "timeout" });
+    const down = await (await postMultipart(VALID, { name: "a.pdf", bytes: cleanPdf() })).json();
+    expect(infected).toEqual(down);
+    warn.mockRestore();
+  });
+
+  it("the scanner receives the FILE bytes, not the request body", async () => {
+    const bytes = cleanPdf();
+    await postMultipart(VALID, { name: "spec.pdf", bytes });
+    expect(scanBuffer).toHaveBeenCalledTimes(1);
+    const scanned = scanBuffer.mock.calls[0][0] as Uint8Array;
+    expect(Buffer.from(scanned).equals(Buffer.from(bytes))).toBe(true);
+  });
+});
+
+describe("POST /api/rfq — the attachment write path (Story 3.7b, AC5)", () => {
+  const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+  it("CLEAN → quarantine upload + ONE insert carrying all six columns", async () => {
+    const bytes = cleanXlsx();
+    const before = Date.now();
+    const res = await postMultipart(VALID, {
+      name: "bill-of-quantities.xlsx",
+      // The browser Content-Type is a lie on purpose; the stored mime must come
+      // from the format table instead.
+      type: "text/plain",
+      bytes,
+    });
+    expect(res.status).toBe(201);
+
+    const [key, body, mime] = putObject.mock.calls[0];
+    expect(key).toMatch(/^quarantine\/[0-9a-f-]{36}\.xlsx$/);
+    expect(Buffer.from(body as Uint8Array).equals(Buffer.from(bytes))).toBe(true);
+    expect(mime).toBe(XLSX_MIME);
+    // The buyer filename is stored, and is NOT in the key.
+    expect(key).not.toContain("bill-of-quantities");
+
+    expect(createLead).toHaveBeenCalledTimes(1);
+    const args = createLead.mock.calls[0][0];
+    expect(args.attachmentKey).toBe(key);
+    expect(args.attachmentName).toBe("bill-of-quantities.xlsx");
+    expect(args.attachmentMime).toBe(XLSX_MIME);
+    expect(args.attachmentSizeBytes).toBe(bytes.length);
+    expect(args.attachmentScanStatus).toBe("clean");
+    expect((args.attachmentScannedAt as Date).getTime()).toBeGreaterThanOrEqual(before);
+  });
+
+  it("the ORDER is scan → upload → insert, never upload → scan", async () => {
+    // Pinned as an ordering, not inferred from outcomes: swapping the two would
+    // store an infected file and then delete it, which is a different (and
+    // worse) design that the infected test alone would not catch.
+    const order: string[] = [];
+    scanBuffer.mockImplementation(async () => {
+      order.push("scan");
+      return { status: "clean" };
+    });
+    putObject.mockImplementation(async () => {
+      order.push("upload");
+    });
+    createLead.mockImplementation(async () => {
+      order.push("insert");
+      return { reference: "GLH-RFQ-2042" };
+    });
+    await postMultipart(VALID, { name: "spec.pdf", bytes: cleanPdf() });
+    expect(order).toEqual(["scan", "upload", "insert"]);
+  });
+
+  it("UPLOAD FAILURE after a clean scan → `failed`, NO key, and the lead is KEPT", async () => {
+    // Persist-first (FR29): an attachment must never cost an inquiry. The row
+    // honestly records that a file was sent, scanned, and could not be kept.
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    putObject.mockRejectedValue(new Error("connect ECONNREFUSED 127.0.0.1:9000"));
+    const res = await postMultipart(VALID, { name: "spec.pdf", bytes: cleanPdf() });
+    expect(res.status).toBe(201);
+    const args = createLead.mock.calls[0][0];
+    expect(args.attachmentScanStatus).toBe("failed");
+    expect(args.attachmentKey).toBeNull();
+    // The metadata survives, so Story 4.7 can say WHICH file was lost.
+    expect(args.attachmentName).toBe("spec.pdf");
+    expect(args.attachmentSizeBytes).toBe(cleanPdf().length);
+    error.mockRestore();
+  });
+
+  it("smuggled attachment columns lose to the SERVER-derived values", async () => {
+    // AC14: the pre-3.7b version of this claim only proved the columns were
+    // ABSENT, which stopped being the interesting case the moment they became
+    // writable. Now they ARE written — so the claim is that what gets written
+    // is ours, not theirs.
+    const res = await postMultipart(
+      {
+        ...VALID,
+        attachmentKey: "docs/fd-9500-datasheet-v1.pdf",
+        attachmentName: "innocent.pdf",
+        attachmentMime: "text/html",
+        attachmentSizeBytes: 1,
+        attachmentScanStatus: "clean",
+        attachmentScannedAt: "1999-01-01T00:00:00.000Z",
+      },
+      { name: "real.dwg", bytes: cleanDwg() },
+    );
+    expect(res.status).toBe(201);
+    const args = createLead.mock.calls[0][0];
+    expect(args.attachmentKey).toMatch(/^quarantine\//);
+    expect(args.attachmentName).toBe("real.dwg");
+    expect(args.attachmentMime).toBe("image/vnd.dwg");
+    expect(args.attachmentSizeBytes).toBe(cleanDwg().length);
+    expect((args.attachmentScannedAt as Date).getFullYear()).toBeGreaterThan(2000);
+  });
+
+  it("HONEYPOT + attachment → fake 201, nothing stored, no row", async () => {
+    // The honeypot still diverges only at the PERSIST step (3.7a contract), so
+    // a trapped bot file IS scanned — indistinguishability is the point — but
+    // it is never uploaded and no row is written, which is what makes this path
+    // orphan-free by construction (Task 0 #7).
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const res = await postMultipart(
+      { ...VALID, website: "https://spam.example" },
+      { name: "spec.pdf", bytes: cleanPdf() },
+    );
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ reference: "GLH-RFQ-9001" });
+    expect(scanBuffer).toHaveBeenCalledTimes(1);
+    expect(putObject).not.toHaveBeenCalled();
+    expect(createLead).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });

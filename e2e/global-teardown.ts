@@ -69,4 +69,31 @@ export default async function globalTeardown() {
   } catch {
     // Redis down or unset — counters are disposable; nothing to report.
   }
+
+  // STORAGE (Story 3.7b, AC16). The leads census above cannot see this class of
+  // pollution at all: an attachment e2e that uploads and then fails before its
+  // cleanup leaves a REAL object in the bucket, with no row pointing at it — and
+  // the very design that makes quarantine safe (no serving route, key only in
+  // the DB) is what makes an orphan invisible. Counting `quarantine/` is the
+  // only way anyone finds out.
+  //
+  // Reported, never swept: unlike a rate-limit counter, a quarantined object may
+  // be a genuine submission from a manual test, and a teardown that deletes real
+  // uploads to keep a number tidy is worse than a number that is not tidy. The
+  // count lands in the story record's gate line where a human can judge it.
+  try {
+    const { listStorageKeys } = await import("./storageReady");
+    const quarantined = await listStorageKeys("quarantine/");
+    console.log(`[pollution-gate] quarantine/ objects=${quarantined.length}`);
+    if (quarantined.length > 0) {
+      console.warn(
+        `[pollution-gate] ${quarantined.length} object(s) under quarantine/ — expected 0 after a clean run; ` +
+          `each is an attachment whose test did not clean up, or a real submission. NOT swept: ${quarantined
+            .slice(0, 10)
+            .join(", ")}`,
+      );
+    }
+  } catch {
+    // Storage unreachable — nothing to census.
+  }
 }

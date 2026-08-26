@@ -3,6 +3,9 @@ import { isValidSlug } from "@/lib/slug";
 import { getProjectBySlug } from "@/server/repositories/project";
 import { DEFAULT_LOCALE } from "@/server/i18n/resolveTranslation";
 
+/** The ONLY storage prefix this route will serve from (Story 3.7b, AC9). */
+const PROJECT_MEDIA_KEY_PREFIX = "projects/";
+
 /**
  * `GET /api/projects/<slug>/media/<id>` — one project photograph (Story 3.1, AC10).
  *
@@ -123,6 +126,18 @@ export async function GET(
   // Already parsed, sorted and allowlisted at the repository boundary.
   const entry = project.media.find((candidate) => candidate.id === id);
   if (!entry) return notFound();
+
+  // KEY-PREFIX ASSERTION (Story 3.7b, AC9). `parseProjectMedia` allowlists the
+  // MIME but accepts ANY non-empty `storageKey` — so "this route cannot reach a
+  // quarantined attachment" rested entirely on nobody ever writing such a key
+  // into the JSONB column. `Project.media` is exactly the kind of free-form
+  // blob an Epic 4 admin form will later populate. One prefix, enforced here.
+  if (!entry.storageKey.startsWith(PROJECT_MEDIA_KEY_PREFIX)) {
+    console.error(
+      `[projects] refusing to serve ${slug}/${id}: storageKey is outside ${PROJECT_MEDIA_KEY_PREFIX}`,
+    );
+    return notFound();
+  }
 
   const ifNoneMatch = request.headers.get("if-none-match");
   const ifModifiedSince = request.headers.get("if-modified-since");
