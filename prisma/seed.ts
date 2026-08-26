@@ -297,14 +297,19 @@ async function main() {
         // `ProjectMediaEntry[]` is not assignable to Prisma's `Json` input type,
         // so the cast lives HERE, at the write boundary, and nowhere else. The
         // shape is validated on the way OUT by `parseProjectMedia`.
-        ...(media === undefined ? {} : { media: media as Prisma.InputJsonValue }),
+        //
+        // OMITTED media means "NO photos" and WRITES [] (3.1 review): leaving the
+        // column untouched on update meant a fixture edit that removed photos
+        // silently never propagated to this long-lived dev database — the exact
+        // unrepairable-seed class the per-locale upserts above exist to close.
+        media: (media ?? []) as Prisma.InputJsonValue,
       },
       create: {
         slug,
         status: PublishStatus.published,
         industryId,
         deliveredAt: deliveredAt ?? null,
-        ...(media === undefined ? {} : { media: media as Prisma.InputJsonValue }),
+        media: (media ?? []) as Prisma.InputJsonValue,
       },
     });
 

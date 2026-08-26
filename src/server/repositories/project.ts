@@ -29,8 +29,16 @@ export interface ProjectListItem {
   descriptionIsFallback: boolean;
   /** True when `outcome` came from EN while the requested locale is not EN. */
   outcomeIsFallback: boolean;
-  /** Null when the project has no industry — `industry_id` is a nullable FK. */
-  industry: { slug: string; name: string } | null;
+  /**
+   * Null when the project has no industry — `industry_id` is a nullable FK.
+   *
+   * `isFallback` covers the NAME (3.1 review): the industry resolves its own
+   * translation independently of the project's, so a Russian page can show a
+   * fallen-back English "Fire Safety" beside a marked Russian title — and the
+   * name needs its own flag or no consumer can `lang`-mark it. `name` is
+   * guaranteed non-empty: a blank or missing translation falls back to the slug.
+   */
+  industry: { slug: string; name: string; isFallback: boolean } | null;
   deliveredAt: Date | null;
   /**
    * Project photos in the frozen `ProjectMediaEntry` shape (Story 3.0), already
@@ -93,13 +101,17 @@ export function toProjectListItem(project: ProjectRow, locale: Locale): ProjectL
    */
   const en = project.translations.find((row) => row.locale === DEFAULT_LOCALE) ?? null;
   function field(pick: (row: (typeof project.translations)[number]) => string | null) {
+    // "" is treated as ABSENT, not as content (3.1 review). No current writer can
+    // produce it — the seed writes null — but Epic 4's admin will, and a blanked
+    // field must fall back exactly like a missing one rather than silently
+    // deleting the EN text behind an empty string.
     const own = t ? pick(t.value) : null;
-    if (own !== null) return { value: own, isFallback: t?.isFallback ?? false };
+    if (own !== null && own !== "") return { value: own, isFallback: t?.isFallback ?? false };
 
     const fromEn = en ? pick(en) : null;
     // Absent everywhere is not a fallback — it is simply absent, and the renderer
     // omits the row rather than marking it.
-    if (fromEn === null) return { value: null, isFallback: false };
+    if (fromEn === null || fromEn === "") return { value: null, isFallback: false };
     return { value: fromEn, isFallback: locale !== DEFAULT_LOCALE };
   }
 
@@ -116,7 +128,13 @@ export function toProjectListItem(project: ProjectRow, locale: Locale): ProjectL
     descriptionIsFallback: description.isFallback,
     outcomeIsFallback: outcome.isFallback,
     industry: project.industry
-      ? { slug: project.industry.slug, name: it?.value.name ?? project.industry.slug }
+      ? {
+          slug: project.industry.slug,
+          // Trim-or-slug: a present-but-blank translated name must not become an
+          // empty group heading or a dangling chip separator (3.1 review).
+          name: it?.value.name.trim() || project.industry.slug,
+          isFallback: it?.isFallback ?? false,
+        }
       : null,
     deliveredAt: project.deliveredAt,
     media: parseProjectMedia(project.media),
@@ -268,7 +286,21 @@ export async function queryProjectBySlug(
     include: {
       translations: true,
       industry: { include: { translations: true } },
-      products: { include: { product: { include: CARD_INCLUDE } }, orderBy: { productId: "asc" } },
+      products: {
+        // ⚠️ THE STATUS FILTER IS LOAD-BEARING (3.1 review, proven live with a
+        // probe row). Without it a DRAFT product linked via `ProjectProduct`
+        // rendered its name, model and card on a published project's page.
+        // `CARD_INCLUDE` cannot carry this filter — it is a `Prisma.ProductInclude`
+        // and filters the product's RELATIONS, never the product itself — and
+        // `ProductCardRow` discards `status` at the type boundary, so this `where`
+        // on the join rows is the only place the guard can live. Every other
+        // card-producing read filters `status: "published"` in its own where;
+        // `Product.status` defaults to `draft`, so an unpublish must remove the
+        // card here, not leave it leaking.
+        where: { product: { status: "published" } },
+        include: { product: { include: CARD_INCLUDE } },
+        orderBy: { productId: "asc" },
+      },
     },
   });
 

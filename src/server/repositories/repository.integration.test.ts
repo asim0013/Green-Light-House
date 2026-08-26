@@ -306,7 +306,7 @@ describe("project repository (integration)", () => {
     const found = (await queryPublishedProjects("tr")).find(
       (p) => p.slug === `${PROJECT_PREFIX}dated`,
     );
-    expect(found?.industry).toEqual({ slug: TEST_SLUG, name: "Integration TR" });
+    expect(found?.industry).toEqual({ slug: TEST_SLUG, name: "Integration TR", isFallback: false });
     // The project itself has no TR title, so it falls back independently.
     expect(found?.title).toBe("Dated EN");
     expect(found?.isFallback).toBe(true);
@@ -1142,6 +1142,47 @@ describe("Story 3.1 — project detail read (integration)", () => {
       expect(await queryProjectBySlug(draft.slug, "en")).not.toBeNull();
     } finally {
       await prisma.project.delete({ where: { id: draft.id } });
+    }
+  });
+
+  it("NEVER renders a DRAFT product on the equipment grid (3.1 review — proven leaking live)", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    // The review's probe: a draft product linked via ProjectProduct rendered its
+    // name and model on the published LNG project. `CARD_INCLUDE` cannot filter
+    // the product (it is a ProductInclude) and `ProductCardRow` discards `status`
+    // at the type boundary — the `where` on the join rows is the ONLY guard.
+    const manufacturer = await prisma.manufacturer.findFirstOrThrow();
+    const category = await prisma.category.findFirstOrThrow();
+    const lng = await prisma.project.findUniqueOrThrow({
+      where: { slug: PROJECT_SLUG },
+    });
+    const draft = await prisma.product.create({
+      data: {
+        slug: "zzz-int-test-draft-equipment",
+        model: "ZZZ-DRAFT-1",
+        status: "draft",
+        manufacturerId: manufacturer.id,
+        categoryId: category.id,
+        attributes: {},
+        translations: { create: [{ locale: "en", name: "ZZZ Draft Equipment" }] },
+      },
+    });
+    try {
+      await prisma.projectProduct.create({
+        data: { projectId: lng.id, productId: draft.id },
+      });
+
+      const detail = await queryProjectBySlug(PROJECT_SLUG, "en");
+      expect(detail?.products.map((p) => p.slug)).not.toContain("zzz-int-test-draft-equipment");
+
+      // ...and the same link IS rendered once published, so the absence above is
+      // the status filter talking, not a broken join.
+      await prisma.product.update({ where: { id: draft.id }, data: { status: "published" } });
+      const republished = await queryProjectBySlug(PROJECT_SLUG, "en");
+      expect(republished?.products.map((p) => p.slug)).toContain("zzz-int-test-draft-equipment");
+    } finally {
+      await prisma.projectProduct.deleteMany({ where: { productId: draft.id } });
+      await prisma.product.delete({ where: { id: draft.id } });
     }
   });
 

@@ -69,7 +69,11 @@ export function ProjectMediaBand({
      * of the image and is invisible to sighted readers, so there is nothing for a
      * visible notice to attach to.
      */
-    const localised = photo.alt[locale];
+    // A present-but-EMPTY per-locale alt is ABSENT, not content (3.1 review): the
+    // frozen parser type-checks non-EN values without an emptiness check, and
+    // `"" ?? en` returns "" — which then hid the photo on that locale only,
+    // contradicting the contract that EN alt is the fallback source.
+    const localised = photo.alt[locale]?.trim() || undefined;
     const alt = localised ?? photo.alt.en;
     const altIsFallback = !localised && locale !== "en";
 
@@ -107,7 +111,13 @@ export function ProjectMediaBand({
         {t("figCaption")}
       </p>
       {chip && (
-        <p className="border border-muted px-2 py-1 font-mono text-[11px] uppercase tracking-wide text-ink-2">
+        /* The industry name is interpolated INSIDE the localized template, so the
+           whole chip carries the marking when the name fell back — the IndustryCta
+           heading precedent for fragments that cannot be wrapped separately. */
+        <p
+          lang={project.industry?.isFallback ? "en" : undefined}
+          className="border border-muted px-2 py-1 font-mono text-[11px] uppercase tracking-wide text-ink-2"
+        >
           {chip}
         </p>
       )}

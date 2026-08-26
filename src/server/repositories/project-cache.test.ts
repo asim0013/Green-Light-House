@@ -19,9 +19,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const cached = vi.fn();
 vi.mock("@/lib/cache", () => ({ cached: (...args: unknown[]) => cached(...args) }));
-// The detail read must never reach Postgres in this file: `cached` is stubbed to
-// return a hit, so the uncached fallthrough is not taken.
-vi.mock("@/lib/db", () => ({ prisma: {} }));
+// Postgres is never reached in this file. Most tests stub `cached` to return a
+// hit; the pass-through test swaps a fake `prisma.project` onto this object to
+// observe what the closure queries.
+const prismaMock: Record<string, unknown> = {};
+vi.mock("@/lib/db", () => ({ prisma: prismaMock }));
 
 const { getProjectBySlug } = await import("./project");
 
@@ -32,7 +34,7 @@ const HIT = {
   description: null,
   outcome: null,
   isFallback: false,
-  industry: { slug: "oil-gas", name: "Oil & Gas" },
+  industry: { slug: "oil-gas", name: "Oil & Gas", isFallback: false },
   deliveredAt: "2024-06-01T00:00:00.000Z" as unknown as Date,
   media: [],
   products: [],
@@ -65,6 +67,28 @@ describe("getProjectBySlug — cache contract", () => {
     // caller's slug let one slug poison another's read after a rename).
     const tag = (cached.mock.calls[0]?.[2] as string[]).find((t) => t.startsWith("project:"));
     expect(tag).toBe("project:refinery-gas-detection-retrofit");
+  });
+
+  it("QUERIES by the same slug the key carries — the closure actually runs (3.1 review)", async () => {
+    // ⚠️ The test above asserts key and tag but never INVOKES the closure, so a
+    // closure querying a DIFFERENT value than the key — the literal 2.4 poisoning
+    // — passed it. Here `cached` becomes a pass-through and prisma is observed:
+    // the WHERE must name the same slug the key carries.
+    const findFirst = vi.fn().mockResolvedValue(null);
+    (prismaMock as { project?: unknown }).project = { findFirst };
+    cached.mockImplementation(((read: () => Promise<unknown>) => read()) as never);
+
+    await getProjectBySlug("refinery-gas-detection-retrofit", "tr");
+
+    // Two calls (cached miss + the fallthrough re-query) — BOTH must query the
+    // caller's slug, published-only.
+    expect(findFirst).toHaveBeenCalled();
+    for (const call of findFirst.mock.calls) {
+      expect((call[0] as { where: { slug: string; status: string } }).where).toMatchObject({
+        slug: "refinery-gas-detection-retrofit",
+        status: "published",
+      });
+    }
   });
 
   it("re-hydrates `deliveredAt` — the cache round-trips a Date to an ISO STRING", async () => {

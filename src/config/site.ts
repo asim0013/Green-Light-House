@@ -1,9 +1,9 @@
 /**
  * Site-wide config (Story 1.6). The phone number is a PLACEHOLDER for GLH to set.
  * Nav/footer hrefs are locale-relative (next-intl `<Link>` adds the locale) and
- * point at canonical routes built by later stories — Industries/Products/Projects/
- * Services/About (Epic 2), `/rfq` (Story 3.2), legal pages (Story 5.1). They render
- * the localized 404 until those stories land (chrome-first).
+ * point at canonical routes (chrome-first). BUILT: Industries (2.1), Products
+ * (2.2), Services (2.6), Projects (3.1). Still rendering the localized 404 until
+ * their stories land: `/rfq` (3.2), About / legal pages (Epic 5).
  */
 export const SITE = {
   // TODO(GLH): replace with the real number. `phone` is the tel: href (E.164),

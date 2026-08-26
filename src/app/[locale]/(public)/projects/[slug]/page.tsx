@@ -92,7 +92,11 @@ export default async function ProjectDetailPage(props: {
   if (!project) {
     return (
       <>
-        <Breadcrumb items={[{ label: t("crumb"), href: "/projects" }, { label: t("crumb") }]} />
+        {/* A distinct current crumb — "Projects / Projects" read as a stutter
+            (3.1 review); the sibling routes' `notFoundCrumb` convention. */}
+        <Breadcrumb
+          items={[{ label: t("crumb"), href: "/projects" }, { label: t("notFoundCrumb") }]}
+        />
         <ProjectNotFound />
       </>
     );
@@ -110,7 +114,15 @@ export default async function ProjectDetailPage(props: {
   const crumbs: Crumb[] = [
     { label: t("crumb"), href: "/projects" },
     ...(project.industry
-      ? [{ label: project.industry.name, href: `/industries/${project.industry.slug}` }]
+      ? [
+          {
+            label: project.industry.name,
+            href: `/industries/${project.industry.slug}`,
+            // The industry name falls back independently of the title (3.1
+            // review) — same slot, same treatment as products/[slug].
+            isFallback: project.industry.isFallback,
+          },
+        ]
       : []),
     { label: project.title, isFallback: project.isFallback },
   ];

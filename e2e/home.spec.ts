@@ -111,8 +111,11 @@ test("discovery items link only to routes that EXIST (FR8)", async ({ page }) =>
     await expect(main.locator(`a[href*="${route}"]`)).toHaveCount(0);
   }
 
-  // The hero proof card now resolves (Story 3.1). Exactly one: the hero renders
-  // `projects[0]`, so a second would mean something else started linking out.
+  // The hero proof card now resolves (Story 3.1). Exactly one, and pinned to the
+  // SLUG (3.1 review): a prefix-only count survives a wrong-suffix link, because
+  // the target soft-404s with a 200 and nothing else would notice. `projects[0]`
+  // on this seed is the LNG project (deliveredAt DESC NULLS LAST).
+  await expect(main.locator('a[href="/en/projects/lng-terminal-fire-gas-upgrade"]')).toHaveCount(1);
   await expect(main.locator('a[href^="/en/projects/"]')).toHaveCount(1);
 
   // The industry cards now resolve. Six seeded industries, six links.

@@ -46,6 +46,66 @@ export const getProjectsPageData = cache(async (locale: Locale): Promise<Project
   return listPublishedProjects(locale);
 });
 
+/** One industry group on the `/projects` index. `slug` is null for the un-sectored group. */
+export interface ProjectGroup {
+  /**
+   * The React key AND Map key. For real industries it is the slug; for the
+   * un-sectored group it is a sentinel containing a space — which no valid slug
+   * can contain, so an industry literally slugged "none" cannot collide with it
+   * (3.1 review: the page previously re-derived `slug ?? "none"` as the render
+   * key, reintroducing exactly the collision the sentinel exists to avoid).
+   */
+  key: string;
+  slug: string | null;
+  name: string;
+  /** True when the industry NAME fell back to EN — the group heading marks it. */
+  isFallback: boolean;
+  items: ProjectListItem[];
+}
+
+const NO_INDUSTRY_KEY = " none";
+
+/**
+ * Group published projects under their industry (Story 3.1, FR21 — extracted from
+ * the route in the 3.1 review so the null-industry branch is actually testable;
+ * it previously lived un-exported in the page and had no test at any level).
+ *
+ * ⚠️ A PROJECT WITH NO INDUSTRY MUST NOT VANISH. `Project.industryId` is a
+ * nullable FK with `onDelete: SetNull`, so deleting an industry silently
+ * un-sectors its projects rather than removing them. They collect under a defined
+ * group instead of being filtered out of existence.
+ *
+ * An industry with no published project is simply never emitted — there is no key
+ * for it, because the grouping is driven by the projects rather than by the
+ * industry list.
+ *
+ * Order: industries in first-appearance order of the underlying read, which is
+ * already `deliveredAt DESC NULLS LAST, slug ASC`. So the sector with the most
+ * recent delivery leads, and the un-sectored group sorts last regardless.
+ */
+export function groupByIndustry(projects: readonly ProjectListItem[]): ProjectGroup[] {
+  const groups = new Map<string, ProjectGroup>();
+
+  for (const project of projects) {
+    const key = project.industry?.slug ?? NO_INDUSTRY_KEY;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.items.push(project);
+      continue;
+    }
+    groups.set(key, {
+      key,
+      slug: project.industry?.slug ?? null,
+      name: project.industry?.name ?? "",
+      isFallback: project.industry?.isFallback ?? false,
+      items: [project],
+    });
+  }
+
+  const entries = [...groups.values()];
+  return [...entries.filter((g) => g.slug !== null), ...entries.filter((g) => g.slug === null)];
+}
+
 /**
  * FR42a's thin-content signals for the `/projects` INDEX.
  *

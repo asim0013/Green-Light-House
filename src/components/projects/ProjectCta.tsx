@@ -50,9 +50,12 @@ export function ProjectCta({ projectSlug }: { projectSlug?: string }) {
           sideWidth={320}
           main={
             <div>
-              <Kicker>{t("ctaKicker")}</Kicker>
+              {/* The INDEX has no project in view, so "Start your inquiry from
+                  this project" would dangle (3.1 review) — every string branches
+                  with the button, not just the button. */}
+              <Kicker>{projectSlug ? t("ctaKicker") : t("ctaKickerIndex")}</Kicker>
               <h2 className="mt-3 font-heading text-2xl font-bold tracking-tight text-white md:text-[28px]">
-                {t("ctaTitle")}
+                {projectSlug ? t("ctaTitle") : t("ctaTitleIndex")}
               </h2>
               <p className="mt-6 font-mono text-[11px] uppercase leading-relaxed tracking-[0.15em] text-on-dark-text">
                 {tIndustry("sla")}

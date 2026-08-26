@@ -101,7 +101,15 @@ test.describe("the project detail page (AC2, AC11, AC15)", () => {
     );
     await expect(page.locator("main article")).toHaveCount(0);
     // No photo ⇒ the DESIGNED no-photo band, never a blank region or broken image.
-    await expect(page.locator('main img[src^="/api/projects/"]')).toHaveCount(0);
+    // ⚠️ `main img` count, NOT a src-prefix selector (3.1 review): next/image
+    // rewrites every src to /_next/image?url=…, so `img[src^="/api/projects/"]`
+    // matched nothing on ANY page — including the hospital page WITH photos —
+    // making the original assertion vacuous. The band is the only possible img
+    // in main on a detail page, so a bare img count is the sensitive form.
+    await expect(page.locator("main img")).toHaveCount(0);
+    // …and the designed band's caption IS there — absence-of-img alone would also
+    // pass on a blank region, which is exactly what FR21 forbids.
+    await expect(page.locator("main").getByText(/^FIG\./)).toBeVisible();
   });
 
   test("serves a real photo through the frozen media URL on the fixture that has one", async ({
@@ -192,6 +200,17 @@ test.describe("per-field fallback (AC2b) — the hole measured live", () => {
       hasText: "142 field devices",
     });
     await expect(outcome).toHaveCount(1);
+
+    // …AND the VISIBLE notice (3.1 review — this test's own title claimed it and
+    // nothing asserted it, so deleting FallbackNotice kept every suite green: the
+    // 2.6 defect class, named in this story's Dev Notes, recurring regardless).
+    // Scoped to the paragraph CONTAINING the outcome text, so a notice elsewhere
+    // on the page cannot satisfy it. (`filter({hasText})`, not `has:` with an
+    // absolutely-rooted locator — that re-queries `main span…` RELATIVE to each
+    // candidate <p> and can never match, which is how the first version of this
+    // assertion failed against a correct page.)
+    const outcomeParagraph = page.locator("main p").filter({ hasText: "142 field devices" });
+    await expect(outcomeParagraph.getByText(/İngilizce gösteriliyor/)).toBeVisible();
   });
 });
 

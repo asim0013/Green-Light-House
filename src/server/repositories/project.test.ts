@@ -101,7 +101,7 @@ describe("toProjectListItem", () => {
       }),
       "ru",
     );
-    expect(item.industry).toEqual({ slug: "oil-gas", name: "Нефть и газ" });
+    expect(item.industry).toEqual({ slug: "oil-gas", name: "Нефть и газ", isFallback: false });
   });
 
   it("falls back the industry name independently of the project title", () => {
@@ -120,7 +120,7 @@ describe("toProjectListItem", () => {
 
   it("falls back the industry name to its slug when it has no translations", () => {
     const item = toProjectListItem(row({ industry: { slug: "nuclear", translations: [] } }), "en");
-    expect(item.industry).toEqual({ slug: "nuclear", name: "nuclear" });
+    expect(item.industry).toEqual({ slug: "nuclear", name: "nuclear", isFallback: false });
   });
 
   it("preserves a null deliveredAt", () => {

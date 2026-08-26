@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ProjectDetail } from "@/server/repositories/project";
+import { DEFAULT_LOCALE } from "@/server/i18n/resolveTranslation";
 
 /**
  * The project-media handler's response contract (Story 3.1, AC10).
@@ -179,6 +180,8 @@ describe("GET /api/projects/[slug]/media/[id]", () => {
 
   it("reads the project locale-independently — bytes do not vary by language", async () => {
     await call();
-    expect(getProjectBySlug).toHaveBeenCalledWith("lng-terminal-fire-gas-upgrade", "en");
+    // Pinned to the CONSTANT, not the literal "en" (3.1 review): the property is
+    // "the shared default locale", and this tracks it if it ever changes.
+    expect(getProjectBySlug).toHaveBeenCalledWith("lng-terminal-fire-gas-upgrade", DEFAULT_LOCALE);
   });
 });

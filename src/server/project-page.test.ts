@@ -11,7 +11,7 @@ vi.mock("@/i18n/navigation", () => ({
     href === "/" ? `/${locale}` : `/${locale}${href}`,
 }));
 
-import { projectHref, projectsIndexSignals, projectSignals } from "./project-page";
+import { projectHref, projectsIndexSignals, projectSignals, groupByIndustry } from "./project-page";
 import type { ProjectListItem } from "@/server/repositories/project";
 import { isIndexable } from "@/lib/seo";
 
@@ -36,7 +36,7 @@ function project(over: Partial<ProjectListItem> = {}): ProjectListItem {
     isFallback: false,
     descriptionIsFallback: false,
     outcomeIsFallback: false,
-    industry: { slug: "oil-gas", name: "Oil & Gas" },
+    industry: { slug: "oil-gas", name: "Oil & Gas", isFallback: false },
     deliveredAt: new Date("2024-06-01T00:00:00.000Z"),
     media: [],
     ...over,
@@ -118,5 +118,69 @@ describe("projectSignals — one project detail page", () => {
   it("is fallback-only on a non-EN locale when the project's own text fell back", () => {
     expect(isIndexable(projectSignals("ru", project({ isFallback: true })))).toBe(false);
     expect(isIndexable(projectSignals("en", project({ isFallback: true })))).toBe(true);
+  });
+});
+
+/**
+ * The grouping (Story 3.1 AC1 — added in the 3.1 review). As a page-private
+ * function this had NO test at any level, while the story record claimed the
+ * null-industry branch was "unit-level only" proven. Extracted here precisely so
+ * these assertions could exist.
+ */
+describe("groupByIndustry", () => {
+  const oil = { slug: "oil-gas", name: "Oil & Gas", isFallback: false };
+  const fire = { slug: "fire-safety", name: "Fire Safety", isFallback: false };
+
+  it("groups by industry in first-appearance order", () => {
+    const groups = groupByIndustry([
+      project({ id: "a", industry: oil }),
+      project({ id: "b", slug: "b", industry: fire }),
+      project({ id: "c", slug: "c", industry: oil }),
+    ]);
+    expect(groups.map((g) => g.slug)).toEqual(["oil-gas", "fire-safety"]);
+    expect(groups[0]?.items.map((p) => p.id)).toEqual(["a", "c"]);
+  });
+
+  it("a NULL-industry project does NOT vanish — it lands in the un-sectored group, LAST", () => {
+    // `industry_id` is a nullable FK with onDelete: SetNull, so deleting an
+    // industry un-sectors its projects. They must collect, not disappear.
+    const groups = groupByIndustry([
+      project({ id: "orphan", slug: "orphan", industry: null }),
+      project({ id: "a", industry: oil }),
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups[1]?.slug).toBeNull();
+    expect(groups[1]?.items.map((p) => p.id)).toEqual(["orphan"]);
+    // Sorted last even though it appeared FIRST in the read.
+    expect(groups[0]?.slug).toBe("oil-gas");
+  });
+
+  it("an industry with no published project is simply never emitted", () => {
+    const groups = groupByIndustry([project({ industry: oil })]);
+    expect(groups.map((g) => g.slug)).toEqual(["oil-gas"]);
+  });
+
+  it("the un-sectored key cannot collide with a real slug — even one literally named 'none'", () => {
+    // The sentinel contains a space, which isValidSlug forbids in real slugs. The
+    // page previously re-derived `slug ?? "none"` as the React key, which an
+    // industry slugged "none" WOULD have collided with (3.1 review).
+    const none = { slug: "none", name: "None Industries", isFallback: false };
+    const groups = groupByIndustry([
+      project({ id: "a", industry: none }),
+      project({ id: "b", slug: "b", industry: null }),
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(new Set(groups.map((g) => g.key)).size).toBe(2);
+  });
+
+  it("carries the industry's fallback flag so the group heading can be lang-marked", () => {
+    const groups = groupByIndustry([
+      project({ industry: { slug: "fire-safety", name: "Fire Safety", isFallback: true } }),
+    ]);
+    expect(groups[0]?.isFallback).toBe(true);
+  });
+
+  it("returns [] for zero projects — the page renders its defined empty state", () => {
+    expect(groupByIndustry([])).toEqual([]);
   });
 });

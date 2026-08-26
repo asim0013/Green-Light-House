@@ -47,7 +47,7 @@ const FULL: ProjectListItem = {
   isFallback: false,
   descriptionIsFallback: false,
   outcomeIsFallback: false,
-  industry: { slug: "oil-gas", name: "Oil & Gas" },
+  industry: { slug: "oil-gas", name: "Oil & Gas", isFallback: false },
   deliveredAt: new Date("2024-06-01T00:00:00.000Z"),
   media: [],
 };
@@ -72,6 +72,15 @@ describe("HomeHero — always-on chrome", () => {
     const html = renderToStaticMarkup(<HomeHero project={FULL} />);
     expect(html).toContain('href="/rfq"');
     expect(html).toContain('href="tel:');
+  });
+
+  it("links the proof card to THE PROJECT'S OWN detail page (Story 3.1)", () => {
+    // BOUND TO THE SLUG (3.1 review): nothing anywhere pinned the href suffix, so
+    // a wrong-slug link would survive every gate — the target soft-404s with a
+    // 200, and EXPERIENCE.md:97 calls this doorway the site's most important
+    // interaction. The e2e pins the same URL against the live seed.
+    const html = renderToStaticMarkup(<HomeHero project={FULL} />);
+    expect(html).toContain(`href="/projects/${FULL.slug}"`);
   });
 
   it("keeps the visible phone number inside the accessible name (WCAG 2.5.3)", () => {

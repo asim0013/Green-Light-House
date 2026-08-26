@@ -129,7 +129,15 @@ function ProofCard({
 
       {hasMeta && (
         <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-border-subtle pt-5">
-          {project.industry && <Chip>{project.industry.name}</Chip>}
+          {project.industry && (
+            <Chip>
+              {/* The industry name falls back independently of the project text
+                  (3.1 review) — pre-existing gap, closed while the shape changed. */}
+              <span lang={project.industry.isFallback ? "en" : undefined}>
+                {project.industry.name}
+              </span>
+            </Chip>
+          )}
           {project.deliveredAt && (
             /* One message with a {date} placeholder, NOT label + date concatenated:
                the label/date order and punctuation differ per language, and
