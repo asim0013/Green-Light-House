@@ -21,11 +21,18 @@ import { getCacheRedis, isCacheRedisConfigured, throttledError } from "./redis";
  * throw, op rejection, or simply never answering — yields `allowed: true`
  * inside `timeoutMs` (default 500ms), logging a stable greppable code
  * (`[rfq-rl] limiter unavailable — failing open`) at error level, throttled to
- * one line per 30s. The ONE silent allow: `REDIS_URL` unset/empty — that is
- * configuration (the DB-free build, a dev without Redis), not an outage.
- * FR27's persist-first guarantee is why open is the only acceptable direction;
- * the never-settling-connect trap is why the outer timeout race is not
- * optional — without it, "fail open" is "hang forever", i.e. fail CLOSED.
+ * one line per 30s. FR27's persist-first guarantee is why open is the only
+ * acceptable direction; the never-settling-connect trap is why the outer
+ * timeout race is not optional — without it, "fail open" is "hang forever",
+ * i.e. fail CLOSED. ⚠️ A TIMED-OUT CHECK STILL LANDS ITS `INCR` (the raced
+ * work is not cancelled — nothing in the Redis protocol can un-send it), so
+ * stored counts are an UPPER bound on enforced requests, never a lower one:
+ * a request allowed through a timeout was still counted (3.7a review).
+ *
+ * The one allow that is not an outage: `REDIS_URL` unset/empty — configuration
+ * (the DB-free build, a dev without Redis). It is silent in development and
+ * logged ONCE per process in production, because shipping FR32's endpoint with
+ * no limiter at all is a deployment defect that must not be invisible.
  */
 
 /** The minimal command surface the limiter needs — node-redis v6 satisfies it. */
@@ -89,8 +96,12 @@ export async function checkRateLimit(options: RateLimitOptions): Promise<RateLim
   const timeoutMs = options.timeoutMs ?? 500;
   const getCommands = options.getCommands ?? getCacheRedis;
 
-  // Unconfigured is a CHOICE, not an outage — allow silently (see docstring).
+  // Unconfigured is a CHOICE, not an outage — but in production it means
+  // FR32's endpoint is shipping unthrottled, which must never be invisible.
   if (!options.getCommands && !isCacheRedisConfigured()) {
+    if (process.env.NODE_ENV === "production") {
+      throttledError(`${label}-unconfigured`, "no REDIS_URL — rate limiting is DISABLED");
+    }
     return { allowed: true };
   }
 
@@ -130,22 +141,93 @@ export async function checkRateLimit(options: RateLimitOptions): Promise<RateLim
 }
 
 /**
+ * IPv6 addresses are bucketed by their /64 PREFIX, never the full address
+ * (3.7a review — the sharpest finding): a routine /64 delegation hands one
+ * attacker 2^64 valid, edge-written rightmost entries, each of which would
+ * otherwise mint its own 5/hour bucket — an unlimited limiter, behind exactly
+ * the trusted edge the policy defends (live-probed: one /64 → 8 distinct
+ * keys). /64 is the standard smallest routable allocation, so it is the
+ * smallest unit an operator cannot cheaply multiply. IPv4 keeps its full
+ * address: /32 IS the host there.
+ *
+ * Canonicalization matters as much as truncation — `2001:DB8::1`,
+ * `2001:db8:0:0:0:0:0:1` and `2001:db8::1` are ONE host and must be ONE
+ * bucket. Node's `net` has no expander, so this does it explicitly: split on
+ * `::`, pad the elided run with zero groups, lowercase, take the first four.
+ */
+function ipv6Bucket(address: string): string {
+  const [head, tail] = address.split("::");
+  const headGroups = head ? head.split(":").filter(Boolean) : [];
+  const tailGroups = tail ? tail.split(":").filter(Boolean) : [];
+  // An IPv4-mapped tail ("::ffff:1.2.3.4") is left to the generic path below;
+  // its dotted group never parses as a hextet, which is harmless here because
+  // only the first four groups are used and mapped addresses are /96-scoped.
+  const groups =
+    address.includes("::") && headGroups.length + tailGroups.length < 8
+      ? [
+          ...headGroups,
+          ...Array(8 - headGroups.length - tailGroups.length).fill("0"),
+          ...tailGroups,
+        ]
+      : [...headGroups, ...tailGroups];
+  return groups
+    .slice(0, 4)
+    .map((group) => group.toLowerCase().replace(/^0+(?=.)/, ""))
+    .join(":");
+}
+
+/**
  * THE WRITTEN TRUSTED-PROXY POLICY's derivation half (Task 0 #6; the policy
  * prose lives in the RFQ route docstring and `.env.example`).
  *
  * Trust the RIGHTMOST `x-forwarded-for` entry, and only it: production runs
  * behind exactly ONE trusted edge that appends (or replaces) the header, so
  * the rightmost entry is edge-written — every hop left of it is
- * client-supplied noise and is ignored. Next's standalone server FILLS the
- * header from the socket address when a request arrives without one, so under
- * a real server the header is never absent; the `"unknown"` bucket is
- * reachable only from hand-built Requests and pathological values.
+ * client-supplied noise and is ignored. Next's standalone server fills the
+ * header from the socket address when a request arrives without one
+ * (source-verified, and the e2e proves the passthrough half live), so under a
+ * real server the header is rarely absent.
  *
- * `isIP` + the 45-char cap (IPv6 max textual length) bound what can reach a
- * Redis key: a non-IP value can never mint per-value keys — everything
- * malformed shares one bucket.
+ * WHAT REACHES A REDIS KEY, precisely (3.7a review — the earlier "junk can
+ * never mint keys" was too strong): a trailing `:port` and `[v6]` brackets are
+ * stripped first, because real edges (IIS/ARR and several LBs) write them and
+ * collapsing those deployments into one shared bucket would 429 the sixth
+ * genuine buyer site-wide. Zone IDs (`fe80::1%eth0`) are REJECTED — `isIP`
+ * accepts them, they are meaningless on the wire, and their free-form suffix
+ * is a per-value key-minting primitive. What remains is an `isIP`-valid
+ * address, length-capped, IPv6-truncated to /64; everything else — including a
+ * non-empty entry a misconfigured edge wrote — shares the single `"unknown"`
+ * bucket, and `describeClientKey` lets the caller log that case so the
+ * misconfiguration is detectable rather than silent.
  */
 export function clientKeyFromForwardedFor(header: string | null): string {
-  const last = header?.split(",").pop()?.trim() ?? "";
-  return last.length > 0 && last.length <= 45 && isIP(last) !== 0 ? last : "unknown";
+  return describeClientKey(header).key;
+}
+
+export interface ClientKeyResult {
+  key: string;
+  /** True when a NON-EMPTY rightmost entry failed to parse — i.e. the edge is
+   *  writing something this policy does not understand, and every such buyer
+   *  is about to share one bucket. Callers should log it (throttled). */
+  unparsed: boolean;
+}
+
+export function describeClientKey(header: string | null): ClientKeyResult {
+  const raw = header?.split(",").pop()?.trim() ?? "";
+  if (raw.length === 0) return { key: "unknown", unparsed: false };
+
+  // `[2001:db8::1]:443` → `2001:db8::1`; `198.51.100.4:5678` → `198.51.100.4`.
+  let candidate = raw;
+  const bracketed = /^\[([^\]]+)\](?::\d+)?$/.exec(candidate);
+  if (bracketed) candidate = bracketed[1];
+  else if (/^[^:]+:\d+$/.test(candidate))
+    candidate = candidate.slice(0, candidate.lastIndexOf(":"));
+
+  // Zone IDs are link-local and machine-scoped: never legitimate XFF content.
+  if (candidate.includes("%") || candidate.length > 45) return { key: "unknown", unparsed: true };
+
+  const version = isIP(candidate);
+  if (version === 4) return { key: candidate, unparsed: false };
+  if (version === 6) return { key: ipv6Bucket(candidate), unparsed: false };
+  return { key: "unknown", unparsed: true };
 }

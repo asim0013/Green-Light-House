@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   checkRateLimit,
   clientKeyFromForwardedFor,
+  describeClientKey,
   type RateLimitCommands,
   type RateLimitMulti,
 } from "./rate-limit";
@@ -114,7 +115,7 @@ describe("checkRateLimit — every failure direction is OPEN, coded, and bounded
     );
   });
 
-  it("NEVER-RESOLVING client → allowed within the bound — the hang-catcher", async () => {
+  it("NEVER-RESOLVING client → allowed within the INJECTED bound — the hang-catcher", async () => {
     // The test that separates fail-open from fail-closed-by-hanging: without
     // the outer timeout race this promise never settles and the test itself
     // times out RED (P5: delete the race and watch).
@@ -127,7 +128,11 @@ describe("checkRateLimit — every failure direction is OPEN, coded, and bounded
       getCommands: () => new Promise(() => {}),
     });
     expect(result).toEqual({ allowed: true });
-    expect(Date.now() - started).toBeLessThan(1_000);
+    // 400ms: 8× the injected bound (slow-CI-immune) but well under the 500ms
+    // DEFAULT — so an implementation that ignored `options.timeoutMs` goes red
+    // (3.7a review: the old <1000 bound could not tell 50 from 500, leaving
+    // the injectable seam Story 4.1 consumes unproven).
+    expect(Date.now() - started).toBeLessThan(400);
     expect(consoleError).toHaveBeenCalled();
   });
 
@@ -168,12 +173,22 @@ describe("checkRateLimit — every failure direction is OPEN, coded, and bounded
     expect(consoleError).toHaveBeenCalled();
   });
 
-  it("the outage log is throttled: one line per code per 30s", async () => {
+  it("the outage log is throttled AND recovers: one line, then another after 30s", async () => {
+    // Both halves (3.7a review: the first version proved only suppression, so
+    // a regression that logged once and then NEVER again would pass).
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const options = { ...BASE, label: "test-throttle", getCommands: async () => null };
-    await checkRateLimit(options);
-    await checkRateLimit(options);
-    expect(consoleError).toHaveBeenCalledTimes(1);
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      await checkRateLimit(options);
+      await checkRateLimit(options);
+      expect(consoleError).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(31_000);
+      await checkRateLimit(options);
+      expect(consoleError).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -183,17 +198,46 @@ describe("clientKeyFromForwardedFor — the written-policy derivation", () => {
     expect(clientKeyFromForwardedFor("spoofed-junk, 203.0.113.9")).toBe("203.0.113.9");
   });
 
-  it("accepts a single IPv4 or IPv6 entry, trimmed", () => {
+  it("keeps IPv4 whole — /32 IS the host there", () => {
     expect(clientKeyFromForwardedFor("  198.51.100.4  ")).toBe("198.51.100.4");
-    expect(clientKeyFromForwardedFor("2001:db8::1")).toBe("2001:db8::1");
+    expect(clientKeyFromForwardedFor("198.51.100.5")).not.toBe(
+      clientKeyFromForwardedFor("198.51.100.4"),
+    );
   });
 
-  it("everything malformed shares ONE bucket — non-IPs can never mint per-value keys", () => {
-    expect(clientKeyFromForwardedFor(null)).toBe("unknown");
-    expect(clientKeyFromForwardedFor("")).toBe("unknown");
-    expect(clientKeyFromForwardedFor("evil-string")).toBe("unknown");
-    // A port suffix is not an IP; neither is an over-long value (45 = IPv6 max).
-    expect(clientKeyFromForwardedFor("1.2.3.4:5678")).toBe("unknown");
-    expect(clientKeyFromForwardedFor("a".repeat(46))).toBe("unknown");
+  it("BUCKETS IPv6 BY /64 — one delegation cannot rotate through unlimited windows", () => {
+    // The 3.7a review's sharpest finding: keyed on the full address, a routine
+    // /64 gave an attacker 2^64 fresh 5/hour buckets behind the trusted edge.
+    const a = clientKeyFromForwardedFor("2001:db8:abcd:1234::1");
+    const b = clientKeyFromForwardedFor("2001:db8:abcd:1234:dead:beef:cafe:9999");
+    expect(a).toBe(b);
+    // …while a DIFFERENT /64 is still a different bucket.
+    expect(clientKeyFromForwardedFor("2001:db8:abcd:9999::1")).not.toBe(a);
+  });
+
+  it("canonicalizes: one host written three ways is ONE bucket", () => {
+    const canonical = clientKeyFromForwardedFor("2001:db8::1");
+    expect(clientKeyFromForwardedFor("2001:DB8::1")).toBe(canonical);
+    expect(clientKeyFromForwardedFor("2001:0db8:0000:0000:0000:0000:0000:0001")).toBe(canonical);
+  });
+
+  it("strips the port forms real edges write (ARR-style) instead of collapsing them", () => {
+    // Un-stripped, these failed isIP and funnelled EVERY buyer behind such an
+    // edge into the shared bucket — the sixth genuine inquiry site-wide 429s.
+    expect(clientKeyFromForwardedFor("198.51.100.4:5678")).toBe("198.51.100.4");
+    expect(clientKeyFromForwardedFor("[2001:db8:abcd:1234::1]:443")).toBe(
+      clientKeyFromForwardedFor("2001:db8:abcd:1234::1"),
+    );
+  });
+
+  it("malformed and zone-ID'd values share ONE bucket and are FLAGGED unparsed", () => {
+    for (const value of ["evil-string", "fe80::1%eth0", "2001:db8::1%x", "a".repeat(46)]) {
+      // Zone IDs pass net.isIP but are meaningless on the wire — un-rejected,
+      // their free-form suffix mints one key per value (3.7a review).
+      expect(describeClientKey(value), value).toEqual({ key: "unknown", unparsed: true });
+    }
+    // Absent/empty is NOT a misconfiguration signal — nothing to flag.
+    expect(describeClientKey(null)).toEqual({ key: "unknown", unparsed: false });
+    expect(describeClientKey("")).toEqual({ key: "unknown", unparsed: false });
   });
 });

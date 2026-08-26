@@ -74,11 +74,52 @@ async function withPrisma<T>(fn: (db: PrismaLike) => Promise<T>): Promise<T> {
   }
 }
 
+let emailSeq = 0;
+
 function uniqueEmail(workerIndex: number): string {
   // Worker + PID so the per-worker afterAll can clean by prefix without ever
   // touching a CONCURRENT invocation of this suite (3.2 review: `w<n>-` alone
-  // is identical for worker n of any two simultaneous runs).
-  return `${E2E_EMAIL_PREFIX}w${workerIndex}-p${process.pid}-${Date.now()}@example.com`;
+  // is identical for worker n of any two simultaneous runs). The SEQUENCE is
+  // what makes it unique WITHIN a worker: `Date.now()` alone collides for two
+  // calls in the same millisecond, which silently aliased two leads in one
+  // test (caught by the 3.7a review's bracket proof).
+  emailSeq += 1;
+  return `${E2E_EMAIL_PREFIX}w${workerIndex}-p${process.pid}-${Date.now()}-${emailSeq}@example.com`;
+}
+
+/**
+ * Read the limiter's minted keys (Story 3.7a review — the socket-fill proof).
+ * Bounded client, the cache-flush.mjs recipe: node-redis's default reconnect
+ * never settles against a dead target. Returns [] when Redis is unreachable
+ * so the caller's assertion, not a connection error, is what fails.
+ */
+async function scanRateLimitKeys(): Promise<string[]> {
+  try {
+    (process as NodeJS.Process & { loadEnvFile?: (p?: string) => void }).loadEnvFile?.(".env");
+  } catch {
+    // ambient env
+  }
+  const url = process.env.REDIS_URL?.trim();
+  if (!url) return [];
+  const { createClient } = await import("redis");
+  const redis = createClient({ url, socket: { connectTimeout: 3000, reconnectStrategy: false } });
+  redis.on("error", () => {});
+  try {
+    await redis.connect();
+    const keys: string[] = [];
+    for await (const batch of redis.scanIterator({ MATCH: "rfq:rl:*", COUNT: 500 })) {
+      keys.push(...(Array.isArray(batch) ? batch : [batch]));
+    }
+    return keys;
+  } catch {
+    return [];
+  } finally {
+    try {
+      redis.destroy();
+    } catch {
+      // already closed
+    }
+  }
 }
 
 let ipSeq = 0;
@@ -90,12 +131,19 @@ let ipSeq = 0;
  * entry — so every test that POSTs gets its OWN counter bucket, which is what
  * makes the suite order-independent, same-hour-rerun-proof and CI-retry-proof
  * (counters persist in Redis for 1h; the shared-socket bucket arithmetic
- * could not fit even one clean re-run). Documentation range (2001:db8::/32),
- * pid+time+seq so two concurrent or back-to-back runs never share a bucket.
+ * could not fit even one clean re-run).
+ *
+ * ⚠️ ALL FOUR VARYING GROUPS MUST BE IN THE FIRST FOUR (3.7a review): the
+ * limiter buckets IPv6 by its /64 PREFIX, so anything after the fourth hextet
+ * is truncated away — an earlier version varied groups 5-6 and every test in a
+ * worker silently collapsed into ONE bucket. Documentation range
+ * (2001:db8::/32) with pid+worker+seq packed into hextets 3 and 4.
  */
 function fakeClientIp(workerIndex: number): string {
   ipSeq += 1;
-  return `2001:db8:${(process.pid % 0xffff).toString(16)}:${workerIndex}:${ipSeq}:${(Date.now() % 0xffff).toString(16)}::1`;
+  const third = (process.pid % 0xffff).toString(16);
+  const fourth = (((workerIndex + 1) * 0x100 + (ipSeq % 0x100)) % 0xffff).toString(16);
+  return `2001:db8:${third}:${fourth}::1`;
 }
 
 let dbReady = true;
@@ -281,6 +329,12 @@ test.describe("persist-first submission (AC7, AC12c)", () => {
     // without pressing Add used to submit equipment: [] with no trace.
     if (!dbReady) testInfo.skip();
     const email = uniqueEmail(testInfo.workerIndex);
+    // Own limiter bucket (3.7a REVIEW): this test genuinely reaches the
+    // server — it was the consuming site the first bucket pass missed while
+    // wiring the fully-intercepted persist-failure test instead.
+    await page
+      .context()
+      .setExtraHTTPHeaders({ "x-forwarded-for": fakeClientIp(testInfo.workerIndex) });
 
     await openRfq(page);
     await fillMinimalForm(page, email);
@@ -544,9 +598,10 @@ test.describe("rate limiting (Story 3.7a — FR32: the six real POSTs)", () => {
   }, testInfo) => {
     // epics:936: "The proof is six real POSTs against a running server; a unit
     // test of the counter function alone does not satisfy this AC." This is
-    // also the ONLY gate that goes red if the limiter is ever moved to
-    // middleware (proxy.ts excludes /api — it would fail open, silently) —
-    // never interception-mock it.
+    // the only LIVE-SERVER gate that goes red if the limiter is ever moved to
+    // middleware (proxy.ts excludes /api — it would fail open, silently); the
+    // unit suite reddens too, but only this one exercises a real request path
+    // — never interception-mock it.
     if (!dbReady) testInfo.skip();
     const bucket = fakeClientIp(testInfo.workerIndex);
 
@@ -569,16 +624,30 @@ test.describe("rate limiting (Story 3.7a — FR32: the six real POSTs)", () => {
     expect(body.error.code).toBe("rate_limited");
     expect(await withPrisma((db) => db.lead.count({ where: { email: sixthEmail } }))).toBe(0);
 
-    // The live passthrough/socket-fill proof (Task 0 #6's P5): an UNSPOOFED
-    // POST lands in the socket-filled bucket, not this exhausted one — if
-    // Next did not pass the spoofed header through (or did not fill the
-    // absent one from the socket), this request would be the 7th on ONE
-    // shared bucket and 429.
+    // The live passthrough proof (Task 0 #6's P5): an UNSPOOFED POST lands in
+    // a DIFFERENT bucket, so the spoofed header above was genuinely honored —
+    // had Next ignored it, this would be the 7th on one shared bucket → 429.
     const unspoofed = await request.post("/api/rfq", {
       headers: { "content-type": "application/json" },
       data: validBody(uniqueEmail(testInfo.workerIndex)),
     });
     expect(unspoofed.status()).toBe(201);
+
+    // …and the SOCKET-FILL half, which the 201 alone cannot prove (3.7a
+    // review): with no fill, the header would be absent, the key would be
+    // `unknown`, and the request would ALSO have landed in a fresh bucket and
+    // returned 201. Only the minted key distinguishes the two — an IP-shaped
+    // bucket means Next filled the header from the socket.
+    const keys = await scanRateLimitKeys();
+    const socketKeys = keys.filter((key) => {
+      const value = key.slice("rfq:rl:".length);
+      return value !== "unknown" && !value.startsWith("2001:db8:");
+    });
+    expect(
+      socketKeys.length,
+      `expected an IP-shaped socket bucket among ${JSON.stringify(keys)}`,
+    ).toBeGreaterThan(0);
+    expect(keys).not.toContain("rfq:rl:unknown");
   });
 
   test("a REJECTED submission still consumes budget — counting happens BEFORE the body is read", async ({
@@ -666,6 +735,27 @@ test.describe("the honeypot (Story 3.7a — Task 0 #1: silent drop + recovery lo
     if (!dbReady) testInfo.skip();
     const bucket = fakeClientIp(testInfo.workerIndex);
     const trapEmail = uniqueEmail(testInfo.workerIndex);
+    const numberOf = (reference: string) => Number(reference.slice("GLH-RFQ-".length));
+
+    // BRACKET the fake between two real references (3.7a review): asserting
+    // only `real > fake` is an upper bound, so a locally fabricated constant
+    // BELOW the sequence head (e.g. "GLH-RFQ-2500") passed every assertion
+    // while reintroducing the collision hazard the burn exists to prevent.
+    const beforeEmail = uniqueEmail(testInfo.workerIndex);
+    const before = await request.post("/api/rfq", {
+      headers: { "content-type": "application/json", "x-forwarded-for": bucket },
+      data: {
+        name: "Elena Petrova",
+        company: "Enka EPC",
+        email: beforeEmail,
+        locale: "en",
+        uiLocale: "en",
+        consent: true,
+        website: "",
+      },
+    });
+    expect(before.status()).toBe(201);
+    const beforeReference = ((await before.json()) as { reference: string }).reference;
 
     const trapped = await request.post("/api/rfq", {
       headers: { "content-type": "application/json", "x-forwarded-for": bucket },
@@ -705,7 +795,11 @@ test.describe("the honeypot (Story 3.7a — Task 0 #1: silent drop + recovery lo
     });
     expect(real.status()).toBe(201);
     const realReference = ((await real.json()) as { reference: string }).reference;
-    const numberOf = (reference: string) => Number(reference.slice("GLH-RFQ-".length));
+    // The fake sits strictly INSIDE the live sequence window — true only if it
+    // came from the sequence itself. Any local fabrication, large or small,
+    // falls outside one of these bounds. (Never assert contiguity: gaps are
+    // doctrine, and this run burns values by design.)
+    expect(numberOf(fake)).toBeGreaterThan(numberOf(beforeReference));
     expect(numberOf(realReference)).toBeGreaterThan(numberOf(fake));
   });
 });

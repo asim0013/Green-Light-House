@@ -28,6 +28,13 @@ import { createClient } from "redis";
  *  - FAILURE-CLEARED MEMO: a failed or dead client never sticks; the next
  *    caller retries the connect (Redis coming back mid-outage is the normal
  *    recovery path).
+ *
+ * ⚠️ WHAT THIS MODULE DOES *NOT* BOUND (3.7a review — AC1 read as if it did):
+ * per-OPERATION latency. The bounds here cover acquiring a client; a command
+ * issued on a connected-but-stalled socket has no deadline of its own. Racing
+ * the command sequence is the CALLER'S job — see `checkRateLimit`'s
+ * `withTimeout`, which is what makes the limiter's fail-open a bounded
+ * promise rather than a hopeful one.
  */
 
 const CONNECT_TIMEOUT_MS = 2_000;
@@ -64,16 +71,19 @@ async function connectOnce(url: string): Promise<CacheRedis | null> {
       socket: { connectTimeout: CONNECT_TIMEOUT_MS, reconnectStrategy: false },
     });
   } catch (error) {
-    throttledError("redis", "invalid REDIS_URL — cache Redis disabled", error);
+    // Distinct codes per failure CLASS: the throttle keys on the code alone,
+    // so one shared code would let a 30s window swallow the other two classes
+    // entirely (3.7a review).
+    throttledError("redis-badurl", "invalid REDIS_URL — cache Redis disabled", error);
     return null;
   }
   client.on("error", (error) => {
-    throttledError("redis", "cache Redis connection error", error);
+    throttledError("redis-conn", "cache Redis connection error", error);
   });
   try {
     await client.connect();
   } catch (error) {
-    throttledError("redis", "cache Redis unreachable", error);
+    throttledError("redis-unreachable", "cache Redis unreachable", error);
     return null;
   }
   return client;
@@ -94,7 +104,18 @@ export async function getCacheRedis(): Promise<CacheRedis | null> {
     if (existing?.isReady) return existing;
     // Dead or failed — clear and fall through to a fresh attempt.
     memo = null;
-    if (existing) existing.destroy();
+    if (existing) {
+      // `destroy()` THROWS synchronously on an already-closed client, and with
+      // `reconnectStrategy: false` node-redis closes the client itself the
+      // moment the socket dies — so the un-guarded form threw on this
+      // function's first real exercise, breaking the "never throws" contract
+      // below (3.7a review). There is nothing to clean up in that case.
+      try {
+        existing.destroy();
+      } catch {
+        // already closed
+      }
+    }
   }
 
   memoUrl = url;

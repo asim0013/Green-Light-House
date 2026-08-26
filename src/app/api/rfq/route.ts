@@ -1,6 +1,6 @@
 import type { Locale, Prisma } from "@prisma/client";
 import { siteOrigin } from "@/lib/seo";
-import { checkRateLimit, clientKeyFromForwardedFor } from "@/lib/rate-limit";
+import { checkRateLimit, describeClientKey } from "@/lib/rate-limit";
 import {
   rfqSchema,
   issueDetails,
@@ -233,14 +233,30 @@ export async function POST(request: Request) {
   // epics:934's placement, so a rejected-later request still consumed budget
   // and a junk content-type (already 415'd above) never did. Fail-open lives
   // inside checkRateLimit; a Redis outage cannot reach the persist path.
+  const client = describeClientKey(request.headers.get("x-forwarded-for"));
+  if (client.unparsed) {
+    // The misconfigured-edge detector (3.7a review). An edge that writes a
+    // form this policy cannot parse funnels EVERY buyer into the single
+    // "unknown" bucket, and the sixth genuine inquiry site-wide per hour then
+    // 429s — a silent rolling funnel outage otherwise indistinguishable from
+    // ordinary throttling. Throttled to one line per 30s; the value is
+    // truncated because the header is attacker-controlled.
+    console.warn(
+      `[rfq-rl] rightmost x-forwarded-for entry is not an IP — all such traffic shares one bucket: ${(request.headers.get("x-forwarded-for") ?? "").slice(0, 200)}`,
+    );
+  }
   const rate = await checkRateLimit({
     keyspace: "rfq:rl:",
-    client: clientKeyFromForwardedFor(request.headers.get("x-forwarded-for")),
+    client: client.key,
     limit: RFQ_RATE_LIMIT,
     windowSeconds: RFQ_RATE_WINDOW_SECONDS,
     label: "rfq-rl",
   });
   if (!rate.allowed) {
+    // The bucket is logged so ONE key dominating the 429s is greppable — the
+    // signature of a collapsed bucket (an edge that writes no XFF at all, so
+    // every buyer shares the edge's own address) versus real abuse.
+    console.warn(`[rfq] rate limited bucket=${client.key}`);
     return fail(
       429,
       "rate_limited",
@@ -343,8 +359,11 @@ export async function POST(request: Request) {
     try {
       fakeReference = await burnLeadReference();
     } catch (error) {
-      // Postgres down: mirror the real path's failure exactly.
-      console.error("[rfq] lead insert failed:", error);
+      // The RESPONSE mirrors the real path's failure exactly (that is the
+      // attacker-visible surface). The LOG does not: an operator reading
+      // "lead insert failed" for a honeypot burn would be chasing a
+      // nonexistent lost lead (3.7a review).
+      console.error("[rfq] honeypot burn failed:", error);
       return fail(500, "internal_error", "The inquiry could not be saved. Please try again.");
     }
     const websiteLength = ((json as Record<string, unknown>).website as string).length;

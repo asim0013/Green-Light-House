@@ -27,11 +27,11 @@ vi.mock("@/server/repositories/lead", () => ({
   createLead: (data: unknown) => createLead(data),
   burnLeadReference: () => burnLeadReference(),
 }));
-// The limiter is mocked default-ALLOW (Story 3.7a): this file issues 28 POSTs
-// and vitest loads `.env`, so an unmocked limiter would both 429 the later
-// tests AND mutate the developer's LIVE cache Redis. The key derivation stays
-// REAL (importOriginal) — the client-identity tests below exercise it through
-// the route.
+// The limiter is mocked default-ALLOW (Story 3.7a): this file issues dozens of
+// POSTs — far past any single window — and vitest loads `.env`, so an unmocked
+// limiter would both 429 the later tests AND mutate the developer's LIVE cache
+// Redis. The key derivation stays REAL (importOriginal) — the client-identity
+// tests below exercise it through the route.
 vi.mock("@/lib/rate-limit", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/rate-limit")>();
   return { ...actual, checkRateLimit: (options: unknown) => checkRateLimit(options) };
@@ -389,11 +389,22 @@ describe("POST /api/rfq — the rate limiter seam (Story 3.7a)", () => {
     expect(createLead).not.toHaveBeenCalled();
   });
 
-  it("counts BEFORE the body is read: a limited client gets 429 even for malformed JSON", async () => {
+  it("counts BEFORE the body is PARSED: a limited client gets 429 even for malformed JSON", async () => {
     // If the limiter ran after the parse, this would be a 422 — the ordering
     // is epics:934's "before the request body is parsed", pinned.
     checkRateLimit.mockResolvedValue({ allowed: false, retryAfterSeconds: 60 });
     const res = await post("{not json");
+    expect(res.status).toBe(429);
+  });
+
+  it("counts BEFORE the body is READ: a limited client gets 429, not 413, on an oversize body", async () => {
+    // The parse test above cannot see this half — a small malformed body
+    // passes readBodyCapped unharmed, so relocating guard 2.5 BELOW guard 3
+    // kept every assertion green while breaking the documented order (3.7a
+    // review). An oversize declaration is 413 only if the size guard ran
+    // first, so 429 here is the ordering proof.
+    checkRateLimit.mockResolvedValue({ allowed: false, retryAfterSeconds: 60 });
+    const res = await post(VALID, { headers: { "content-length": String(65 * 1024) } });
     expect(res.status).toBe(429);
   });
 
