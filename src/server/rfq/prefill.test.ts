@@ -16,9 +16,9 @@ describe("resolvePrefillSource — walking the frozen precedence (AC9)", () => {
   it("takes the FIRST present param, most specific wins", () => {
     // The admin needs to know a lead came from a product page even when the URL
     // also carried its industry.
-    expect(
-      resolvePrefillSource({ project: "p", product: "x", industry: "i", q: "text" }),
-    ).toBe("project");
+    expect(resolvePrefillSource({ project: "p", product: "x", industry: "i", q: "text" })).toBe(
+      "project",
+    );
     expect(resolvePrefillSource({ product: "x", industry: "i", q: "text" })).toBe("product");
     expect(resolvePrefillSource({ industry: "i", q: "text" })).toBe("industry");
   });
@@ -96,12 +96,18 @@ describe("distinctCategories — de-duplication and order (AC1)", () => {
     // Unprovable through the seed: LNG's two products are already in two
     // different categories, so removing the dedupe changes nothing observable
     // there. That is why this is a pure function with its own test.
-    const rows = [cat("flame-detectors", "Flame detectors"), cat("flame-detectors", "Flame detectors")];
+    const rows = [
+      cat("flame-detectors", "Flame detectors"),
+      cat("flame-detectors", "Flame detectors"),
+    ];
     expect(distinctCategories(rows, "en")).toHaveLength(1);
   });
 
   it("keeps a PARENT and its own CHILD — never rolls up", () => {
-    const rows = [cat("flame-detectors", "Flame detectors"), cat("fire-gas-detection", "Fire & gas")];
+    const rows = [
+      cat("flame-detectors", "Flame detectors"),
+      cat("fire-gas-detection", "Fire & gas"),
+    ];
     expect(distinctCategories(rows, "en").map((c) => c.slug)).toEqual([
       "fire-gas-detection",
       "flame-detectors",

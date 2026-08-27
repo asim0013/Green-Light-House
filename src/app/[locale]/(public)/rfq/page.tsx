@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { alternatesFor, robotsFor } from "@/lib/seo";
 import { rfqSignals } from "@/server/rfq-page";
-import { resolveRfqPrefill, type RfqPrefill } from "@/server/rfq-prefill";
+import { resolveRfqPrefill } from "@/server/rfq-prefill";
 import { readPrefillParams } from "@/server/rfq/prefill";
 import { listIndustries } from "@/server/repositories/industry";
 import { TwoColumn } from "@/components/ui";
@@ -24,22 +24,6 @@ import { CONTAINER } from "@/components/layout/container";
  * proving the build gate.
  */
 export const dynamic = "force-dynamic";
-
-/**
- * A stable identity for one resolved pre-fill — the island's React key.
- *
- * Built from what RESOLVED, not from the raw query string: two URLs that differ
- * only in an unresolvable param describe the same form and must not remount it
- * (remounting would discard whatever the buyer had already typed). `null` is the
- * cold visit, and every cold visit shares one key.
- */
-function prefillKey(prefill: RfqPrefill | null): string {
-  if (!prefill) return "rfq";
-  const chips = prefill.equipment
-    .map((item) => (item.kind === "freeText" ? item.text : item.slug))
-    .join(",");
-  return `rfq:${prefill.doorway}:${prefill.industry?.slug ?? ""}:${chips}:${prefill.query ?? ""}`;
-}
 
 export async function generateMetadata(props: {
   params: Promise<{ locale: string }>;
@@ -126,18 +110,6 @@ export default async function RfqPage(props: {
           className="mt-8 lg:gap-11"
           main={
             <RfqForm
-              // ⚠️ THE KEY IS LOAD-BEARING, AND ITS ABSENCE WAS THE HIGHEST-RISK
-              // DEFECT THIS STORY COULD HAVE SHIPPED. `RfqForm` reads its
-              // `defaultValues` ONCE at mount and never calls `reset()` — by
-              // design, so a failed submit can never discard what the buyer
-              // typed. Without a key, soft-navigating from `/rfq?product=a` to
-              // `/rfq?product=b` re-renders the SAME mounted island: React keeps
-              // it, RHF keeps a's values, and the buyer sees a's chips on a page
-              // whose URL says b. Neither the banner nor Clear can detect that —
-              // the form is not stale by RHF's reckoning, only by the URL's.
-              // Keying on the resolved identity remounts it exactly when the
-              // doorway changes, and never otherwise.
-              key={prefillKey(prefill)}
               industries={industries.map(({ slug, name, isFallback }) => ({
                 slug,
                 name,

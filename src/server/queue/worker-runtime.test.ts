@@ -126,7 +126,10 @@ describe("handleJob — the routing", () => {
     });
 
     expect(sweep).not.toHaveBeenCalled();
-    expect(process).toHaveBeenCalledWith("lead-1", expect.objectContaining({ isFinalAttempt: false }));
+    expect(process).toHaveBeenCalledWith(
+      "lead-1",
+      expect.objectContaining({ isFinalAttempt: false }),
+    );
     expect(result).toMatchObject({ notify: "sent" });
   });
 });

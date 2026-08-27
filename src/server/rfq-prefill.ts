@@ -84,7 +84,11 @@ export async function resolveRfqPrefill(
 
   const push = (item: PrefillName, kind: "product" | "category") => {
     if (equipment.length >= PREFILL_CHIP_BUDGET) return;
-    if (equipment.some((existing) => existing.kind === kind && "slug" in existing && existing.slug === item.slug)) {
+    if (
+      equipment.some(
+        (existing) => existing.kind === kind && "slug" in existing && existing.slug === item.slug,
+      )
+    ) {
       return;
     }
     equipment.push(chipOf(item, kind));
@@ -165,7 +169,10 @@ function doorwayOf(
 
 /** Depth-agnostic walk — the seed is two levels today, and the catalogue's own
  *  readers are already depth-agnostic (2.2). */
-function findCategoryNode(nodes: readonly CategoryTreeNode[], slug: string): CategoryTreeNode | null {
+function findCategoryNode(
+  nodes: readonly CategoryTreeNode[],
+  slug: string,
+): CategoryTreeNode | null {
   for (const node of nodes) {
     if (node.slug === slug) return node;
     const child = findCategoryNode(node.children, slug);

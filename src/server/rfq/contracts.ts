@@ -237,7 +237,11 @@ export interface PrefillContext {
 /** The context of a lead that came through no doorway at all. Identical to what
  *  the column's `{}` default parses to, so a cold lead and a cleared-to-nothing
  *  lead are not accidentally distinguishable by shape. */
-export const EMPTY_PREFILL_CONTEXT: PrefillContext = { resolved: {}, cleared: false, edited: false };
+export const EMPTY_PREFILL_CONTEXT: PrefillContext = {
+  resolved: {},
+  cleared: false,
+  edited: false,
+};
 
 /**
  * Narrow a raw JSONB value. Same contract as `parseLeadEquipment`: NEVER THROWS

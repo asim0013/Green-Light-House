@@ -478,241 +478,245 @@ export function RfqForm({
             </div>
           )}
           <form
-          onSubmit={(event) => {
-            // A typed-but-unchipped equipment draft commits at submit — see
-            // the draft-state note above. setValue is synchronous into RHF's
-            // store, so the resolver run inside handleSubmit sees the chip.
-            commitDraft();
-            return handleSubmit(onValid, onInvalid)(event);
-          }}
-          noValidate
-          className="flex flex-col gap-5"
-        >
-          <FormSectionCard title={t("sectionProject")}>
-            <Field id="rfq-industry" label={t("industryLabel")} error={errorText("industry")}>
-              {/* `defaultValue` is explicit, not redundant with `defaultValues`:
+            onSubmit={(event) => {
+              // A typed-but-unchipped equipment draft commits at submit — see
+              // the draft-state note above. setValue is synchronous into RHF's
+              // store, so the resolver run inside handleSubmit sees the chip.
+              commitDraft();
+              return handleSubmit(onValid, onInvalid)(event);
+            }}
+            noValidate
+            className="flex flex-col gap-5"
+          >
+            <FormSectionCard title={t("sectionProject")}>
+              <Field id="rfq-industry" label={t("industryLabel")} error={errorText("industry")}>
+                {/* `defaultValue` is explicit, not redundant with `defaultValues`:
                   RHF applies those only at hydration, so without it the SSR paint
                   shows an empty select and the pre-filled industry appears late.
                   The locale select below carries the same treatment for the same
                   reason. */}
-              <select
-                {...registerIndustry}
-                ref={(element) => {
-                  // BOTH refs, not one: `register` owns its own ref and dropping
-                  // it would unregister the control, while Clear needs a handle
-                  // to move focus here.
-                  registerIndustry.ref(element);
-                  industryRef.current = element;
-                }}
-                defaultValue={prefill?.industry?.slug ?? ""}
-                {...fieldAria("rfq-industry", !!errors.industry)}
-                className={controlClasses(!!errors.industry)}
-              >
-                <option value="">{t("industryPlaceholder")}</option>
-                {industries.map((option) => (
-                  // FR34a: a fallen-back DB name is marked `lang="en"` — a
-                  // FallbackNotice cannot live inside an <option>.
-                  <option
-                    key={option.slug}
-                    value={option.slug}
-                    lang={option.isFallback ? "en" : undefined}
-                  >
-                    {option.name}
-                  </option>
-                ))}
-              </select>
-              {industryIsFallback && <FallbackNotice isFallback />}
-            </Field>
-
-            <Field id="rfq-timeline" label={t("timelineLabel")} error={errorText("timeline")}>
-              <select
-                {...register("timeline")}
-                {...fieldAria("rfq-timeline", !!errors.timeline)}
-                className={controlClasses(!!errors.timeline)}
-              >
-                <option value="">{t("timelinePlaceholder")}</option>
-                {TIMELINE_KEYS.map((key) => (
-                  <option key={key} value={key}>
-                    {t(`timeline.${key}`)}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <Field id="rfq-equipment" label={t("equipmentLabel")} error={errorText("equipment")}>
-              <EquipmentChips
-                inputId="rfq-equipment"
-                inputRef={equipmentInputRef}
-                items={equipment}
-                draft={equipmentDraft}
-                onDraftChange={setEquipmentDraft}
-                onCommit={commitDraft}
-                onRemove={(index) =>
-                  setValue(
-                    "equipment",
-                    equipment.filter((_, i) => i !== index),
-                    { shouldValidate: !!errors.equipment },
-                  )
-                }
-                announce={announce}
-                hasError={!!errors.equipment}
-              />
-            </Field>
-
-            <Field id="rfq-quantities" label={t("quantitiesLabel")} error={errorText("quantities")}>
-              <input
-                type="text"
-                {...register("quantities")}
-                {...fieldAria("rfq-quantities", !!errors.quantities)}
-                // Quantities are machine data (DESIGN.md § typography).
-                className={controlClasses(!!errors.quantities, "font-data")}
-              />
-            </Field>
-
-            <Field
-              id="rfq-project-details"
-              label={t("projectDetailsLabel")}
-              error={errorText("projectDetails")}
-            >
-              <textarea
-                rows={6}
-                placeholder={t("projectDetailsPlaceholder")}
-                {...registerProjectDetails}
-                ref={(element) => {
-                  registerProjectDetails.ref(element);
-                  projectDetailsRef.current = element;
-                }}
-                defaultValue={prefill?.query ?? ""}
-                {...fieldAria("rfq-project-details", !!errors.projectDetails)}
-                className={controlClasses(!!errors.projectDetails, "py-3 leading-relaxed")}
-              />
-            </Field>
-
-            {/* Story 3.7b. Last in section 1 because it is the optional
-                supporting artefact for everything above it — a buyer who has
-                just described the project is the one with a spec to attach. */}
-            <AttachmentField
-              id="rfq-attachment"
-              inputRef={attachmentInputRef}
-              file={file}
-              onSelect={(next) => {
-                setFile(next);
-                // Clear a stale verdict the moment the subject changes: the
-                // previous file's rejection says nothing about this one.
-                setAttachmentErrorKey(next ? precheckAttachment(next) : undefined);
-              }}
-              errorKey={attachmentErrorKey}
-              uploadPercent={uploadPercent}
-              announce={announce}
-            />
-          </FormSectionCard>
-
-          <FormSectionCard title={t("sectionDetails")}>
-            <div className="grid gap-5 md:grid-cols-2">
-              <Field id="rfq-name" label={t("nameLabel")} error={errorText("name")}>
-                <input
-                  type="text"
-                  autoComplete="name"
-                  placeholder={t("namePlaceholder")}
-                  {...register("name")}
-                  {...fieldAria("rfq-name", !!errors.name)}
-                  className={controlClasses(!!errors.name)}
-                />
-              </Field>
-              <Field id="rfq-company" label={t("companyLabel")} error={errorText("company")}>
-                <input
-                  type="text"
-                  autoComplete="organization"
-                  placeholder={t("companyPlaceholder")}
-                  {...register("company")}
-                  {...fieldAria("rfq-company", !!errors.company)}
-                  className={controlClasses(!!errors.company)}
-                />
-              </Field>
-              <Field id="rfq-email" label={t("emailLabel")} error={errorText("email")}>
-                <input
-                  type="email"
-                  autoComplete="email"
-                  placeholder={t("emailPlaceholder")}
-                  {...register("email")}
-                  {...fieldAria("rfq-email", !!errors.email)}
-                  className={controlClasses(!!errors.email)}
-                />
-              </Field>
-              <Field id="rfq-phone" label={t("phoneLabel")} error={errorText("phone")}>
-                <input
-                  type="tel"
-                  autoComplete="tel"
-                  placeholder={t("phonePlaceholder")}
-                  {...register("phone")}
-                  {...fieldAria("rfq-phone", !!errors.phone)}
-                  // A phone number is machine data (DESIGN.md § typography).
-                  className={controlClasses(!!errors.phone, "font-data")}
-                />
-              </Field>
-              <Field id="rfq-country" label={t("countryLabel")} error={errorText("country")}>
-                <input
-                  type="text"
-                  autoComplete="country-name"
-                  {...register("country")}
-                  {...fieldAria("rfq-country", !!errors.country)}
-                  className={controlClasses(!!errors.country)}
-                />
-              </Field>
-              <Field id="rfq-locale" label={t("languageLabel")} error={errorText("locale")}>
                 <select
-                  {...register("locale")}
-                  {...fieldAria("rfq-locale", !!errors.locale)}
-                  // RHF applies defaultValues only at hydration; without this
-                  // the SERVER paint of a /tr or /ru page shows "English".
-                  defaultValue={uiLocale}
-                  className={controlClasses(!!errors.locale)}
+                  {...registerIndustry}
+                  ref={(element) => {
+                    // BOTH refs, not one: `register` owns its own ref and dropping
+                    // it would unregister the control, while Clear needs a handle
+                    // to move focus here.
+                    registerIndustry.ref(element);
+                    industryRef.current = element;
+                  }}
+                  defaultValue={prefill?.industry?.slug ?? ""}
+                  {...fieldAria("rfq-industry", !!errors.industry)}
+                  className={controlClasses(!!errors.industry)}
                 >
-                  {/* Endonyms — the LanguageSwitcher precedent, never from
-                      messages: each language names itself. */}
-                  {routing.locales.map((code) => (
-                    <option key={code} value={code} lang={code}>
-                      {LOCALE_LABELS[code]}
+                  <option value="">{t("industryPlaceholder")}</option>
+                  {industries.map((option) => (
+                    // FR34a: a fallen-back DB name is marked `lang="en"` — a
+                    // FallbackNotice cannot live inside an <option>.
+                    <option
+                      key={option.slug}
+                      value={option.slug}
+                      lang={option.isFallback ? "en" : undefined}
+                    >
+                      {option.name}
+                    </option>
+                  ))}
+                </select>
+                {industryIsFallback && <FallbackNotice isFallback />}
+              </Field>
+
+              <Field id="rfq-timeline" label={t("timelineLabel")} error={errorText("timeline")}>
+                <select
+                  {...register("timeline")}
+                  {...fieldAria("rfq-timeline", !!errors.timeline)}
+                  className={controlClasses(!!errors.timeline)}
+                >
+                  <option value="">{t("timelinePlaceholder")}</option>
+                  {TIMELINE_KEYS.map((key) => (
+                    <option key={key} value={key}>
+                      {t(`timeline.${key}`)}
                     </option>
                   ))}
                 </select>
               </Field>
-            </div>
 
-            <ConsentRow error={errorText("consent")} {...register("consent")} />
+              <Field id="rfq-equipment" label={t("equipmentLabel")} error={errorText("equipment")}>
+                <EquipmentChips
+                  inputId="rfq-equipment"
+                  inputRef={equipmentInputRef}
+                  items={equipment}
+                  draft={equipmentDraft}
+                  onDraftChange={setEquipmentDraft}
+                  onCommit={commitDraft}
+                  onRemove={(index) =>
+                    setValue(
+                      "equipment",
+                      equipment.filter((_, i) => i !== index),
+                      { shouldValidate: !!errors.equipment },
+                    )
+                  }
+                  announce={announce}
+                  hasError={!!errors.equipment}
+                />
+              </Field>
 
-            {/* 3.7a's honeypot half — see the docstring's anatomy contract. */}
-            <div
-              aria-hidden="true"
-              className="absolute h-px w-px overflow-hidden whitespace-nowrap [clip:rect(0,0,0,0)]"
-            >
-              <label htmlFor="rfq-website">Website</label>
-              <input
-                ref={honeypotRef}
-                id="rfq-website"
-                name="website"
-                type="text"
-                tabIndex={-1}
-                autoComplete="off"
-              />
-            </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className={buttonClasses("primary", "sm:shrink-0")}
+              <Field
+                id="rfq-quantities"
+                label={t("quantitiesLabel")}
+                error={errorText("quantities")}
               >
-                {t("submit")}
-              </button>
-              <p className="text-[13px] text-ink-2">{t("submitNote")}</p>
-            </div>
-            {submitError && (
-              <p role="alert" className="text-[13px] text-error">
-                {submitError}
-              </p>
-            )}
-          </FormSectionCard>
+                <input
+                  type="text"
+                  {...register("quantities")}
+                  {...fieldAria("rfq-quantities", !!errors.quantities)}
+                  // Quantities are machine data (DESIGN.md § typography).
+                  className={controlClasses(!!errors.quantities, "font-data")}
+                />
+              </Field>
+
+              <Field
+                id="rfq-project-details"
+                label={t("projectDetailsLabel")}
+                error={errorText("projectDetails")}
+              >
+                <textarea
+                  rows={6}
+                  placeholder={t("projectDetailsPlaceholder")}
+                  {...registerProjectDetails}
+                  ref={(element) => {
+                    registerProjectDetails.ref(element);
+                    projectDetailsRef.current = element;
+                  }}
+                  defaultValue={prefill?.query ?? ""}
+                  {...fieldAria("rfq-project-details", !!errors.projectDetails)}
+                  className={controlClasses(!!errors.projectDetails, "py-3 leading-relaxed")}
+                />
+              </Field>
+
+              {/* Story 3.7b. Last in section 1 because it is the optional
+                supporting artefact for everything above it — a buyer who has
+                just described the project is the one with a spec to attach. */}
+              <AttachmentField
+                id="rfq-attachment"
+                inputRef={attachmentInputRef}
+                file={file}
+                onSelect={(next) => {
+                  setFile(next);
+                  // Clear a stale verdict the moment the subject changes: the
+                  // previous file's rejection says nothing about this one.
+                  setAttachmentErrorKey(next ? precheckAttachment(next) : undefined);
+                }}
+                errorKey={attachmentErrorKey}
+                uploadPercent={uploadPercent}
+                announce={announce}
+              />
+            </FormSectionCard>
+
+            <FormSectionCard title={t("sectionDetails")}>
+              <div className="grid gap-5 md:grid-cols-2">
+                <Field id="rfq-name" label={t("nameLabel")} error={errorText("name")}>
+                  <input
+                    type="text"
+                    autoComplete="name"
+                    placeholder={t("namePlaceholder")}
+                    {...register("name")}
+                    {...fieldAria("rfq-name", !!errors.name)}
+                    className={controlClasses(!!errors.name)}
+                  />
+                </Field>
+                <Field id="rfq-company" label={t("companyLabel")} error={errorText("company")}>
+                  <input
+                    type="text"
+                    autoComplete="organization"
+                    placeholder={t("companyPlaceholder")}
+                    {...register("company")}
+                    {...fieldAria("rfq-company", !!errors.company)}
+                    className={controlClasses(!!errors.company)}
+                  />
+                </Field>
+                <Field id="rfq-email" label={t("emailLabel")} error={errorText("email")}>
+                  <input
+                    type="email"
+                    autoComplete="email"
+                    placeholder={t("emailPlaceholder")}
+                    {...register("email")}
+                    {...fieldAria("rfq-email", !!errors.email)}
+                    className={controlClasses(!!errors.email)}
+                  />
+                </Field>
+                <Field id="rfq-phone" label={t("phoneLabel")} error={errorText("phone")}>
+                  <input
+                    type="tel"
+                    autoComplete="tel"
+                    placeholder={t("phonePlaceholder")}
+                    {...register("phone")}
+                    {...fieldAria("rfq-phone", !!errors.phone)}
+                    // A phone number is machine data (DESIGN.md § typography).
+                    className={controlClasses(!!errors.phone, "font-data")}
+                  />
+                </Field>
+                <Field id="rfq-country" label={t("countryLabel")} error={errorText("country")}>
+                  <input
+                    type="text"
+                    autoComplete="country-name"
+                    {...register("country")}
+                    {...fieldAria("rfq-country", !!errors.country)}
+                    className={controlClasses(!!errors.country)}
+                  />
+                </Field>
+                <Field id="rfq-locale" label={t("languageLabel")} error={errorText("locale")}>
+                  <select
+                    {...register("locale")}
+                    {...fieldAria("rfq-locale", !!errors.locale)}
+                    // RHF applies defaultValues only at hydration; without this
+                    // the SERVER paint of a /tr or /ru page shows "English".
+                    defaultValue={uiLocale}
+                    className={controlClasses(!!errors.locale)}
+                  >
+                    {/* Endonyms — the LanguageSwitcher precedent, never from
+                      messages: each language names itself. */}
+                    {routing.locales.map((code) => (
+                      <option key={code} value={code} lang={code}>
+                        {LOCALE_LABELS[code]}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+
+              <ConsentRow error={errorText("consent")} {...register("consent")} />
+
+              {/* 3.7a's honeypot half — see the docstring's anatomy contract. */}
+              <div
+                aria-hidden="true"
+                className="absolute h-px w-px overflow-hidden whitespace-nowrap [clip:rect(0,0,0,0)]"
+              >
+                <label htmlFor="rfq-website">Website</label>
+                <input
+                  ref={honeypotRef}
+                  id="rfq-website"
+                  name="website"
+                  type="text"
+                  tabIndex={-1}
+                  autoComplete="off"
+                />
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className={buttonClasses("primary", "sm:shrink-0")}
+                >
+                  {t("submit")}
+                </button>
+                <p className="text-[13px] text-ink-2">{t("submitNote")}</p>
+              </div>
+              {submitError && (
+                <p role="alert" className="text-[13px] text-error">
+                  {submitError}
+                </p>
+              )}
+            </FormSectionCard>
           </form>
         </>
       )}

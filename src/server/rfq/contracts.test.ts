@@ -177,12 +177,18 @@ describe("prefillContext — the shape Story 4.7 reads back (3.4)", () => {
   });
 
   it("keeps the sanitized query separately — `q` is buyer text, not a slug", () => {
-    const context = parsePrefillContext({ resolved: {}, query: "fd9500x", cleared: false, edited: false });
+    const context = parsePrefillContext({
+      resolved: {},
+      query: "fd9500x",
+      cleared: false,
+      edited: false,
+    });
     expect(context.query).toBe("fd9500x");
     // …and it is NOT slug-gated, unlike everything in `resolved`.
-    expect(parsePrefillContext({ resolved: {}, query: "FD 9500/X", cleared: false, edited: false }).query).toBe(
-      "FD 9500/X",
-    );
+    expect(
+      parsePrefillContext({ resolved: {}, query: "FD 9500/X", cleared: false, edited: false })
+        .query,
+    ).toBe("FD 9500/X");
   });
 
   it("DROPS a resolved value that is not a valid slug — the anti-spoofing rule", () => {
@@ -198,7 +204,14 @@ describe("prefillContext — the shape Story 4.7 reads back (3.4)", () => {
   });
 
   it("NEVER THROWS on arbitrary JSONB, and degrades to the empty context", () => {
-    for (const hostile of [null, "not an object", 42, [], { resolved: "nope" }, Object.create(null)]) {
+    for (const hostile of [
+      null,
+      "not an object",
+      42,
+      [],
+      { resolved: "nope" },
+      Object.create(null),
+    ]) {
       expect(() => parsePrefillContext(hostile)).not.toThrow();
     }
     expect(parsePrefillContext(null)).toEqual({ resolved: {}, cleared: false, edited: false });
@@ -208,8 +221,8 @@ describe("prefillContext — the shape Story 4.7 reads back (3.4)", () => {
   it("is EMPTY for a cold visit — the DB default must parse to the same thing", () => {
     expect(parsePrefillContext({})).toEqual({ resolved: {}, cleared: false, edited: false });
     expect(isEmptyPrefillContext(parsePrefillContext({}))).toBe(true);
-    expect(
-      isEmptyPrefillContext(parsePrefillContext({ resolved: { industry: "oil-gas" } })),
-    ).toBe(false);
+    expect(isEmptyPrefillContext(parsePrefillContext({ resolved: { industry: "oil-gas" } }))).toBe(
+      false,
+    );
   });
 });

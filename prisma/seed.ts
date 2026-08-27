@@ -13,6 +13,41 @@ function names(en: string, tr?: string, ru?: string): Tr[] {
   return out;
 }
 
+/**
+ * Upsert NAME translations per locale, REPAIRABLY (Story 3.4).
+ *
+ * ⚠️ THE CLASS THIS CLOSES: a nested `translations: { create }` under an
+ * `update: {}` branch runs ONLY on first insert. On a long-lived dev database a
+ * later fixture edit — a corrected Turkish category name, a newly added Russian
+ * one — silently never propagates, and the seed reads as if it had. Story 2.6
+ * found the same shape on services and Story 3.1 fixed it for projects; 3.4
+ * fixes it for INDUSTRIES and CATEGORIES specifically, because those are the two
+ * entities whose names the RFQ pre-fill banner renders. A translation that can
+ * never be repaired is a banner that can never be corrected.
+ *
+ * The remaining sites (manufacturers, series, products) still carry the old
+ * shape and are recorded as deferred rather than swept in here.
+ */
+async function upsertIndustryNames(industryId: string, translations: Tr[]) {
+  for (const { locale, name } of translations) {
+    await prisma.industryTranslation.upsert({
+      where: { industryId_locale: { industryId, locale } },
+      update: { name },
+      create: { industryId, locale, name },
+    });
+  }
+}
+
+async function upsertCategoryNames(categoryId: string, translations: Tr[]) {
+  for (const { locale, name } of translations) {
+    await prisma.categoryTranslation.upsert({
+      where: { categoryId_locale: { categoryId, locale } },
+      update: { name },
+      create: { categoryId, locale, name },
+    });
+  }
+}
+
 async function main() {
   // --- Industries (a couple carry TR/RU; the rest exercise EN fallback) ---
   const industries = [
@@ -24,11 +59,14 @@ async function main() {
     { slug: "fire-safety", tr: names("Fire Safety", "Yangın Güvenliği") },
   ];
   for (const i of industries) {
-    await prisma.industry.upsert({
+    const rec = await prisma.industry.upsert({
       where: { slug: i.slug },
       update: {},
-      create: { slug: i.slug, translations: { create: i.tr } },
+      create: { slug: i.slug },
     });
+    // REPAIRABLE, per locale — see upsertNameTranslations. The RFQ pre-fill
+    // banner renders these names.
+    await upsertIndustryNames(rec.id, i.tr);
   }
 
   // --- Manufacturers ---
@@ -47,14 +85,12 @@ async function main() {
   }
 
   // --- Categories (one parent → child to exercise the hierarchy) ---
-  await prisma.category.upsert({
+  const fireGas = await prisma.category.upsert({
     where: { slug: "fire-gas-detection" },
     update: {},
-    create: {
-      slug: "fire-gas-detection",
-      translations: { create: names("Fire & gas detection", "Yangın ve gaz algılama") },
-    },
+    create: { slug: "fire-gas-detection" },
   });
+  await upsertCategoryNames(fireGas.id, names("Fire & gas detection", "Yangın ve gaz algılama"));
   const categories = [
     { slug: "flame-detectors", parent: "fire-gas-detection", tr: names("Flame detectors") },
     { slug: "fixed-suppression", tr: names("Fixed fire suppression") },
@@ -62,15 +98,15 @@ async function main() {
     { slug: "ppe", tr: names("Personal protective equipment") },
   ];
   for (const c of categories) {
-    await prisma.category.upsert({
+    const rec = await prisma.category.upsert({
       where: { slug: c.slug },
       update: {},
       create: {
         slug: c.slug,
         parent: c.parent ? { connect: { slug: c.parent } } : undefined,
-        translations: { create: c.tr },
       },
     });
+    await upsertCategoryNames(rec.id, c.tr);
   }
 
   // --- Series ---
@@ -274,7 +310,10 @@ async function main() {
 
   type ProjectSeed = {
     slug: string;
-    industryId: string;
+    /** NULLABLE. The column is nullable in the schema and Story 3.4 needs a
+     *  published project with NO industry as a live fixture — see the fourth
+     *  project below. */
+    industryId: string | null;
     deliveredAt?: Date;
     media?: unknown;
     translations: { locale: Locale; title: string; description?: string; outcome?: string }[];
@@ -404,6 +443,45 @@ async function main() {
       },
     ],
   });
+
+  /**
+   * ⚠️ THE NULL-INDUSTRY PROJECT — a FIXTURE, not a content decision (Story 3.4,
+   * AC2). `Project.industry_id` is nullable and always has been, but no seeded
+   * project exercised it, so the doorway's "the banner names only the context
+   * that actually resolved" branch had nothing to prove itself against. The 3.1
+   * review disclosed the gap and left it open; 3.4 needs it, so 3.4 seeds it.
+   *
+   * IT HAS NO LINKED PRODUCTS EITHER, which makes it the DEGENERATE case in
+   * full: a doorway that resolves neither an industry nor a single chip must
+   * render the RFQ exactly as a cold visit does — no banner, no empty shell, no
+   * placeholder text, 200.
+   *
+   * ⚠️ ITS SECTOR IS DELIBERATELY NONE, not "construction"/"manufacturing"/
+   * "nuclear". Those three are the seed's THIN industries and `e2e/seo.spec.ts`
+   * proves they are absent from the sitemap; giving one a project would un-thin
+   * it and destroy that negative proof (seed.ts's own recorded constraint).
+   */
+  await upsertProject({
+    slug: "standalone-workshop-fitout",
+    industryId: null,
+    deliveredAt: new Date("2024-02-01T00:00:00.000Z"),
+    translations: [
+      {
+        locale: Locale.en,
+        title: "Standalone workshop fit-out",
+        description:
+          "A general workshop fit-out delivered outside any single sector programme — the reference that exists to prove a project need not belong to an industry.",
+        outcome: "Delivered complete; no sector programme attached.",
+      },
+      {
+        locale: Locale.tr,
+        title: "Bağımsız atölye donanımı",
+        description: "Tek bir sektör programına bağlı olmadan teslim edilen genel atölye donanımı.",
+        outcome: "Eksiksiz teslim edildi; bağlı bir sektör programı yok.",
+      },
+    ],
+  });
+
   for (const slug of ["fd-9500", "gd-410"]) {
     const prod = await prisma.product.findUniqueOrThrow({ where: { slug } });
     await prisma.projectProduct.upsert({

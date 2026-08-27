@@ -1029,3 +1029,177 @@ test.describe("attachments (Story 3.7b — FR32a)", () => {
     expect(await withPrisma((db) => db.lead.count({ where: { email } }))).toBe(0);
   });
 });
+
+/**
+ * THE DOORWAYS (Story 3.4 — FR15/FR22/FR28/FR17a-doorway).
+ *
+ * These go against RENDERED MARKUP and the real seed, because the whole subject
+ * is server-side resolution: the URL carries a slug, and everything the buyer
+ * sees is looked up from it. Nothing here asserts a value that came from the URL.
+ */
+test.describe("doorway pre-fill (Story 3.4)", () => {
+  /** Open a pre-filled RFQ and wait for hydration, like `openRfq` does. */
+  async function openDoorway(page: import("@playwright/test").Page, query: string) {
+    await page.goto(`/en/rfq${query}`);
+    await page.waitForFunction(() => {
+      const form = document.querySelector("form");
+      return !!form && Object.keys(form).some((key) => key.startsWith("__reactProps"));
+    });
+  }
+
+  test("?project= pre-selects the industry and loads the DISTINCT categories as chips", async ({
+    page,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+    await openDoorway(page, "?project=lng-terminal-fire-gas-upgrade");
+
+    await expect(page.getByLabel("Industry")).toHaveValue("oil-gas");
+    // LNG links two products in two categories — a PARENT and its own child.
+    // Both appear; rolling up to the parent would drop the specific one.
+    const banner = page.getByTestId("rfq-prefill-banner");
+    await expect(banner).toBeVisible();
+    await expect(banner).toContainText("Fire & gas detection");
+    await expect(banner).toContainText("Flame detectors");
+    await expect(banner).toContainText("Oil & Gas");
+    // Each chip is individually removable — the 44px floor, not the chip idiom.
+    await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(2);
+  });
+
+  test("?project= with NO industry and NO links renders like a cold visit — no empty banner", async ({
+    page,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+    // The degenerate fixture Story 3.4 seeded for exactly this branch.
+    await openDoorway(page, "?project=standalone-workshop-fitout");
+
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.getByTestId("rfq-prefill-banner")).toHaveCount(0);
+    await expect(page.getByLabel("Industry")).toHaveValue("");
+    await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(0);
+  });
+
+  test("?product= loads the product AND its category, each removable independently", async ({
+    page,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+    await openDoorway(page, "?product=fd-9500");
+
+    const removes = page.getByRole("button", { name: /^Remove / });
+    await expect(removes).toHaveCount(2);
+    // Removing one leaves the other — they are separate chips, not one blob.
+    await removes.first().click();
+    await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(1);
+  });
+
+  test("?industry= pre-selects the sector and loads no chips", async ({ page }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+    await openDoorway(page, "?industry=oil-gas");
+    await expect(page.getByLabel("Industry")).toHaveValue("oil-gas");
+    await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(0);
+  });
+
+  test("?q= carries the sanitized query into the project description", async ({
+    page,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+    await openDoorway(page, "?q=fd9500x");
+    await expect(page.getByLabel("Project description")).toHaveValue("fd9500x");
+    await expect(page.getByTestId("rfq-prefill-banner")).toContainText("fd9500x");
+  });
+
+  test("CLEAR empties what the doorway seeded and KEEPS what I typed", async ({
+    page,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+    await openDoorway(page, "?project=lng-terminal-fire-gas-upgrade");
+
+    // Something of the buyer's own, which Clear must not touch.
+    await page.getByLabel("Quantities").fill("12 detectors, 2 panels");
+
+    const clear = page.getByRole("button", { name: /Clear the pre-filled context/i });
+    await expect(clear).toBeVisible();
+    await clear.click();
+
+    // "Clearing is not hiding": the VALUES are gone, not just the banner.
+    await expect(page.getByTestId("rfq-prefill-banner")).toHaveCount(0);
+    await expect(page.getByLabel("Industry")).toHaveValue("");
+    await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(0);
+    // …and the buyer's own value survived.
+    await expect(page.getByLabel("Quantities")).toHaveValue("12 detectors, 2 panels");
+    // The removal is announced through the form's EXISTING live region.
+    await expect(page.locator('[role="status"]')).toContainText("cleared");
+  });
+
+  test("AC12: a SOFT navigation to a different doorway re-fills — the island is keyed", async ({
+    page,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+    /**
+     * ⚠️ EVERY STEP AFTER THE FIRST `goto` MUST BE A CLIENT-SIDE NAVIGATION, and
+     * the first version of this test got that wrong: it called `page.goto()`
+     * twice, which is a FULL RELOAD. React remounts on a reload whatever the
+     * key is, so the test passed with the key deleted — a test that could not
+     * fail, guarding the highest-risk defect in the story.
+     *
+     * The defect itself: `RfqForm` reads its defaultValues once at mount and
+     * never calls `reset()`. Without a key on the resolved identity, React keeps
+     * the SAME mounted island across a soft navigation and the buyer sees the
+     * first doorway's chips on a page whose URL says the second.
+     */
+    // Start at the CATALOGUE, so every later step can be a client-side click.
+    await page.goto("/en/products");
+    await page
+      .getByRole("link", { name: /FD-9500|Triple-IR/i })
+      .first()
+      .click();
+    await page.waitForURL("**/products/fd-9500");
+    await page
+      .getByRole("main")
+      .getByRole("link", { name: /quote|inquiry/i })
+      .first()
+      .click();
+    await page.waitForURL("**/rfq?product=fd-9500");
+    await expect(page.getByTestId("rfq-prefill-banner")).toContainText("Flame Detector");
+
+    // Back to the catalogue and into a DIFFERENT product — all client-side.
+    await page.goBack();
+    await page.waitForURL("**/products/fd-9500");
+    await page.goBack();
+    await page.waitForURL("**/products");
+    await page
+      .getByRole("link", { name: /GD-410/i })
+      .first()
+      .click();
+    await page.waitForURL("**/products/gd-410");
+    await page
+      .getByRole("main")
+      .getByRole("link", { name: /quote|inquiry/i })
+      .first()
+      .click();
+    await page.waitForURL("**/rfq?product=gd-410");
+
+    const banner = page.getByTestId("rfq-prefill-banner");
+    await expect(banner).toContainText("GD-410");
+    // …and NONE of the first doorway's context survives.
+    await expect(banner).not.toContainText("Flame Detector");
+  });
+
+  test("the banner RENDERS in TR and RU — not just EN", async ({ page }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+    // ⚠️ NOTHING ASSERTED THAT /tr/rfq OR /ru/rfq RENDER AT ALL before Story
+    // 3.4. This is the class Story 3.3's review found in the email copy: a
+    // placeholder typo emits the LITERAL KEY PATH, and every EN-only test
+    // stays green while a Turkish buyer reads "Rfq.prefillProject".
+    for (const locale of ["tr", "ru"]) {
+      await page.goto(`/${locale}/rfq?industry=oil-gas`);
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      const banner = page.getByTestId("rfq-prefill-banner");
+      await expect(banner).toBeVisible();
+      // A collapsed key path is the literal namespace prefix.
+      await expect(banner).not.toContainText("Rfq.");
+      // The industry name is resolved server-side, so it is present whichever
+      // locale it fell back from.
+      await expect(banner).toContainText(/Oil|Нефть|Petrol/);
+    }
+  });
+});

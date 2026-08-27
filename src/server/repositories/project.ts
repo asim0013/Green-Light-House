@@ -380,7 +380,11 @@ export async function queryProjectPrefill(
           product: {
             select: {
               category: {
-                select: { id: true, slug: true, translations: { select: { locale: true, name: true } } },
+                select: {
+                  id: true,
+                  slug: true,
+                  translations: { select: { locale: true, name: true } },
+                },
               },
             },
           },

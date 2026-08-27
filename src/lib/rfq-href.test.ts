@@ -1,10 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  rfqProjectHref,
-  rfqProductHref,
-  rfqIndustryHref,
-  rfqCategoryHref,
-} from "./rfq-href";
+import { rfqProjectHref, rfqProductHref, rfqIndustryHref, rfqCategoryHref } from "./rfq-href";
 
 /**
  * The doorway href builders (Story 3.4), mirroring `catalog-href.test.ts`.

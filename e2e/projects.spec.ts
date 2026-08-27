@@ -4,18 +4,32 @@ import { probeDbReady, warmUp } from "./dbReady";
 /**
  * Story 3.1 — the Projects section, end to end.
  *
- * FIXTURES (the seed after 3.1, measured live):
+ * FIXTURES (the seed after 3.4, re-measured live against Postgres):
  *
- *   slug                              industry     delivered    media  locales
- *   lng-terminal-fire-gas-upgrade     oil-gas      2024-06-01   0      en,tr
- *   hospital-fire-suppression         fire-safety  2023-09-01   2      en,tr
- *   refinery-gas-detection-retrofit   oil-gas      (null)       0      en
+ *   slug                              industry     delivered    media  LINKS  locales
+ *   lng-terminal-fire-gas-upgrade     oil-gas      2024-06-01   0      2      en,tr
+ *   hospital-fire-suppression         fire-safety  2023-09-01   2      0      en,tr
+ *   refinery-gas-detection-retrofit   oil-gas      (null)       0      0      en
+ *   standalone-workshop-fitout        (NONE)       2024-02-01   0      0      en,tr
+ *
+ * ⚠️ THE `LINKS` COLUMN WAS ADDED BY STORY 3.4, and it is the one this table was
+ * previously misleading about. The numeric column used to be MEDIA alone, which
+ * inverts the truth for the doorway: hospital has 2 media and 0 product links;
+ * LNG has 0 media and 2 links. Only LNG produces equipment chips.
+ *
+ * `standalone-workshop-fitout` is Story 3.4's DEGENERATE fixture: published, but
+ * with NO industry and NO linked products, so a doorway opened from it resolves
+ * nothing and must render the RFQ exactly as a cold visit does (its AC2). It is
+ * deliberately not in construction/manufacturing/nuclear — those are the seed's
+ * THIN industries and `seo.spec.ts` proves they are absent from the sitemap.
  *
  * The LNG project's `tr` row deliberately has NO `outcome` — it is the live
  * fixture for per-field fallback (AC2b). The refinery project has no description,
  * no outcome and no photos, so it is FR42a-thin and must be noindex + absent from
- * the sitemap while still rendering. Zero `ru` rows exist anywhere, so
- * `/ru/projects` is fallback-only.
+ * the sitemap while still rendering. ⚠️ ZERO `ru` rows exist in ANY project, so
+ * /ru/projects is fallback-only and FR42a-thin — giving the workshop project a
+ * Russian translation un-thinned it and broke two SEO proofs on its first run.
+ * Do not add one.
  *
  * Assertions go against RENDERED MARKUP (headings by role, hrefs, `<loc>`), never
  * raw-HTML message strings: next-intl serialises whole namespaces into every
