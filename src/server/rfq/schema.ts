@@ -197,6 +197,37 @@ export const rfqSchema = z.object({
   locale: z.enum(routing.locales, "invalid"),
   uiLocale: z.enum(routing.locales, "invalid"),
   consent: z.literal(true, "consentRequired"),
+  /**
+   * THE DOORWAY THE BUYER CAME THROUGH (Story 3.4, AC9) — the ORIGINAL PARAMS,
+   * never a conclusion drawn from them.
+   *
+   * ⚠️ THIS IS THE SECURITY-RELEVANT SHAPE IN THIS SCHEMA. `Lead.source` and
+   * `Lead.prefillContext` feed Story 4.7's admin, and a browser cannot be
+   * trusted to report its own provenance — a body claiming `source: "project"`
+   * would let any client forge attribution. So there is deliberately NO `source`
+   * field here: the client sends the slugs it was given, the server RE-RESOLVES
+   * both columns from them through the same code the page used, and a smuggled
+   * `source` is stripped as an unknown key exactly as `reference` and `status`
+   * are.
+   *
+   * Every slug is re-gated by `slug` rather than trusted from the client, so a
+   * direct POST cannot write an unvalidated value into the JSONB column either.
+   * `cleared` records that the buyer pressed Clear — a real signal about intent
+   * that only the client can know.
+   */
+  prefill: z
+    .object({
+      project: slug.optional(),
+      product: slug.optional(),
+      industry: slug.optional(),
+      category: slug.optional(),
+      // 80 == `SEARCH_QUERY_MAX_LENGTH` (`@/server/catalog-page`), spelled as a
+      // literal rather than imported: this module is bundled into the CLIENT
+      // island, and `catalog-page` reaches Prisma through the repositories.
+      q: optionalText(80),
+      cleared: z.boolean().default(false),
+    })
+    .optional(),
 });
 
 export type RfqInput = z.infer<typeof rfqSchema>;

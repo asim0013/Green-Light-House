@@ -508,17 +508,29 @@ test.describe("the 3.4 seam holds (AC8) + endpoint edges via direct requests", (
       const res = await request.get(url);
       expect(res.status(), url).toBe(200);
     }
-    // AC8's second half (3.2 review: previously unasserted): a UNIQUE marker
-    // in every frozen prefill param must not reach the RENDERED DOM. Asserted
-    // on innerText, not the raw response — Next's own router state legally
-    // echoes the URL inside <script> payloads; AC8's claim is about what a
-    // reader (or a copy-paste) can meet, and that is DOM text.
+    // ⚠️ SPLIT BY STORY 3.4, NOT DELETED. This half used to put a marker in ALL
+    // FIVE frozen params and assert none reached the DOM — which was true only
+    // while the page read nothing. It is now the ANTI-SPOOFING proof, and it is
+    // narrowed to the four SLUG params, where the rule still holds absolutely:
+    // no label from the URL is ever rendered, because every catalog name the
+    // banner shows is resolved from the slug through the repositories.
+    //
+    // The marker is itself a VALID SLUG (`zzq-marker-7f3` passes `isValidSlug`),
+    // so it clears the gate and resolves to no row — which is exactly the case
+    // worth proving. A URL naming rows that do not exist renders no banner and
+    // no pre-fill, and above all puts none of its own text on the page.
+    //
+    // `q` is deliberately EXCLUDED here and asserted positively below: it is
+    // buyer text, not a catalog label, and 3.4 carries it into the project
+    // description on purpose.
     const marker = "zzq-marker-7f3";
     await page.goto(
-      `/en/rfq?q=${marker}&project=${marker}&product=${marker}&industry=${marker}&category=${marker}`,
+      `/en/rfq?project=${marker}&product=${marker}&industry=${marker}&category=${marker}`,
     );
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     expect(await page.locator("body").innerText()).not.toContain(marker);
+    // …and no banner at all, rather than an empty shell (AC2/AC6).
+    await expect(page.getByTestId("rfq-prefill-banner")).toHaveCount(0);
   });
 
   test("/rfq declares index,follow robots in the rendered page — the predicate is WIRED, not just defined", async ({

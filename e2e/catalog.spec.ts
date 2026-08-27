@@ -106,9 +106,10 @@ test.describe("the catalog page (AC1)", () => {
     await expect(page.locator('article a[href*="/products/"]')).toHaveCount(5);
     await expect(page.locator('article a[href^="/api/documents/"]')).toHaveCount(1);
 
-    // Still absent — but the REASON moved in Story 3.2: /rfq now exists, so
-    // DP-12 no longer forbids the link; the card affordance itself is Story
-    // 3.4's doorway scope. This inverts when 3.4 lands, not before.
+    // Still absent, and STILL UNASSIGNED. /rfq exists since 3.2 so DP-12 no
+    // longer forbids the link, and Story 3.4 considered the card affordance and
+    // declined it (its Task 0 #18) — so this does NOT invert with 3.4. Whoever
+    // picks it up owns inverting this and the exhaustive count below.
     for (const card of await page.locator("article").all()) {
       const cardText = (await card.innerText()).toLowerCase();
       expect(cardText).not.toContain("add to inquiry");

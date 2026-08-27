@@ -6,6 +6,7 @@ import { buttonClasses } from "@/components/ui/buttonClasses";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { CONTAINER } from "@/components/layout/container";
 import { SITE } from "@/config/site";
+import { rfqIndustryHref } from "@/lib/rfq-href";
 import type { IndustryDetail } from "@/server/repositories/industry";
 
 /**
@@ -81,7 +82,7 @@ export function IndustryHero({ industry }: { industry: IndustryDetail }) {
               </p>
               <p className="text-sm leading-relaxed text-on-dark-text">{t("anchorNoPrices")}</p>
               <Link
-                href={SITE.rfqHref}
+                href={rfqIndustryHref(industry.slug)}
                 className={buttonClasses("onDarkPrimary", "mt-2 w-full text-center")}
               >
                 {tNav("requestQuote")}

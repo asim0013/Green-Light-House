@@ -4,6 +4,7 @@ import { Link } from "@/i18n/navigation";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { buttonClasses } from "@/components/ui/buttonClasses";
 import { SITE } from "@/config/site";
+import { rfqProductHref } from "@/lib/rfq-href";
 import type { ProductDetail } from "@/server/repositories/product";
 
 /**
@@ -28,8 +29,9 @@ import type { ProductDetail } from "@/server/repositories/product";
  * The CTAs are co-equal by design (UX-DR14 / FR31): a navy primary to the RFQ and
  * the phone number beside it, not buried. `/rfq` is LIVE since Story 3.2 — the
  * Epic 2 "sanctioned phased-page exception" this card shipped under has expired;
- * the conversion path it kept visible now lands on the real form. (The product
- * doorway param `?product=` is Story 3.4's, so the href stays bare until then.)
+ * the conversion path it kept visible now lands on the real form — and since
+ * Story 3.4 it carries `?product=`, so the RFQ opens with this product AND its
+ * category already loaded as individually removable chips.
  */
 export function ProductAnchorCard({ product }: { product: ProductDetail }) {
   const t = useTranslations("Product");
@@ -71,7 +73,13 @@ export function ProductAnchorCard({ product }: { product: ProductDetail }) {
       </dl>
 
       <div className="border-t border-border-subtle px-5 py-4">
-        <Link href={SITE.rfqHref} className={`${buttonClasses("primary")} w-full justify-center`}>
+        {/* The product doorway (Story 3.4). `product` already carries its slug
+            and its category, so the RFQ can pre-load BOTH as removable chips
+            without a second read. */}
+        <Link
+          href={rfqProductHref(product.slug)}
+          className={`${buttonClasses("primary")} w-full justify-center`}
+        >
           {t("quoteCta")}
         </Link>
         <a

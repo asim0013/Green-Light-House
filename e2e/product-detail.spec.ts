@@ -111,7 +111,12 @@ test.describe("a populated product page (AC1, AC5)", () => {
     // Full ancestry from the tree walk — the product's category is in the trail.
     await expect(crumbs).toContainText("Flame detectors");
 
-    await expect(page.locator('main a[href="/en/rfq"]')).toHaveCount(1);
+    // INVERTED BY STORY 3.4: the anchor card is a DOORWAY now, so the href
+    // carries the product slug. The RFQ opens with this product AND its
+    // category already loaded as removable chips. A bare /en/rfq here would
+    // mean the doorway regressed to a context-free link.
+    await expect(page.locator('main a[href="/en/rfq"]')).toHaveCount(0);
+    await expect(page.locator('main a[href="/en/rfq?product=fd-9500"]')).toHaveCount(1);
     await expect(page.locator('main a[href^="tel:"]')).toHaveCount(1);
 
     // `innerText`, not textContent: the latter includes <script>, and React flight

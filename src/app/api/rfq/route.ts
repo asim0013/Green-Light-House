@@ -8,7 +8,12 @@ import {
   PRIVACY_POLICY_VERSION,
   type RfqInput,
 } from "@/server/rfq/schema";
-import type { LeadEquipmentItem } from "@/server/rfq/contracts";
+import { SLUG_PREFILL_PARAMS, type LeadEquipmentItem } from "@/server/rfq/contracts";
+import {
+  resolvePrefillSource,
+  buildPrefillContext,
+  type PrefillParams,
+} from "@/server/rfq/prefill";
 import {
   ATTACHMENT_MAX_BYTES,
   attachmentStorageKey,
@@ -536,10 +541,40 @@ export async function POST(request: Request) {
 
   const equipment = await resolveEquipment(input.equipment, input.locale);
 
-  // AC4's column map. What is ABSENT is load-bearing: `reference`, `status`,
-  // `source`, `prefillContext` and the attachment columns are not merely
-  // omitted — `LeadCreateData` excludes them, so supplying one cannot compile.
+  // ATTRIBUTION, RE-RESOLVED SERVER-SIDE (Story 3.4, AC9).
+  //
+  // ⚠️ `input.prefill` carries the ORIGINAL PARAMS, never a `source`. The client
+  // has no say in what this lead is attributed to: `source` is derived here by
+  // walking the frozen precedence, exactly as the page did when it rendered the
+  // banner. A body smuggling `source: "project"` is stripped by the schema as an
+  // unknown key — the same treatment `reference` and `status` get — and
+  // `route.test.ts` asserts it never reaches the create args. That assertion
+  // staying green is the proof a browser cannot forge its own provenance.
+  //
+  // The one thing only the client knows is whether the buyer pressed Clear, so
+  // that single boolean is accepted and recorded. `edited` is derived rather
+  // than trusted: a doorway that resolved values which did NOT arrive back in
+  // the payload was edited, whatever the client says.
+  const prefillParams: PrefillParams = {};
+  if (input.prefill) {
+    for (const param of SLUG_PREFILL_PARAMS) {
+      const slug = input.prefill[param];
+      if (slug) prefillParams[param] = slug;
+    }
+    if (input.prefill.q) prefillParams.q = input.prefill.q;
+  }
+  const cleared = input.prefill?.cleared ?? false;
+  const edited = !cleared && wasPrefillEdited(prefillParams, input);
+  const source = resolvePrefillSource(prefillParams);
+  const prefillContext = buildPrefillContext(prefillParams, { cleared, edited });
+
+  // AC4's column map. What is ABSENT is load-bearing: `reference` and `status`
+  // are not merely omitted — `LeadCreateData` excludes them, so supplying one
+  // cannot compile. `source` and `prefillContext` are now IN the type (3.4) but
+  // are still server-derived above, never taken from the body.
   const data: LeadCreateData = {
+    source,
+    prefillContext: prefillContext as unknown as Prisma.InputJsonValue,
     industry: input.industry ?? null,
     // The seed's JSONB precedent: the tagged union is JSON-shaped by
     // construction, but named types lack the implicit index signature
@@ -662,4 +697,21 @@ export async function POST(request: Request) {
   // is the job payload above. Widening this would break the honeypot's
   // indistinguishability, which depends on the two responses being identical.
   return Response.json({ reference: created.reference }, { status: 201 });
+}
+
+/**
+ * Did the buyer change what the doorway gave them? (AC9's `edited` flag.)
+ *
+ * DERIVED, NOT TRUSTED. The client could report this, but it has every reason to
+ * be wrong about it and no reason to be right — so it is inferred from what
+ * actually arrived: an industry the doorway supplied that is not in the payload
+ * was removed, and a query it supplied that is not the project description was
+ * rewritten. Chips are deliberately NOT compared: the buyer adding their own
+ * `freeText` chip alongside the pre-filled ones is normal use, not an edit of
+ * the pre-fill.
+ */
+function wasPrefillEdited(params: PrefillParams, input: RfqInput): boolean {
+  if (params.industry && input.industry !== params.industry) return true;
+  if (params.q && input.projectDetails !== params.q) return true;
+  return false;
 }

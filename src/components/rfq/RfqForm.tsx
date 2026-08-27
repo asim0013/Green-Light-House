@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslations } from "next-intl";
 import { routing } from "@/i18n/routing";
 import { rfqSchema, TIMELINE_KEYS, type RfqInput } from "@/server/rfq/schema";
+import type { LeadEquipmentItem } from "@/server/rfq/contracts";
+import type { RfqPrefill } from "@/server/rfq-prefill";
 import { zodResolver } from "@/lib/zod-resolver";
 import { buttonClasses } from "@/components/ui/buttonClasses";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
@@ -16,6 +18,7 @@ import { EquipmentChips } from "./EquipmentChips";
 import { ConsentRow } from "./ConsentRow";
 import { AttachmentField } from "./AttachmentField";
 import { RfqConfirmation } from "./RfqConfirmation";
+import { PrefillBanner } from "./PrefillBanner";
 import { submitRfq } from "./submit-rfq";
 
 type AppLocale = (typeof routing.locales)[number];
@@ -35,7 +38,12 @@ export interface RfqIndustryOption {
 interface RfqFormValues {
   industry: string;
   timeline: string;
-  equipment: { kind: "freeText"; text: string }[];
+  /** ⚠️ THE FROZEN UNION, not freeText-only. Story 3.2 shipped this narrowed
+   *  because the FORM only ever creates typed chips — but Story 3.4 PRE-LOADS
+   *  catalog chips, and `product`/`category` items carry `label`, not `text`.
+   *  Left narrow, every pre-filled chip rendered "Remove undefined" as its
+   *  accessible name. The endpoint has accepted all three variants since 3.2. */
+  equipment: LeadEquipmentItem[];
   quantities: string;
   projectDetails: string;
   name: string;
@@ -131,9 +139,13 @@ export function precheckAttachment(file: File): "fileTooLarge" | "fileType" | un
 export function RfqForm({
   industries,
   uiLocale,
+  prefill = null,
 }: {
   industries: readonly RfqIndustryOption[];
   uiLocale: AppLocale;
+  /** The resolved doorway context, or null for a cold visit. The PAGE resolves
+   *  it; this island never reads a URL (Story 3.8 mounts it on /contact too). */
+  prefill?: RfqPrefill | null;
 }) {
   const t = useTranslations("Rfq");
   const [reference, setReference] = useState<string | null>(null);
@@ -148,6 +160,15 @@ export function RfqForm({
   // buyer who types "20 t overhead crane" and clicks Send without pressing
   // Add must not silently lose the one thing they named.
   const [equipmentDraft, setEquipmentDraft] = useState("");
+  // The banner's own visibility. Separate from the `prefill` prop, which is the
+  // server's answer and never changes for a given mount — this is what Clear
+  // turns off. `prefillCleared` travels in the payload so the server can record
+  // it in `Lead.prefillContext` (AC9).
+  const [activePrefill, setActivePrefill] = useState(prefill);
+  const [prefillCleared, setPrefillCleared] = useState(false);
+  const clearButtonRef = useRef<HTMLButtonElement>(null);
+  const industryRef = useRef<HTMLSelectElement>(null);
+  const projectDetailsRef = useRef<HTMLTextAreaElement>(null);
   const equipmentInputRef = useRef<HTMLInputElement>(null);
   const honeypotRef = useRef<HTMLInputElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
@@ -160,6 +181,18 @@ export function RfqForm({
   const [attachmentErrorKey, setAttachmentErrorKey] = useState<string | undefined>(undefined);
   // `undefined` = idle, `null` = in flight with an unknown total, 0-100 = live.
   const [uploadPercent, setUploadPercent] = useState<number | null | undefined>(undefined);
+
+  /**
+   * What travels to the server for attribution (AC9): the ORIGINAL PARAMS the
+   * doorway supplied, plus whether Clear was pressed. Deliberately NOT a
+   * `source` — the server re-resolves that, so a modified client cannot forge
+   * where a lead came from. `undefined` for a cold visit, so a direct POST and a
+   * doorway-less submit are indistinguishable, as they should be.
+   */
+  const prefillPayload = useMemo(
+    () => (prefill ? { ...prefill.params, cleared: prefillCleared } : undefined),
+    [prefill, prefillCleared],
+  );
 
   const normalize = useCallback(
     (values: RfqFormValues) => ({
@@ -179,8 +212,13 @@ export function RfqForm({
       // the buyer's preferred REPLY language.
       uiLocale,
       consent: values.consent,
+      // AC9. The ORIGINAL PARAMS travel, never a `source` — the server
+      // re-resolves attribution from these, because a browser cannot be
+      // trusted to report its own provenance. `cleared` is the one thing only
+      // the client knows.
+      prefill: prefillPayload,
     }),
-    [uiLocale],
+    [uiLocale, prefillPayload],
   );
 
   const {
@@ -189,16 +227,22 @@ export function RfqForm({
     setValue,
     setError,
     watch,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm<RfqFormValues, unknown, RfqInput>({
     mode: "onBlur",
     resolver: zodResolver<RfqFormValues, RfqInput>(rfqSchema, normalize),
+    // ⚠️ `defaultValues` IS THE RIGHT MECHANISM BUT IT DOES NOT PAINT THE SERVER
+    // HTML. RHF applies these on mount, so every pre-filled REGISTERED control
+    // also carries an explicit `defaultValue` below — otherwise the SSR paint is
+    // empty and the values appear only once hydration lands. `watch()`-driven
+    // state (the chips) needs nothing: it reads defaultValues on first render.
     defaultValues: {
-      industry: "",
+      industry: prefill?.industry?.slug ?? "",
       timeline: "",
-      equipment: [],
+      equipment: prefill?.equipment ?? [],
       quantities: "",
-      projectDetails: "",
+      projectDetails: prefill?.query ?? "",
       name: "",
       company: "",
       email: "",
@@ -220,6 +264,11 @@ export function RfqForm({
     industries.find((option) => option.slug === selectedIndustry)?.isFallback ?? false;
   /* eslint-enable react-hooks/incompatible-library */
 
+  // Registered once so their refs can be merged with the focus handles Clear
+  // needs (see the two controls below).
+  const registerIndustry = register("industry");
+  const registerProjectDetails = register("projectDetails");
+
   /** The stable key → the localized message (the shared-schema doctrine). */
   const errorText = (name: FieldName): string | undefined => {
     const key = errors[name]?.message;
@@ -228,6 +277,56 @@ export function RfqForm({
 
   const announce = (message: string) =>
     setAnnouncement((current) => ({ text: message, nonce: current.nonce + 1 }));
+
+  /**
+   * CLEAR: empty what the doorway seeded, leave what the buyer typed (AC8).
+   *
+   * ⚠️ "CLEARING IS NOT HIDING" — hiding the banner while the values stayed would
+   * send an inquiry carrying context the buyer explicitly rejected. So this calls
+   * `setValue`; it never merely unmounts the banner.
+   *
+   * THE PROVENANCE RULE, and why it is not `dirtyFields`. RHF's `dirtyFields`
+   * answers "changed since defaultValues", which is the wrong question twice
+   * over: it is not subscribed here, and neither equipment `setValue` passes
+   * `shouldDirty`, so `dirtyFields.equipment` could never become true anyway.
+   * Instead:
+   *   - SCALAR FIELDS: clear one only while its current value is still EXACTLY
+   *     what the pre-fill seeded. The moment the buyer edits it, it is theirs.
+   *   - EQUIPMENT: drop only `product`/`category` chips. This is a free, exact
+   *     discriminator rather than invented provenance — the form itself creates
+   *     `freeText` chips EXCLUSIVELY (see `EquipmentChips`), so a catalog-kind
+   *     chip can only have come from the doorway.
+   */
+  const clearPrefill = () => {
+    const seeded = prefill;
+    if (!seeded) return;
+
+    if (seeded.industry && getValues("industry") === seeded.industry.slug) {
+      setValue("industry", "");
+    }
+    if (seeded.query && getValues("projectDetails") === seeded.query) {
+      setValue("projectDetails", "");
+    }
+    setValue(
+      "equipment",
+      getValues("equipment").filter((item) => item.kind === "freeText"),
+      { shouldValidate: !!errors.equipment },
+    );
+
+    setActivePrefill(null);
+    setPrefillCleared(true);
+    announce(t("prefillCleared"));
+    // Focus must not fall to <body> when the banner unmounts. It goes to the
+    // FIRST CONTROL THE PRE-FILL ACTUALLY TOUCHED — not unconditionally the
+    // industry select, which for the `?q=` doorway was never seeded and would
+    // strand the buyer somewhere they had no reason to be.
+    const target = seeded.industry
+      ? industryRef.current
+      : seeded.query
+        ? projectDetailsRef.current
+        : equipmentInputRef.current;
+    target?.focus();
+  };
 
   /** Append one freeText chip. Revalidates only while an equipment error is
    *  showing, so fixing it clears the message without premature validation. */
@@ -362,7 +461,23 @@ export function RfqForm({
       {reference ? (
         <RfqConfirmation reference={reference} />
       ) : (
-        <form
+        <>
+          {/* INSIDE the success conditional, deliberately: on a 201 the banner
+              must disappear with the form. Rendered above it, it would sit
+              beside the "thank you" surface still offering a Clear button for a
+              submission that already happened. It DOES survive a failed submit —
+              this branch is only taken on success, and the failure paths never
+              reset state (the shipped invariant at the top of this file). */}
+          {activePrefill && (
+            <div className="mb-5">
+              <PrefillBanner
+                prefill={activePrefill}
+                onClear={clearPrefill}
+                clearRef={clearButtonRef}
+              />
+            </div>
+          )}
+          <form
           onSubmit={(event) => {
             // A typed-but-unchipped equipment draft commits at submit — see
             // the draft-state note above. setValue is synchronous into RHF's
@@ -375,8 +490,21 @@ export function RfqForm({
         >
           <FormSectionCard title={t("sectionProject")}>
             <Field id="rfq-industry" label={t("industryLabel")} error={errorText("industry")}>
+              {/* `defaultValue` is explicit, not redundant with `defaultValues`:
+                  RHF applies those only at hydration, so without it the SSR paint
+                  shows an empty select and the pre-filled industry appears late.
+                  The locale select below carries the same treatment for the same
+                  reason. */}
               <select
-                {...register("industry")}
+                {...registerIndustry}
+                ref={(element) => {
+                  // BOTH refs, not one: `register` owns its own ref and dropping
+                  // it would unregister the control, while Clear needs a handle
+                  // to move focus here.
+                  registerIndustry.ref(element);
+                  industryRef.current = element;
+                }}
+                defaultValue={prefill?.industry?.slug ?? ""}
                 {...fieldAria("rfq-industry", !!errors.industry)}
                 className={controlClasses(!!errors.industry)}
               >
@@ -449,7 +577,12 @@ export function RfqForm({
               <textarea
                 rows={6}
                 placeholder={t("projectDetailsPlaceholder")}
-                {...register("projectDetails")}
+                {...registerProjectDetails}
+                ref={(element) => {
+                  registerProjectDetails.ref(element);
+                  projectDetailsRef.current = element;
+                }}
+                defaultValue={prefill?.query ?? ""}
                 {...fieldAria("rfq-project-details", !!errors.projectDetails)}
                 className={controlClasses(!!errors.projectDetails, "py-3 leading-relaxed")}
               />
@@ -580,7 +713,8 @@ export function RfqForm({
               </p>
             )}
           </FormSectionCard>
-        </form>
+          </form>
+        </>
       )}
     </div>
   );

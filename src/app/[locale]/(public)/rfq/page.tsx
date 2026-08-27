@@ -5,6 +5,8 @@ import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { alternatesFor, robotsFor } from "@/lib/seo";
 import { rfqSignals } from "@/server/rfq-page";
+import { resolveRfqPrefill, type RfqPrefill } from "@/server/rfq-prefill";
+import { readPrefillParams } from "@/server/rfq/prefill";
 import { listIndustries } from "@/server/repositories/industry";
 import { TwoColumn } from "@/components/ui";
 import { RfqForm } from "@/components/rfq/RfqForm";
@@ -22,6 +24,22 @@ import { CONTAINER } from "@/components/layout/container";
  * proving the build gate.
  */
 export const dynamic = "force-dynamic";
+
+/**
+ * A stable identity for one resolved pre-fill — the island's React key.
+ *
+ * Built from what RESOLVED, not from the raw query string: two URLs that differ
+ * only in an unresolvable param describe the same form and must not remount it
+ * (remounting would discard whatever the buyer had already typed). `null` is the
+ * cold visit, and every cold visit shares one key.
+ */
+function prefillKey(prefill: RfqPrefill | null): string {
+  if (!prefill) return "rfq";
+  const chips = prefill.equipment
+    .map((item) => (item.kind === "freeText" ? item.text : item.slug))
+    .join(",");
+  return `rfq:${prefill.doorway}:${prefill.industry?.slug ?? ""}:${chips}:${prefill.query ?? ""}`;
+}
 
 export async function generateMetadata(props: {
   params: Promise<{ locale: string }>;
@@ -54,18 +72,32 @@ export async function generateMetadata(props: {
  * omission: this is a conversion endpoint, not a browse location; the way back
  * is the nav.
  *
- * NO `searchParams`, MORE deliberately (AC8 — the Story 3.4 seam): this page
- * accepts ANY query string by reading NONE of it. `?project=` and the rest of
- * the frozen `PREFILL_PARAMS` are 3.4's to read; until then no query value can
- * reach a code path, which is also what makes the 2.5 hostile-query 500 class
- * (NUL bytes, split surrogates) structurally impossible here rather than
- * merely handled. The e2e proves the 200 against the worst two inputs.
+ * ⚠️ THIS PAGE NOW READS `searchParams`, AND THAT WEAKENS ONE PROPERTY ON
+ * PURPOSE (Story 3.4). Until now it accepted ANY query string by reading NONE of
+ * it, which made the 2.5 hostile-query 500 class (NUL bytes, split surrogates)
+ * STRUCTURALLY impossible here rather than merely handled. That guarantee is now
+ * GATE-DEPENDENT: every param passes `readPrefillParams` — `prefillSlugOf` for
+ * the four slug params, `searchQueryOf` composed with `isStorableText` for `q` —
+ * before it can reach any code path. Naming the downgrade is the point; the e2e
+ * still proves 200 against the worst inputs, and that test is now load-bearing
+ * rather than incidental.
+ *
+ * NO LABEL FROM THE URL IS EVER RENDERED. Every catalog name the banner shows is
+ * resolved from the slug through the repositories, which is what makes the
+ * banner localizable and fallback-markable — and what stops a crafted URL
+ * putting attacker text on the page. `?q=` is the deliberate exception and is
+ * not a catalog label: it is the buyer's own search text, already echoed to them
+ * on the zero-result page they came from.
  *
  * The form island receives everything it needs as props (industries resolved
- * server-side, the UI locale) because Story 3.8 mounts the same island on
- * `/contact` — the page owns the reads, the island owns the behavior.
+ * server-side, the UI locale, the resolved pre-fill) because Story 3.8 mounts
+ * the same island on `/contact` — the page owns the reads, the island owns the
+ * behavior.
  */
-export default async function RfqPage(props: { params: Promise<{ locale: string }> }) {
+export default async function RfqPage(props: {
+  params: Promise<{ locale: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { locale } = await props.params;
   // Self-validate the segment rather than relying on the layout's guard order
   // (the App Router renders layout and page concurrently).
@@ -75,6 +107,8 @@ export default async function RfqPage(props: { params: Promise<{ locale: string 
   setRequestLocale(locale);
 
   const industries = await listIndustries(locale);
+  const params = readPrefillParams(await props.searchParams);
+  const prefill = await resolveRfqPrefill(params, locale, industries);
   const t = await getTranslations({ locale, namespace: "Rfq" });
 
   return (
@@ -92,12 +126,25 @@ export default async function RfqPage(props: { params: Promise<{ locale: string 
           className="mt-8 lg:gap-11"
           main={
             <RfqForm
+              // ⚠️ THE KEY IS LOAD-BEARING, AND ITS ABSENCE WAS THE HIGHEST-RISK
+              // DEFECT THIS STORY COULD HAVE SHIPPED. `RfqForm` reads its
+              // `defaultValues` ONCE at mount and never calls `reset()` — by
+              // design, so a failed submit can never discard what the buyer
+              // typed. Without a key, soft-navigating from `/rfq?product=a` to
+              // `/rfq?product=b` re-renders the SAME mounted island: React keeps
+              // it, RHF keeps a's values, and the buyer sees a's chips on a page
+              // whose URL says b. Neither the banner nor Clear can detect that —
+              // the form is not stale by RHF's reckoning, only by the URL's.
+              // Keying on the resolved identity remounts it exactly when the
+              // doorway changes, and never otherwise.
+              key={prefillKey(prefill)}
               industries={industries.map(({ slug, name, isFallback }) => ({
                 slug,
                 name,
                 isFallback,
               }))}
               uiLocale={locale}
+              prefill={prefill}
             />
           }
           side={<RfqRail />}

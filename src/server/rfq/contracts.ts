@@ -194,3 +194,89 @@ export function parseLeadEquipment(value: unknown): LeadEquipment {
   if (!Array.isArray(value)) return [];
   return value.filter(isLeadEquipmentItem);
 }
+
+// ---------------------------------------------------------------------------
+// 4. Lead.prefillContext
+// ---------------------------------------------------------------------------
+
+/** The slug-shaped half of the vocabulary, as a type. */
+export type SlugPrefillParam = (typeof SLUG_PREFILL_PARAMS)[number];
+
+/**
+ * `Lead.prefillContext` — WHICH DOORWAY THE BUYER CAME THROUGH, and what they
+ * did with what it gave them.
+ *
+ * Story 3.0 froze the COLUMN (`Json @default("{}")`) but deliberately left the
+ * JSON to whoever built the doorway. Freezing it HERE rather than at the call
+ * site is the same argument as `LeadEquipmentItem` above: Story 4.7's admin
+ * reads this back out of JSONB, so a shape minted ad hoc in the submit path
+ * would become the de facto spec and this module would become a comment.
+ *
+ * SLUGS, NEVER IDS — the `Lead.industry` argument (see §2) applies unchanged. A
+ * lead is a historical record and must survive its project being renamed,
+ * re-slugged or deleted. `resolved` therefore holds only values that PASSED
+ * `isValidSlug`; anything else is dropped rather than stored, because a value
+ * that failed the gate can only have arrived by bypassing it.
+ *
+ * `query` is separate from `resolved` because `q` is BUYER TEXT, not a slug —
+ * it is the one param the vocabulary does not slug-gate (see
+ * `SLUG_PREFILL_PARAMS`), and it is stored as the sanitized value the form
+ * actually pre-filled, not as the raw URL param.
+ */
+export interface PrefillContext {
+  /** Doorway params that resolved to a real row, by param name. */
+  resolved: Partial<Record<SlugPrefillParam, string>>;
+  /** The sanitized `?q=` text, when the search doorway supplied a usable one. */
+  query?: string;
+  /** The buyer pressed Clear before submitting. */
+  cleared: boolean;
+  /** The buyer changed at least one value the pre-fill had seeded. */
+  edited: boolean;
+}
+
+/** The context of a lead that came through no doorway at all. Identical to what
+ *  the column's `{}` default parses to, so a cold lead and a cleared-to-nothing
+ *  lead are not accidentally distinguishable by shape. */
+export const EMPTY_PREFILL_CONTEXT: PrefillContext = { resolved: {}, cleared: false, edited: false };
+
+/**
+ * Narrow a raw JSONB value. Same contract as `parseLeadEquipment`: NEVER THROWS
+ * on arbitrary input, drops what does not match rather than rejecting the whole.
+ */
+export function parsePrefillContext(value: unknown): PrefillContext {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return { ...EMPTY_PREFILL_CONTEXT, resolved: {} };
+  }
+  const raw = value as Record<string, unknown>;
+
+  const resolved: Partial<Record<SlugPrefillParam, string>> = {};
+  const rawResolved = raw.resolved;
+  if (typeof rawResolved === "object" && rawResolved !== null && !Array.isArray(rawResolved)) {
+    const entries = rawResolved as Record<string, unknown>;
+    for (const param of SLUG_PREFILL_PARAMS) {
+      const slug = entries[param];
+      // `isNonEmptyString` FIRST: `isValidSlug` does an unguarded `.length`, so a
+      // JSONB `null` would throw and break the never-throws contract.
+      if (isNonEmptyString(slug) && isValidSlug(slug)) resolved[param] = slug;
+    }
+  }
+
+  const context: PrefillContext = {
+    resolved,
+    cleared: raw.cleared === true,
+    edited: raw.edited === true,
+  };
+  // Not slug-gated, deliberately — see the docstring.
+  if (isNonEmptyString(raw.query)) context.query = raw.query;
+  return context;
+}
+
+/** True when nothing about this lead came from a doorway. */
+export function isEmptyPrefillContext(context: PrefillContext): boolean {
+  return (
+    Object.keys(context.resolved).length === 0 &&
+    context.query === undefined &&
+    !context.cleared &&
+    !context.edited
+  );
+}

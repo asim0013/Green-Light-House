@@ -145,7 +145,7 @@ test.describe("the project detail page (AC2, AC11, AC15)", () => {
     expect(body.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
   });
 
-  test("the doorway CTA carries the project param; the pre-fill PROMISE is absent", async ({
+  test("the doorway CTA carries the project param AND now makes the pre-fill promise", async ({
     page,
   }, testInfo) => {
     if (!dbReady) testInfo.skip();
@@ -160,9 +160,18 @@ test.describe("the project detail page (AC2, AC11, AC15)", () => {
     // Task 0 #2: FR22's exact label, in the CTA band.
     await expect(doorway).toContainText("I have a similar project");
 
-    // Task 0 #3: the canvas's pre-fill promise copy is HELD for Story 3.4 — the
-    // site must not promise behaviour that does not exist until then.
-    await expect(page.getByText(/pre-fill|pre-filled/i)).toHaveCount(0);
+    // INVERTED BY STORY 3.4 (its Task 0 #20, an Asim decision). Story 3.1 held
+    // this copy back because the site must not promise behaviour it does not
+    // have; 3.4 made the promise true, so it ships. The assertion flipped from
+    // "absent" to "present and specific" rather than simply being deleted —
+    // count 0 → the sentence itself, so a silent regression to the held state
+    // is still a red test.
+    await expect(page.getByText(/pre-filled with this project/i)).toHaveCount(1);
+
+    // …and it stays OFF the index, where no project is in view and "this
+    // project's scope" would dangle exactly as the title would.
+    await page.goto("/en/projects");
+    await expect(page.getByText(/pre-filled with this project/i)).toHaveCount(0);
   });
 
   test("an unknown slug renders the not-found BODY with noindex — never assert 404 here", async ({

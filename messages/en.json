@@ -143,7 +143,8 @@
     "notFoundCrumb": "Not found",
     "notFoundTitle": "This project isn't published",
     "notFoundLead": "The project you asked for either does not exist or has not been published yet. Browse the delivered work we have published, or call and ask.",
-    "notFoundBackToProjects": "All projects"
+    "notFoundBackToProjects": "All projects",
+    "ctaPrefillPromise": "We'll open an inquiry pre-filled with this project's scope — swap models, adjust quantities and send."
   },
   "Rfq": {
     "title": "Request a project quote",
@@ -210,7 +211,15 @@
       "fileType": "Only {formats} files are accepted.",
       "fileCorrupt": "This file could not be read as the format its name claims. Please re-export it and try again.",
       "scanFailed": "This file could not be accepted after a security check. Send your inquiry without it, or attach a different file."
-    }
+    },
+    "prefillProject": "Pre-filled from your project:",
+    "prefillProduct": "Pre-filled from the product you were viewing:",
+    "prefillIndustry": "Pre-filled from the industry you were viewing:",
+    "prefillCategory": "Pre-filled from the category you were viewing:",
+    "prefillSearch": "Pre-filled from your search:",
+    "prefillClear": "Clear",
+    "prefillClearLabel": "Clear the pre-filled context",
+    "prefillCleared": "Pre-filled context cleared"
   },
   "RfqEmail": {
     "notifySubject": "New RFQ {reference}",

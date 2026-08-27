@@ -219,7 +219,12 @@ test.describe("a populated industry landing page (AC1)", () => {
 
     // The phone is a first-class action wherever the RFQ CTA appears.
     await expect(page.locator('a[href^="tel:"]').first()).toBeVisible();
-    await expect(page.locator('main a[href="/en/rfq"]').first()).toBeVisible();
+    // INVERTED BY STORY 3.4: BOTH industry CTAs (hero and closing band) now
+    // carry the sector, so the RFQ opens with it pre-selected. Asserted as a
+    // COUNT rather than .first(), because .first() on a two-element locator
+    // would stay green if only one of the two were amended.
+    await expect(page.locator('main a[href="/en/rfq"]')).toHaveCount(0);
+    await expect(page.locator('main a[href="/en/rfq?industry=oil-gas"]')).toHaveCount(2);
   });
 });
 

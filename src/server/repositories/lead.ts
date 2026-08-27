@@ -16,10 +16,22 @@ import { PENDING_MAX_AGE_MS } from "@/lib/lead-attachment";
 
 /**
  * The columns the RFQ endpoint may write — and, by omission, the ones it may
- * NOT. `reference` (DB-minted from `lead_reference_seq`), `status`, `source` and
- * `prefillContext` (DB defaults — Story 3.4 owns attribution, Task 0 #7) are
- * absent from this type, so a handler bug that tried to supply one is a compile
- * error, not a review finding.
+ * NOT. `reference` (DB-minted from `lead_reference_seq`) and `status` are absent
+ * from this type, so a handler bug that tried to supply one is a compile error,
+ * not a review finding.
+ *
+ * WIDENED BY TWO IN STORY 3.4 — `source` and `prefillContext`, the attribution
+ * columns 3.0 shipped as DB defaults and named this story as the owner of.
+ *
+ * ⚠️ WIDENING THIS TYPE DOES NOT MEAN THE CLIENT MAY SUPPLY THEM, and the
+ * distinction is the whole security argument. A browser cannot be trusted to
+ * report its own provenance: a body carrying `source: "project"` would let any
+ * client forge attribution in Story 4.7's leads list. `rfqSchema` still STRIPS a
+ * client-supplied `source` (it is not in the schema), and the handler still
+ * refuses it — what the client sends is the ORIGINAL PARAMS, from which the
+ * server RE-RESOLVES both columns through the same `resolvePrefillSource` the
+ * page used. The `route.test.ts` assertion that a smuggled `source` never
+ * reaches these args stays GREEN, and it is the proof this holds.
  *
  * WIDENED BY EXACTLY SIX IN STORY 3.7b — the attachment columns, which the
  * endpoint now writes in the SAME insert as the lead. That "same insert" is the
@@ -51,6 +63,8 @@ export type LeadCreateData = Pick<
   | "attachmentSizeBytes"
   | "attachmentScanStatus"
   | "attachmentScannedAt"
+  | "source"
+  | "prefillContext"
 >;
 
 export interface CreatedLead {

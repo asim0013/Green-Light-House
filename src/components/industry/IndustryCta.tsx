@@ -5,6 +5,7 @@ import { DarkBand, Kicker, TwoColumn } from "@/components/ui";
 import { buttonClasses } from "@/components/ui/buttonClasses";
 import { CONTAINER } from "@/components/layout/container";
 import { SITE } from "@/config/site";
+import { rfqIndustryHref } from "@/lib/rfq-href";
 
 /**
  * Closing CTA band (Story 2.1) — the last beat of EXPERIENCE.md's industry stack.
@@ -22,9 +23,14 @@ import { SITE } from "@/config/site";
  */
 export function IndustryCta({
   industryName,
+  industrySlug,
   isFallback = false,
 }: {
   industryName: string;
+  /** ⚠️ ADDED BY STORY 3.4. This component received only the NAME, so it could
+   *  not build its own doorway href — the single reason this CTA was more than
+   *  a one-line edit while its sibling IndustryHero already carried the slug. */
+  industrySlug: string;
   /**
    * The sector name is interpolated into a heading, so it needs the same honest
    * marking every other rendering of it gets: without this, an untranslated English
@@ -63,7 +69,7 @@ export function IndustryCta({
           side={
             <div className="flex flex-col gap-3">
               <Link
-                href={SITE.rfqHref}
+                href={rfqIndustryHref(industrySlug)}
                 className={buttonClasses("onDarkPrimary", "w-full text-center")}
               >
                 {tNav("requestQuote")}

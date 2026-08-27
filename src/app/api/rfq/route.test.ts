@@ -394,6 +394,11 @@ describe("POST /api/rfq — the create-args centrepiece (AC4)", () => {
 
     const args = createLead.mock.calls[0][0];
     expect(args).toEqual({
+      // Story 3.4: attribution is now IN the column map, but SERVER-DERIVED.
+      // This payload carried no "prefill" object, so the doorway is "direct"
+      // and the context is the same empty object a cold visit produces.
+      source: "direct",
+      prefillContext: { resolved: {}, cleared: false, edited: false },
       industry: "fire-safety",
       equipment: [
         // Catalog labels are SERVER-RESOLVED at submit time — the client's
@@ -422,10 +427,12 @@ describe("POST /api/rfq — the create-args centrepiece (AC4)", () => {
     expect(listCategoryTree).toHaveBeenCalledWith("ru");
   });
 
-  it("minimal payload: optional columns are null, equipment [], source/reference absent", async () => {
+  it("minimal payload: optional columns are null, equipment [], reference absent, source direct", async () => {
     const res = await post(VALID);
     expect(res.status).toBe(201);
     expect(createLead.mock.calls[0][0]).toEqual({
+      source: "direct",
+      prefillContext: { resolved: {}, cleared: false, edited: false },
       industry: null,
       equipment: [],
       projectDetails: null,
@@ -459,11 +466,16 @@ describe("POST /api/rfq — the create-args centrepiece (AC4)", () => {
     });
     expect(res.status).toBe(201);
     const args = createLead.mock.calls[0][0];
-    // Stripped by the schema, excluded by LeadCreateData — absent, not null.
-    expect(args).not.toHaveProperty("source");
+    // ⚠️ THE ASSERTION MOVED, AND IT GOT STRONGER (Story 3.4). `source` and
+    // `prefillContext` are now written — so "absent" is no longer the property
+    // that proves a client cannot forge attribution. THIS is: the body claimed
+    // `source: "project"`, and what reaches the column is the SERVER'S verdict,
+    // `direct`, because this payload carried no `prefill` params to resolve
+    // from. A handler that trusted the body would write "project" here.
+    expect(args.source).toBe("direct");
+    expect(args.prefillContext).toEqual({ resolved: {}, cleared: false, edited: false });
     expect(args).not.toHaveProperty("reference");
     expect(args).not.toHaveProperty("status");
-    expect(args).not.toHaveProperty("prefillContext");
     expect(args).not.toHaveProperty("attachmentKey");
     expect(args).not.toHaveProperty("website");
     expect(args.consentVersion).toBe("privacy-2026-08-stub-r3:en");
@@ -1030,5 +1042,67 @@ describe("POST /api/rfq — the enqueue seam (Story 3.3, AC1/AC2)", () => {
     await post({ ...VALID, consent: false }); // 422
     expect(enqueueRfqSubmitted).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+});
+
+describe("attribution is SERVER-DERIVED, never client-reported (Story 3.4, AC9)", () => {
+  it("resolves source and prefillContext from the params the client echoes back", async () => {
+    // The buyer KEEPS what the doorway pre-selected, so the industry rides back
+    // in the payload. (Dropping it is the `edited` case, proven separately
+    // below — `VALID` alone carries no industry, so omitting it here would
+    // silently assert the wrong branch.)
+    const res = await post({
+      ...VALID,
+      industry: "oil-gas",
+      prefill: { project: "lng-terminal-fire-gas-upgrade", industry: "oil-gas", cleared: false },
+    });
+    expect(res.status).toBe(201);
+    const args = createLead.mock.calls[0][0];
+    // Precedence: project beats industry, so a lead that came through a project
+    // doorway is a project lead even though the URL also carried its industry.
+    expect(args.source).toBe("project");
+    expect(args.prefillContext).toEqual({
+      resolved: { project: "lng-terminal-fire-gas-upgrade", industry: "oil-gas" },
+      cleared: false,
+      edited: false,
+    });
+  });
+
+  it("a search doorway is `search`, and the query rides in the context, not in `resolved`", async () => {
+    const res = await post({ ...VALID, projectDetails: "fd9500x", prefill: { q: "fd9500x" } });
+    expect(res.status).toBe(201);
+    const args = createLead.mock.calls[0][0];
+    expect(args.source).toBe("search");
+    expect(args.prefillContext).toMatchObject({ query: "fd9500x", resolved: {} });
+  });
+
+  it("a CATEGORY-only doorway is `direct` — category is equipment context, not an origin", async () => {
+    const res = await post({ ...VALID, prefill: { category: "flame-detectors" } });
+    expect(res.status).toBe(201);
+    const args = createLead.mock.calls[0][0];
+    expect(args.source).toBe("direct");
+    // …and the value is still preserved, so the lead stays distinguishable
+    // from cold traffic.
+    expect(args.prefillContext).toMatchObject({ resolved: { category: "flame-detectors" } });
+  });
+
+  it("records `cleared` — the one thing only the client can know", async () => {
+    const res = await post({ ...VALID, prefill: { industry: "oil-gas", cleared: true } });
+    expect(res.status).toBe(201);
+    expect(createLead.mock.calls[0][0].prefillContext).toMatchObject({ cleared: true });
+  });
+
+  it("DERIVES `edited` rather than trusting it — a dropped industry is an edit", async () => {
+    // The doorway supplied `oil-gas`; the payload arrives without it, so the
+    // buyer changed the select. Nothing in the body says so.
+    const res = await post({ ...VALID, industry: undefined, prefill: { industry: "oil-gas" } });
+    expect(res.status).toBe(201);
+    expect(createLead.mock.calls[0][0].prefillContext).toMatchObject({ edited: true });
+  });
+
+  it("REFUSES a prefill slug that is not slug-shaped — 422, never a JSONB write", async () => {
+    const res = await post({ ...VALID, prefill: { project: "Oil Gas/../x" } });
+    expect(res.status).toBe(422);
+    expect(createLead).not.toHaveBeenCalled();
   });
 });

@@ -120,7 +120,11 @@ export default async function IndustryPage(props: {
       <IndustryServices services={services} />
       <IndustryProducts products={products} />
       <IndustryProjects projects={projects} />
-      <IndustryCta industryName={industry.name} isFallback={industry.isFallback} />
+      <IndustryCta
+        industryName={industry.name}
+        industrySlug={industry.slug}
+        isFallback={industry.isFallback}
+      />
     </>
   );
 }

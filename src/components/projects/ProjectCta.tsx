@@ -21,18 +21,18 @@ import { SITE } from "@/config/site";
  * inventing a commitment EN never made — so this reads `Industry.sla` rather than
  * minting a fifth.
  *
- * ⚠️ THE DOORWAY PROMISES NOTHING IT CANNOT DO YET (Task 0 #3). The canvas puts
- * "We'll open an inquiry pre-filled with this project's scope — swap models,
- * adjust quantities and send" here. `/rfq` is live since Story 3.2, but
- * pre-fill is STILL Story 3.4's — 3.2 reads no query params, so the sentence
- * remains a promise the site cannot keep. The LABEL ships; the promise waits
- * for 3.4.
+ * ✅ THE PROMISE NOW SHIPS (Story 3.4, Task 0 #20 — an Asim decision). Story 3.1
+ * deliberately withheld the canvas's "We'll open an inquiry pre-filled with this
+ * project's scope — swap models, adjust quantities and send" because `/rfq` read
+ * no query params and the site must not promise behaviour it does not have.
+ * Story 3.4 made it true, so the sentence lands — on the DETAIL page only, since
+ * the index has no project in view. The canvas's other withheld string, the
+ * facts-card trust line, stays held: the facts card is Story 3.1b and does not
+ * exist yet.
  *
- * ⚠️ THE HREF CARRIES `?project=<slug>` ANYWAY (Task 0 #7), which is a different
- * thing from the copy. `project` is already frozen in `PREFILL_PARAMS`, the param
- * is inert until 3.4 reads it, and 3.4's amendment list names the product,
- * industry and search CTAs while deliberately omitting the project surfaces — so
- * if this story does not emit it, no story ever does.
+ * THE HREF has carried `?project=<slug>` since Story 3.1 (Task 0 #7) — a
+ * different thing from the copy, and the reason 3.4's amendment list names only
+ * the product, industry and search CTAs.
  */
 export function ProjectCta({ projectSlug }: { projectSlug?: string }) {
   const t = useTranslations("Projects");
@@ -58,6 +58,16 @@ export function ProjectCta({ projectSlug }: { projectSlug?: string }) {
               <h2 className="mt-3 font-heading text-2xl font-bold tracking-tight text-white md:text-[28px]">
                 {projectSlug ? t("ctaTitle") : t("ctaTitleIndex")}
               </h2>
+              {/* The promise Story 3.1 withheld, landed by 3.4 (Task 0 #20).
+                  ONLY on the detail page: the index has no project in view, so
+                  "this project's scope" would dangle exactly as the title would.
+                  The facts-card trust line stays held — the facts card is Story
+                  3.1b and does not exist yet, so its copy has nowhere to go. */}
+              {projectSlug && (
+                <p className="mt-5 max-w-[52ch] text-[15px] leading-relaxed text-on-dark-text">
+                  {t("ctaPrefillPromise")}
+                </p>
+              )}
               <p className="mt-6 font-mono text-[11px] uppercase leading-relaxed tracking-[0.15em] text-on-dark-text">
                 {tIndustry("sla")}
               </p>

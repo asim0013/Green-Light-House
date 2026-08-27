@@ -143,7 +143,8 @@
     "notFoundCrumb": "Bulunamadı",
     "notFoundTitle": "Bu proje yayımlanmamış",
     "notFoundLead": "İstediğiniz proje ya mevcut değil ya da henüz yayımlanmadı. Yayımladığımız tamamlanan işlere göz atın veya bizi arayın.",
-    "notFoundBackToProjects": "Tüm projeler"
+    "notFoundBackToProjects": "Tüm projeler",
+    "ctaPrefillPromise": "Talebinizi bu projenin kapsamıyla önceden doldurulmuş olarak açacağız — modelleri değiştirin, miktarları düzenleyin ve gönderin."
   },
   "Rfq": {
     "title": "Proje teklifi isteyin",
@@ -210,7 +211,15 @@
       "fileType": "Yalnızca {formats} dosyaları kabul edilir.",
       "fileCorrupt": "Bu dosya, adının belirttiği biçimde okunamadı. Lütfen yeniden dışa aktarıp tekrar deneyin.",
       "scanFailed": "Bu dosya güvenlik denetiminden geçemediği için kabul edilemedi. Talebinizi dosyasız gönderin veya başka bir dosya ekleyin."
-    }
+    },
+    "prefillProject": "Projenizden dolduruldu:",
+    "prefillProduct": "İncelediğiniz üründen dolduruldu:",
+    "prefillIndustry": "İncelediğiniz sektörden dolduruldu:",
+    "prefillCategory": "İncelediğiniz kategoriden dolduruldu:",
+    "prefillSearch": "Aramanızdan dolduruldu:",
+    "prefillClear": "Temizle",
+    "prefillClearLabel": "Önceden doldurulan bilgileri temizle",
+    "prefillCleared": "Önceden doldurulan bilgiler temizlendi"
   },
   "RfqEmail": {
     "notifySubject": "Yeni teklif talebi {reference}",

@@ -9,6 +9,7 @@ import {
   CARD_INCLUDE,
   type ProductCardItem,
 } from "@/server/repositories/product";
+import type { CategoryRow } from "@/server/repositories/category";
 
 export interface ProjectListItem {
   id: string;
@@ -335,4 +336,129 @@ export async function queryPublishedProjects(
   });
 
   return projects.map((project) => toProjectListItem(project, locale));
+}
+
+/**
+ * The `?project=` DOORWAY READ (Story 3.4, AC1) — uncached.
+ *
+ * Returns exactly what the pre-fill needs and nothing else: the project's
+ * industry, and the DISTINCT categories of the products linked to it. No shipped
+ * read could supply this — `ProjectDetail.products` is `ProductCardItem[]` and
+ * `CARD_INCLUDE` carries no category at all, so the detail page cannot derive
+ * it. Widening `CARD_INCLUDE` would touch every card-producing surface on the
+ * site; a dedicated projection costs one indexed query.
+ *
+ * ⚠️ THE STATUS FILTER IS THE SAME LOAD-BEARING GUARD AS `queryProjectBySlug`'s,
+ * and for the same reason (3.1 review, proven live): it must sit in a `where` on
+ * the JOIN ROWS. A `ProductInclude` filters the product's RELATIONS, never the
+ * product itself — so without this, a doorway URL would disclose the CATEGORY of
+ * an unpublished product. That is a narrower leak than 3.1's (a category name,
+ * not a card) but it is the same class, and it reaches the buyer's own inbox via
+ * the RFQ email.
+ *
+ * ⚠️ UNCACHED, DELIBERATELY. `/rfq` accepts up to four attacker-controlled slugs
+ * on ONE URL, and precedence decides `Lead.source` only — every present param
+ * still has to resolve for `prefillContext`. Caching per-slug would make this the
+ * cheapest cache-cardinality amplifier on the site. `/rfq` is already
+ * `force-dynamic`, so an uncached read costs one query and buys a fixed key
+ * space. If this is ever cached, it MUST carry all four of `TAGS.project(slug)`,
+ * `TAGS.projects`, `TAGS.catalog` and `TAGS.categories` — the payload holds
+ * category names AND depends on product status (the 2.2 lesson).
+ */
+export async function queryProjectPrefill(
+  slug: string,
+  locale: Locale,
+): Promise<ProjectPrefill | null> {
+  const project = await prisma.project.findFirst({
+    where: { slug, status: "published" },
+    select: {
+      slug: true,
+      industry: { select: { slug: true, translations: { select: { locale: true, name: true } } } },
+      products: {
+        where: { product: { status: "published" } },
+        select: {
+          product: {
+            select: {
+              category: {
+                select: { id: true, slug: true, translations: { select: { locale: true, name: true } } },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!project) return null;
+
+  return {
+    slug: project.slug,
+    industry: project.industry
+      ? {
+          slug: project.industry.slug,
+          ...pickName(project.industry.translations, project.industry.slug, locale),
+        }
+      : null,
+    categories: distinctCategories(
+      project.products.map((link) => link.product.category),
+      locale,
+    ),
+  };
+}
+
+export interface PrefillName {
+  slug: string;
+  name: string;
+  /** True when the name fell back to EN (FR34a / UX-DR21 — the banner marks it). */
+  isFallback: boolean;
+}
+
+export interface ProjectPrefill {
+  slug: string;
+  industry: PrefillName | null;
+  categories: PrefillName[];
+}
+
+/** Resolve one row's display name, degrading to the slug (the shipped rule —
+ *  `toCategoryListItem` and `toIndustryListItem` both do exactly this). */
+function pickName(
+  translations: readonly { locale: Locale; name: string }[],
+  slug: string,
+  locale: Locale,
+): { name: string; isFallback: boolean } {
+  const t = resolveTranslation(translations, locale);
+  return { name: t?.value.name ?? slug, isFallback: t?.isFallback ?? false };
+}
+
+/**
+ * De-duplicate by SLUG and order deterministically.
+ *
+ * ⚠️ NEVER ROLL UP TO THE PARENT. The one seeded project that yields chips
+ * (`lng-terminal-fire-gas-upgrade`) produces `fire-gas-detection` AND its own
+ * child `flame-detectors`. Collapsing to the parent would silently drop the more
+ * specific category — the one the buyer actually needs — and it would contradict
+ * two shipped precedents: `listCategoriesByIndustry` does not roll up
+ * (`category.ts:34-38`) and the catalogue's direct-attachment doctrine
+ * (`product.ts:359-366`). Both are emitted; only exact duplicates collapse.
+ *
+ * ORDER IS BY SLUG, not by the join's `productId`. The shipped join order is
+ * arbitrary cuid order, which would let the banner's text change between two
+ * identical requests.
+ *
+ * Exported for its own unit test: proving the dedupe through the seed is
+ * impossible (LNG's two products are already in two different categories, so
+ * removing the dedupe changes nothing observable there).
+ */
+export function distinctCategories(
+  rows: readonly (CategoryRow | null)[],
+  locale: Locale,
+): PrefillName[] {
+  const bySlug = new Map<string, PrefillName>();
+  for (const row of rows) {
+    // A product's category is nullable in the schema; a link to an uncategorised
+    // product contributes no chip rather than an empty one.
+    if (!row || bySlug.has(row.slug)) continue;
+    bySlug.set(row.slug, { slug: row.slug, ...pickName(row.translations, row.slug, locale) });
+  }
+  return [...bySlug.values()].sort((a, b) => a.slug.localeCompare(b.slug));
 }

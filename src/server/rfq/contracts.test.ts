@@ -6,6 +6,8 @@ import {
   prefillSlugOf,
   parseLeadEquipment,
   isLeadEquipmentItem,
+  parsePrefillContext,
+  isEmptyPrefillContext,
 } from "./contracts";
 
 /**
@@ -151,5 +153,63 @@ describe("Lead.equipment is a tagged union", () => {
     expect(parseLeadEquipment([null, 1, { kind: "product", slug: "a", label: "A" }])).toEqual([
       { kind: "product", slug: "a", label: "A" },
     ]);
+  });
+});
+
+describe("prefillContext — the shape Story 4.7 reads back (3.4)", () => {
+  /**
+   * Story 3.0 froze the COLUMN (`Lead.prefillContext Json @default("{}")`) but
+   * not the JSON inside it. A shape minted ad hoc at the call site becomes the
+   * de facto spec and this module becomes a comment — the exact failure the
+   * frozen contracts exist to prevent. So it is frozen here, next to
+   * `LeadEquipmentItem`, with the same never-throws parse discipline.
+   */
+  it("carries SLUGS, never ids — a lead must survive its rows being renamed", () => {
+    const context = parsePrefillContext({
+      resolved: { project: "lng-terminal-fire-gas-upgrade", industry: "oil-gas" },
+      cleared: false,
+      edited: true,
+    });
+    expect(context.resolved.project).toBe("lng-terminal-fire-gas-upgrade");
+    expect(context.resolved.industry).toBe("oil-gas");
+    expect(context.edited).toBe(true);
+    expect(context.cleared).toBe(false);
+  });
+
+  it("keeps the sanitized query separately — `q` is buyer text, not a slug", () => {
+    const context = parsePrefillContext({ resolved: {}, query: "fd9500x", cleared: false, edited: false });
+    expect(context.query).toBe("fd9500x");
+    // …and it is NOT slug-gated, unlike everything in `resolved`.
+    expect(parsePrefillContext({ resolved: {}, query: "FD 9500/X", cleared: false, edited: false }).query).toBe(
+      "FD 9500/X",
+    );
+  });
+
+  it("DROPS a resolved value that is not a valid slug — the anti-spoofing rule", () => {
+    // The whole point of resolving server-side is that no URL-supplied label can
+    // reach Story 4.7's admin. A non-slug here means something bypassed the gate.
+    const context = parsePrefillContext({
+      resolved: { project: "Oil Gas/../x", industry: "oil-gas" },
+      cleared: false,
+      edited: false,
+    });
+    expect(context.resolved.project).toBeUndefined();
+    expect(context.resolved.industry).toBe("oil-gas");
+  });
+
+  it("NEVER THROWS on arbitrary JSONB, and degrades to the empty context", () => {
+    for (const hostile of [null, "not an object", 42, [], { resolved: "nope" }, Object.create(null)]) {
+      expect(() => parsePrefillContext(hostile)).not.toThrow();
+    }
+    expect(parsePrefillContext(null)).toEqual({ resolved: {}, cleared: false, edited: false });
+    expect(parsePrefillContext({ resolved: { bogusParam: "x" } }).resolved).toEqual({});
+  });
+
+  it("is EMPTY for a cold visit — the DB default must parse to the same thing", () => {
+    expect(parsePrefillContext({})).toEqual({ resolved: {}, cleared: false, edited: false });
+    expect(isEmptyPrefillContext(parsePrefillContext({}))).toBe(true);
+    expect(
+      isEmptyPrefillContext(parsePrefillContext({ resolved: { industry: "oil-gas" } })),
+    ).toBe(false);
   });
 });

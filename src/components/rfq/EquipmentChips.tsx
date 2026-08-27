@@ -5,6 +5,21 @@ import { X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { buttonClasses } from "@/components/ui/buttonClasses";
 import { controlClasses } from "./Field";
+import type { LeadEquipmentItem } from "@/server/rfq/contracts";
+
+/**
+ * The display label of one chip, whichever variant it is.
+ *
+ * ⚠️ FOUR CALL SITES READ THIS, AND ALL FOUR READ `item.text` BEFORE Story 3.4:
+ * the announcement, the React key, the visible label and the remove button's
+ * ACCESSIBLE NAME. `product` and `category` items carry `label`, not `text` — so
+ * a pre-filled catalog chip announced itself as "Remove undefined". The frozen
+ * union discriminates on an explicit `kind`, never on which field is present
+ * (contracts.ts), so this narrows rather than guessing.
+ */
+export function labelOf(item: LeadEquipmentItem): string {
+  return item.kind === "freeText" ? item.text : item.label;
+}
 
 /**
  * The EQUIPMENT chips input (Story 3.2, AC5).
@@ -43,7 +58,7 @@ export function EquipmentChips({
   inputId: string;
   /** Parent-owned ref to the add input — the focus target for equipment errors. */
   inputRef: RefObject<HTMLInputElement | null>;
-  items: readonly { kind: "freeText"; text: string }[];
+  items: readonly LeadEquipmentItem[];
   /** Parent-owned draft text (committed by Add, Enter, or form submit). */
   draft: string;
   onDraftChange: (draft: string) => void;
@@ -68,7 +83,8 @@ export function EquipmentChips({
   }, [items.length, inputRef]);
 
   function remove(index: number) {
-    const label = items[index]?.text ?? "";
+    const item = items[index];
+    const label = item ? labelOf(item) : "";
     // Next chip keeps the removed one's index in the new list; else previous.
     pendingFocus.current = index < items.length - 1 ? index : index - 1;
     onRemove(index);
@@ -81,17 +97,17 @@ export function EquipmentChips({
         <ul className="flex flex-wrap gap-2">
           {items.map((item, index) => (
             <li
-              key={`${item.text}-${index}`}
+              key={`${item.kind}:${labelOf(item)}-${index}`}
               className="inline-flex items-center border border-muted bg-surface-2 pl-2.5 text-[13px] text-ink"
             >
-              {item.text}
+              {labelOf(item)}
               <button
                 type="button"
                 ref={(el) => {
                   removeRefs.current[index] = el;
                 }}
                 onClick={() => remove(index)}
-                aria-label={t("equipmentRemove", { label: item.text })}
+                aria-label={t("equipmentRemove", { label: labelOf(item) })}
                 className="inline-flex min-h-11 min-w-11 items-center justify-center text-ink-2 hover:text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent"
               >
                 <X size={13} aria-hidden />

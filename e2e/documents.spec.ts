@@ -165,8 +165,9 @@ test.describe("wired surfaces (AC4, AC5)", () => {
     await expect(links).toContainText("Datasheet");
     await expect(links).toContainText("PDF");
 
-    // The OTHER half of the footer still waits — for Story 3.4's doorway
-    // (/rfq itself is live since 3.2, so DP-12 is no longer the reason).
+    // The OTHER half of the footer still waits, and is UNASSIGNED: Story 3.4
+    // declined the card affordance (its Task 0 #18), and /rfq itself is live
+    // since 3.2, so DP-12 is no longer the reason either.
     const visible = await page.locator("body").innerText();
     expect(visible.toLowerCase()).not.toContain("add to inquiry");
     // And still no price anywhere (FR2) — the footer must not have smuggled one in.
