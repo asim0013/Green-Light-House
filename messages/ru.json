@@ -212,6 +212,23 @@
       "scanFailed": "Файл не принят после проверки безопасности. Отправьте запрос без него или приложите другой файл."
     }
   },
+  "RfqEmail": {
+    "notifySubject": "Новый запрос по проекту {reference}",
+    "notifyIntro": "Поступил новый запрос по проекту.",
+    "notifyReference": "Номер: {reference}",
+    "notifySender": "Отправитель: {name}, {company} <{email}>",
+    "notifySectionProject": "Проект",
+    "notifySectionSender": "Данные отправителя",
+    "notifySectionAttachment": "Вложение",
+    "notifyNone": "не указано",
+    "attachmentClean": "{name} ({size} КБ) — проверено, вредоносного кода не найдено; хранится для рассмотрения.",
+    "attachmentFailed": "{name} — отправитель приложил этот файл, но сохранить его не удалось. Файл не хранится; попросите отправить его повторно.",
+    "confirmSubject": "Мы получили ваш запрос — {reference}",
+    "confirmGreeting": "Здравствуйте, {name}!",
+    "confirmBody": "Спасибо за ваш запрос. Мы его получили; инженер GLH рассмотрит его и ответит вам напрямую.",
+    "confirmReference": "Номер вашего запроса — {reference}. Назовите его при звонке или в письме.",
+    "confirmSignoff": "GREENLIGHTHOUSE"
+  },
   "Legal": {
     "title": "Политика конфиденциальности",
     "version": "Версия политики: {version}",

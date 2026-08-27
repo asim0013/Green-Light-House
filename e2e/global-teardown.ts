@@ -96,4 +96,49 @@ export default async function globalTeardown() {
   } catch {
     // Storage unreachable — nothing to census.
   }
+
+  // THE QUEUE (Story 3.3). Neither the leads census nor the storage one can see
+  // this class of leftover: the queue instance is AOF-backed, so jobs and Job
+  // Schedulers SURVIVE restarts. A crashed integration run leaves a scheduler
+  // re-firing forever against a queue nobody is watching, and the only symptom
+  // is a slowly growing Redis.
+  //
+  // Reported, never swept: the production `rfq.submitted` queue may legitimately
+  // hold real inquiries mid-retry, and a teardown that deleted those to keep a
+  // number tidy would destroy exactly what FR29 exists to protect. The counts
+  // land in the story record's gate line where a human can judge them.
+  try {
+    const url = process.env.REDIS_QUEUE_URL?.trim();
+    if (!url) return;
+    const IORedis = (await import("ioredis")).default;
+    const client = new IORedis(url, {
+      maxRetriesPerRequest: 1,
+      enableOfflineQueue: false,
+      connectTimeout: 3000,
+      lazyConnect: true,
+      // Bounded: ioredis retries forever by default, which would hang teardown.
+      retryStrategy: () => null,
+    });
+    client.on("error", () => {});
+    try {
+      await client.connect();
+      const keys = await client.keys("bull:*");
+      const queues = new Set(keys.map((key) => key.split(":")[1]).filter(Boolean));
+      console.log(
+        `[pollution-gate] queue instance: ${keys.length} bull key(s) across ${queues.size} queue(s)` +
+          (queues.size > 0 ? ` [${[...queues].join(", ")}]` : ""),
+      );
+      const testQueues = [...queues].filter((name) => name.startsWith("test."));
+      if (testQueues.length > 0) {
+        console.warn(
+          `[pollution-gate] ${testQueues.length} TEST queue(s) survived a run — expected 0 after a clean` +
+            ` integration suite: ${testQueues.join(", ")}. NOT swept.`,
+        );
+      }
+    } finally {
+      client.disconnect();
+    }
+  } catch {
+    // Queue unreachable — nothing to census.
+  }
 }

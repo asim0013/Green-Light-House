@@ -44,8 +44,16 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     env_file: .env
-    # See the note on `app` — host addresses from `.env` are unreachable in-container.
+    # A crashed or wedged worker stops sending every inquiry email silently,
+    # so it comes back on its own (Story 3.3).
+    restart: unless-stopped
+    # See the note on `app` — host addresses from `.env` are unreachable
+    # in-container. DATABASE_URL is corrected HERE by Story 3.3, which made
+    # the worker a Postgres client for the first time: it re-reads each lead
+    # by id before sending. The `localhost` in `.env` was a documented
+    # pre-existing defect assigned to this story.
     environment:
+      DATABASE_URL: postgresql://glh:glh@postgres:5432/greenlighthouse?schema=public
       REDIS_URL: redis://redis:6379
       REDIS_QUEUE_URL: redis://redis-queue:6379
     depends_on:
@@ -55,8 +63,11 @@ services:
         condition: service_healthy
       redis-queue:
         condition: service_healthy
-      clamav:
-        condition: service_healthy
+    # ⚠️ NO `clamav` DEPENDENCY (removed by Story 3.3). The worker never
+    # contacts clamd: the attachment scan runs synchronously inside the RFQ
+    # request handler (Story 3.7b). Gating worker startup behind clamav's
+    # health — with its 360s start_period — delayed every inquiry email for
+    # a service the worker does not use.
 
   postgres:
     image: postgres:17-alpine
@@ -139,8 +150,8 @@ services:
     # Do NOT "optimize" this to the `_base` tag: that is the variant that ships
     # WITHOUT signatures and genuinely does pay the multi-minute download.
     #
-    # Both `app` (Story 3.7b, in-handler scanning) and `worker` depend on this
-    # via condition: service_healthy.
+    # `app` depends on this via condition: service_healthy (Story 3.7b,
+    # in-handler scanning). The WORKER does not — see its comment above.
     image: clamav/clamav@sha256:24cab211a882e9f767b84b76afe197d82554306ad6d43b782f80cd6aa1e61427
     ports:
       - "3310:3310"

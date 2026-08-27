@@ -100,6 +100,14 @@ jobs:
       # service that provides it.
       CLAMAV_HOST: localhost
       CLAMAV_PORT: "3310"
+      # Story 3.3's deterministic mail transport. `memory` records sends in
+      # process, so the provider-failure proof is repeatable and CI never
+      # touches a real provider. RFQ_NOTIFY_TO must be non-empty or the
+      # notification path short-circuits as `unconfigured` and the proof
+      # would assert nothing.
+      EMAIL_PROVIDER: memory
+      RFQ_NOTIFY_TO: ci-notify@glh.invalid
+      EMAIL_FROM: ci-rfq@glh.invalid
 
     steps:
       - uses: actions/checkout@v4

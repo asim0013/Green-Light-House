@@ -212,6 +212,23 @@
       "scanFailed": "Bu dosya güvenlik denetiminden geçemediği için kabul edilemedi. Talebinizi dosyasız gönderin veya başka bir dosya ekleyin."
     }
   },
+  "RfqEmail": {
+    "notifySubject": "Yeni teklif talebi {reference}",
+    "notifyIntro": "Yeni bir proje talebi geldi.",
+    "notifyReference": "Referans: {reference}",
+    "notifySender": "Gönderen: {name}, {company} <{email}>",
+    "notifySectionProject": "Proje",
+    "notifySectionSender": "Gönderen bilgileri",
+    "notifySectionAttachment": "Ek dosya",
+    "notifyNone": "belirtilmedi",
+    "attachmentClean": "{name} ({size} KB) — güvenlik taramasından geçti, inceleme için saklanıyor.",
+    "attachmentFailed": "{name} — gönderen bu dosyayı ekledi ancak dosya saklanamadı. Saklanmıyor; yeniden göndermesini isteyin.",
+    "confirmSubject": "Talebiniz bize ulaştı — {reference}",
+    "confirmGreeting": "Merhaba {name},",
+    "confirmBody": "Talebiniz için teşekkür ederiz. Talebinizi aldık; bir GLH mühendisi inceleyip size doğrudan dönüş yapacak.",
+    "confirmReference": "Referans numaranız {reference}. Aradığınızda veya yazdığınızda belirtin.",
+    "confirmSignoff": "GREENLIGHTHOUSE"
+  },
   "Legal": {
     "title": "Gizlilik Politikası",
     "version": "Politika sürümü: {version}",

@@ -36,6 +36,7 @@ const listCategoryTree = vi.fn();
 const checkRateLimit = vi.fn();
 const scanBuffer = vi.fn();
 const putObject = vi.fn();
+const enqueueRfqSubmitted = vi.fn();
 
 // Story 3.7b: BOTH must be mocked. vitest loads `.env` (vitest.setup.ts), so an
 // unmocked clamav client would open a real socket to the developer's container
@@ -46,6 +47,13 @@ vi.mock("@/lib/clamav", () => ({
 }));
 vi.mock("@/lib/storage", () => ({
   putObject: (key: string, body: unknown, mime: string) => putObject(key, body, mime),
+}));
+// Story 3.3: the PRODUCER must be mocked for the same reason as the others —
+// vitest loads `.env`, so an unmocked enqueue would reach the developer's real
+// queue instance, and when that container is not running ioredis retries
+// FOREVER by default, hanging the suite rather than failing it.
+vi.mock("@/lib/queue", () => ({
+  enqueueRfqSubmitted: (leadId: string) => enqueueRfqSubmitted(leadId),
 }));
 
 vi.mock("@/server/repositories/lead", () => ({
@@ -187,9 +195,11 @@ beforeEach(() => {
   checkRateLimit.mockReset();
   scanBuffer.mockReset();
   putObject.mockReset();
+  enqueueRfqSubmitted.mockReset();
+  enqueueRfqSubmitted.mockResolvedValue({ enqueued: true });
   scanBuffer.mockResolvedValue({ status: "clean" });
   putObject.mockResolvedValue(undefined);
-  createLead.mockResolvedValue({ reference: "GLH-RFQ-2042" });
+  createLead.mockResolvedValue({ id: "lead-2042", reference: "GLH-RFQ-2042" });
   burnLeadReference.mockResolvedValue("GLH-RFQ-9001");
   listIndustries.mockResolvedValue([{ slug: "fire-safety" }, { slug: "oil-gas" }]);
   getProductBySlug.mockResolvedValue(null);
@@ -870,7 +880,7 @@ describe("POST /api/rfq — the attachment write path (Story 3.7b, AC5)", () => 
     });
     createLead.mockImplementation(async () => {
       order.push("insert");
-      return { reference: "GLH-RFQ-2042" };
+      return { id: "lead-2042", reference: "GLH-RFQ-2042" };
     });
     await postMultipart(VALID, { name: "spec.pdf", bytes: cleanPdf() });
     expect(order).toEqual(["scan", "upload", "insert"]);
@@ -933,6 +943,92 @@ describe("POST /api/rfq — the attachment write path (Story 3.7b, AC5)", () => 
     expect(scanBuffer).toHaveBeenCalledTimes(1);
     expect(putObject).not.toHaveBeenCalled();
     expect(createLead).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});
+
+describe("POST /api/rfq — the enqueue seam (Story 3.3, AC1/AC2)", () => {
+  it("enqueues ONCE with the lead id after a successful insert", async () => {
+    const res = await post(VALID);
+    expect(res.status).toBe(201);
+    expect(enqueueRfqSubmitted).toHaveBeenCalledTimes(1);
+    // The ID, not the reference: the worker re-reads the row by primary key.
+    expect(enqueueRfqSubmitted).toHaveBeenCalledWith("lead-2042");
+  });
+
+  it("the 201 body carries the reference ONLY — never the id", async () => {
+    // The honeypot counterfeits this exact shape (Story 3.7a). Leaking the id
+    // would make a real success distinguishable from a fabricated one, which is
+    // the whole property the trap depends on.
+    const res = await post(VALID);
+    expect(await res.json()).toEqual({ reference: "GLH-RFQ-2042" });
+  });
+
+  it("the ORDER is insert → enqueue: no job can reference a lead that does not exist", async () => {
+    const order: string[] = [];
+    createLead.mockImplementation(async () => {
+      order.push("insert");
+      return { id: "lead-2042", reference: "GLH-RFQ-2042" };
+    });
+    enqueueRfqSubmitted.mockImplementation(async () => {
+      order.push("enqueue");
+      return { enqueued: true };
+    });
+    await post(VALID);
+    expect(order).toEqual(["insert", "enqueue"]);
+  });
+
+  it("A FAILED ENQUEUE STILL ANSWERS 201 — the lead is already committed", async () => {
+    // FR29's whole point. `enqueueRfqSubmitted` never throws by contract, but a
+    // future edit could make the route treat `{enqueued:false}` as fatal; this
+    // pins that it must not.
+    enqueueRfqSubmitted.mockResolvedValue({ enqueued: false });
+    const res = await post(VALID);
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ reference: "GLH-RFQ-2042" });
+  });
+
+  it("even a THROWING producer cannot cost the buyer their submission", async () => {
+    // Defence in depth against the contract being broken upstream: if the
+    // producer ever regressed to throwing, the route must still answer 201
+    // rather than turning a committed lead into a 500 the buyer retries.
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    enqueueRfqSubmitted.mockRejectedValue(new Error("ECONNREFUSED 6380"));
+    const res = await post(VALID);
+    expect(res.status).toBe(201);
+    error.mockRestore();
+  });
+
+  it("the HONEYPOT path never enqueues — it writes no row and has no id", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const res = await post({ ...VALID, website: "https://spam.example" });
+    expect(res.status).toBe(201);
+    expect(createLead).not.toHaveBeenCalled();
+    // A job here would make the worker try to email a lead that does not exist,
+    // and would give a bot a way to make us send mail.
+    expect(enqueueRfqSubmitted).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("the INSERT-FAILURE path never enqueues", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    createLead.mockRejectedValue(new Error("connection refused"));
+    const res = await post(VALID);
+    expect(res.status).toBe(500);
+    expect(enqueueRfqSubmitted).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it("every pre-insert rejection is enqueue-free", async () => {
+    // One assertion covering the whole guard chain: if a future edit hoisted
+    // the enqueue above the insert, these all start minting jobs for leads that
+    // were never written.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await post("junk", { contentType: "text/plain" }); // 415
+    await post(VALID, { origin: "https://evil.example" }); // 403
+    await post("{not json"); // 422
+    await post({ ...VALID, consent: false }); // 422
+    expect(enqueueRfqSubmitted).not.toHaveBeenCalled();
     warn.mockRestore();
   });
 });

@@ -42,6 +42,18 @@ const LOG_THROTTLE_MS = 30_000;
 
 const lastLoggedAt = new Map<string, number>();
 
+/**
+ * Test seam (Story 3.3): drop the throttle memo.
+ *
+ * The map is MODULE state shared by every caller, so within one test file the
+ * first assertion about a coded line consumes the 30s window and every later
+ * one silently sees zero calls — an order-dependent suite whose failures point
+ * at the code under test rather than at the harness. Reset it in `beforeEach`.
+ */
+export function resetLogThrottleForTests(): void {
+  lastLoggedAt.clear();
+}
+
 /** One coded error line per `code` per 30s — the cache-handler precedent. */
 export function throttledError(code: string, message: string, error?: unknown): void {
   const now = Date.now();

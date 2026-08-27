@@ -24,9 +24,45 @@ cp .env.example .env      # REQUIRED FIRST — compose reads env_file: .env
 docker compose up -d
 ```
 
-> First boot pulls several images and builds the app/worker (multi-minute). **ClamAV** downloads virus definitions on startup and can sit "starting" for a few minutes before healthy.
+> First boot pulls several images and builds the app/worker (multi-minute). **ClamAV** may sit "starting" briefly while clamd warms up.
+>
+> ⚠️ Corrected in Story 3.3's guard audit: this used to say ClamAV "downloads virus definitions on startup". It does not — Story 3.7b verified on the running container that the signature databases are BAKED INTO the pinned image (`main.cvd` and `bytecode.cvd` carry the image build date; only `daily.cld` is fetched later). The 360s `start_period` is slack, not a download budget.
 
 Services: `app` (:3000) · `worker` · `postgres` (:5432) · `redis` (:6379) · `redis-queue` (:6380) · `minio` (:9000, console :9001) · `clamav` (:3310).
+
+### Running the worker (Story 3.3)
+
+The worker sends the RFQ notification and the sender confirmation. In compose it
+runs automatically; to run it on the host against the compose services:
+
+```bash
+docker compose up -d redis-queue    # the durable queue instance (:6380)
+npm run worker
+```
+
+> ⚠️ **`npx tsx worker/index.ts` does NOT load `.env`** — measured, not assumed;
+> neither does `tsx --env-file`. `npm run worker` uses
+> `node --env-file=.env --import tsx`, which does. If the worker exits with
+> "REDIS_QUEUE_URL is not set", check that YOUR `.env` actually has the line —
+> `.env.example` gained it in Story 3.0, so a `.env` copied before then is
+> missing it and the queue tests will SKIP rather than fail.
+
+By default `EMAIL_PROVIDER=log`: the worker prints what it would send and mails
+nobody. Set `EMAIL_PROVIDER=resend` with `EMAIL_API_KEY`, `EMAIL_FROM` and
+`RFQ_NOTIFY_TO` to send for real.
+
+**Operator tools** (all bounded — they fail fast against a down queue rather
+than hanging):
+
+```bash
+npm run queue:failed   # list the dead-letter set
+npm run queue:retry    # re-drive every failed job
+npm run queue:replay   # re-enqueue leads whose enqueue never landed
+```
+
+`queue:replay` is safe to run at any time: the worker short-circuits on the
+lead's own send-state columns, so re-enqueueing an already-emailed lead sends
+nothing.
 
 ### The two Redis instances are not interchangeable
 
@@ -50,5 +86,9 @@ npm run cache:flush
 | `npm run test:e2e` | Playwright (run `npx playwright install` once first) |
 | `npm run format` / `format:check` | Prettier |
 | `npm run cache:flush` | Empty the incremental cache by prefix (**replaces `FLUSHALL`** — refuses to run against the queue instance) |
+| `npm run worker` | Run the RFQ email worker on the host (loads `.env`; `npx tsx` alone does not) |
+| `npm run queue:failed` | List the dead-letter set |
+| `npm run queue:retry` | Re-drive every failed job |
+| `npm run queue:replay` | Re-enqueue leads whose enqueue never landed |
 
 CI (`.github/workflows/ci.yml`) runs lint + typecheck + build + test on push to `main` and on PRs.

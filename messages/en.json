@@ -212,6 +212,23 @@
       "scanFailed": "This file could not be accepted after a security check. Send your inquiry without it, or attach a different file."
     }
   },
+  "RfqEmail": {
+    "notifySubject": "New RFQ {reference}",
+    "notifyIntro": "A new project inquiry has arrived.",
+    "notifyReference": "Reference: {reference}",
+    "notifySender": "From: {name}, {company} <{email}>",
+    "notifySectionProject": "Project",
+    "notifySectionSender": "Sender",
+    "notifySectionAttachment": "Attachment",
+    "notifyNone": "not provided",
+    "attachmentClean": "{name} ({size} KB) — scanned clean, held for review.",
+    "attachmentFailed": "{name} — the sender attached this file, but it could not be retained. It is NOT stored; ask them to resend it.",
+    "confirmSubject": "We have your inquiry — {reference}",
+    "confirmGreeting": "Hello {name},",
+    "confirmBody": "Thank you for your inquiry. We have it, and a GLH engineer will review it and reply to you directly.",
+    "confirmReference": "Your reference is {reference}. Please quote it if you call or write.",
+    "confirmSignoff": "GREENLIGHTHOUSE"
+  },
   "Legal": {
     "title": "Privacy Policy",
     "version": "Policy version: {version}",

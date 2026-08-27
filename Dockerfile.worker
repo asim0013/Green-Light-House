@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1
-# GREENLIGHTHOUSE BullMQ worker (email send + retry, ClamAV scan orchestration — Epic 3).
-# Story 1.1 ships a stub entry so the service is present and healthy in compose.
+# GREENLIGHTHOUSE BullMQ worker — RFQ email send + retry (Story 3.3).
+# NOT malware scanning: the ClamAV scan runs synchronously inside the RFQ request
+# handler (Story 3.7b), so this container never contacts clamd. The Story 1.1
+# stub entry it replaced also promised a second `email.send` queue that never
+# existed; there is ONE queue with one job name.
 
 FROM node:22-alpine
 WORKDIR /app
@@ -8,4 +11,8 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
 ENV NODE_ENV=production
-CMD ["npx", "tsx", "worker/index.ts"]
+# `--env-file` is node's, not tsx's: MEASURED during Story 3.3, `npx tsx` does
+# NOT load `.env` while `node --env-file=.env --import tsx` does. In compose the
+# variables arrive through `env_file:`/`environment:` anyway, so this form is
+# what keeps the container and `npm run worker` identical.
+CMD ["node", "--import", "tsx", "worker/index.ts"]

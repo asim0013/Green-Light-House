@@ -17,6 +17,7 @@ import {
   type AttachmentRejectionKey,
 } from "@/server/rfq/attachment";
 import { scanBuffer } from "@/lib/clamav";
+import { enqueueRfqSubmitted } from "@/lib/queue";
 import { putObject } from "@/lib/storage";
 import { burnLeadReference, createLead, type LeadCreateData } from "@/server/repositories/lead";
 import { listIndustries } from "@/server/repositories/industry";
@@ -628,6 +629,37 @@ export async function POST(request: Request) {
     return fail(500, "internal_error", "The inquiry could not be saved. Please try again.");
   }
 
-  // The frozen success shape (the honeypot path above counterfeits exactly this).
+  // Guard 7 — THE ENQUEUE (Story 3.3 — FR29's decoupling half).
+  //
+  // Placed HERE and nowhere else: after the insert has provably succeeded, so
+  // no job can ever reference a lead that does not exist; and before the
+  // response, so the enqueue's outcome is deterministic for tests rather than a
+  // floating promise. The honeypot path returned above — it writes no row, has
+  // no id, and must never enqueue; the 500 path returned above too.
+  //
+  // BOUNDED AND FAIL-OPEN, exactly like the limiter: `enqueueRfqSubmitted`
+  // never throws and never outlives its timeout, so a dead queue costs the
+  // buyer nothing. A lead is already committed by the time this line runs —
+  // losing the email is bad, losing the lead is unacceptable (FR29). When the
+  // enqueue fails, the row's null send-state columns are what
+  // `npm run queue:replay` looks for.
+  //
+  // ⚠️ THE CATCH IS BELT AND BRACES, AND IT IS NOT REDUNDANT. The producer's
+  // contract is that it never throws, and its own suite proves that — but the
+  // lead is ALREADY COMMITTED on this line, so a future regression upstream
+  // would convert a stored inquiry into a 500 the buyer reads as "it didn't
+  // send" and retries, producing a duplicate. Depending on a contract for
+  // something that costs a lead is the wrong bet when three lines make it
+  // structurally impossible.
+  try {
+    await enqueueRfqSubmitted(created.id);
+  } catch (error) {
+    console.error("[rfq-queue] enqueue threw — lead kept, email deferred:", error);
+  }
+
+  // The frozen success shape (the honeypot path above counterfeits exactly
+  // this). ⚠️ It carries the reference ONLY — never the id, whose sole purpose
+  // is the job payload above. Widening this would break the honeypot's
+  // indistinguishability, which depends on the two responses being identical.
   return Response.json({ reference: created.reference }, { status: 201 });
 }
