@@ -47,6 +47,23 @@ export type EmailSendResult =
 
 export interface EmailTransport {
   readonly name: EmailTransportName;
+  /**
+   * Whether a successful `send` means a message actually left the building.
+   *
+   * ⚠️ THIS EXISTS BECAUSE `ok: true` WAS NOT THE SAME QUESTION. `LogTransport`
+   * prints and returns `{ ok: true }`, and the send flow reads `ok` as "the
+   * provider accepted it" and stamps `notifiedAt` / `confirmationSentAt`. So a
+   * worker on the `log` transport — the value `.env.example` ships, and the
+   * fallback for an unset or misspelled `EMAIL_PROVIDER` — mailed nobody while
+   * writing a clean delivery record. The lead then became invisible to BOTH
+   * operator recovery paths (`queue:replay` filters on `notifiedAt: null`) and
+   * would render as delivered in Story 4.7's admin view. Two review lenses
+   * filed it as HIGH.
+   *
+   * `memory` DELIVERS: it retains the message, and the CI suite's exactly-once
+   * counts are taken from it.
+   */
+  readonly delivers: boolean;
   send(message: EmailMessage): Promise<EmailSendResult>;
 }
 
@@ -76,6 +93,8 @@ export function assertHeaderSafe(value: string, field: string): string {
  *  send-flow test measures with — never reaches the network. */
 export class MemoryTransport implements EmailTransport {
   readonly name = "memory" as const;
+  /** It keeps the message, and the suite reads delivery off it. */
+  readonly delivers = true;
   readonly sent: EmailMessage[] = [];
   /** FIFO of forced outcomes, consumed by ANY send; empty ⇒ success. */
   private readonly failures: EmailSendResult[] = [];
@@ -125,6 +144,9 @@ export class MemoryTransport implements EmailTransport {
  *  provider account to exercise the path. */
 class LogTransport implements EmailTransport {
   readonly name = "log" as const;
+  /** It prints. Nothing leaves. Saying so here is what stops the send flow
+   *  writing a delivery stamp for mail that was never sent. */
+  readonly delivers = false;
   async send(message: EmailMessage): Promise<EmailSendResult> {
     console.log(
       `[email] (log transport — nothing sent) to=${message.to} subject=${message.subject}`,
@@ -135,6 +157,9 @@ class LogTransport implements EmailTransport {
 
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
+/** How long one provider call may take before it is abandoned as `transport`. */
+const RESEND_TIMEOUT_MS = 15_000;
+
 /**
  * The real transport: one `fetch`. Never throws — a thrown network error is
  * classified as `transport` so the caller's retry logic sees a value rather
@@ -142,6 +167,7 @@ const RESEND_ENDPOINT = "https://api.resend.com/emails";
  */
 class ResendTransport implements EmailTransport {
   readonly name = "resend" as const;
+  readonly delivers = true;
 
   async send(message: EmailMessage): Promise<EmailSendResult> {
     const apiKey = process.env.EMAIL_API_KEY?.trim();
@@ -172,6 +198,14 @@ class ResendTransport implements EmailTransport {
           subject: message.subject,
           text: message.text,
         }),
+        // BOUNDED, like every other outbound client in this project. The worker
+        // runs at BullMQ's default concurrency of 1, so a provider connection
+        // that accepts and then never answers parks the ONLY slot for undici's
+        // 300s default — every other inquiry email waits behind it. An
+        // AbortError lands in the catch below and is classified `transport`,
+        // which is retryable, so a genuinely slow provider costs a retry rather
+        // than a stalled queue.
+        signal: AbortSignal.timeout(RESEND_TIMEOUT_MS),
       });
     } catch (error) {
       // No answer at all: DNS, connection refused, timeout. Retryable.
@@ -231,9 +265,22 @@ export function resolveNotifyRecipient(): string | null {
   return value ? value : null;
 }
 
-/** True when the selected transport can actually deliver. The `log` and
- *  `memory` transports are always "configured" — they never call out. */
+/**
+ * True when the selected transport can actually deliver.
+ *
+ * TWO WAYS TO FAIL THIS, AND THE SECOND ONE SHIPPED. A transport can be one
+ * that never delivers at all (`log`), or one that delivers but has no
+ * credentials (`resend` without a key). The original answered `true` for
+ * everything that was not `resend`, which made the `log` transport — the
+ * default for an unset `EMAIL_PROVIDER` — look configured, so the send flow
+ * stamped `notifiedAt` for mail it had only printed.
+ *
+ * Callers treat `false` as `unconfigured`: recorded immediately, NEVER retried,
+ * and with no delivery stamp, so the lead stays visible to Story 4.7 and
+ * recoverable by `queue:replay` once the deployment is fixed.
+ */
 export function isEmailConfigured(transport: EmailTransport): boolean {
+  if (!transport.delivers) return false;
   if (transport.name !== "resend") return true;
   return Boolean(process.env.EMAIL_API_KEY?.trim() && process.env.EMAIL_FROM?.trim());
 }

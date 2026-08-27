@@ -1,4 +1,5 @@
 import { createTranslator } from "next-intl";
+import { throttledError } from "@/lib/redis";
 import en from "../../../messages/en.json";
 import tr from "../../../messages/tr.json";
 import ru from "../../../messages/ru.json";
@@ -46,7 +47,9 @@ export interface NotifyOutcome {
   /** `skipped` = the lead is gone; nothing to do and nothing to retry. */
   status: "sent" | "partial" | "skipped";
   notify: "sent" | "already" | "failed" | "unconfigured";
-  confirm: "sent" | "already" | "failed";
+  /** `unconfigured` is symmetric with `notify`'s — see the guard in the
+   *  confirmation branch, which the original omitted entirely. */
+  confirm: "sent" | "already" | "failed" | "unconfigured";
   /** True when the job should THROW so BullMQ retries it. */
   retry: boolean;
 }
@@ -202,6 +205,21 @@ export function buildConfirmation(lead: LeadForEmail): { subject: string; text: 
   };
 }
 
+/**
+ * The unconfigured log: LOUD ONCE PER PROCESS IN PRODUCTION, SILENT IN DEV.
+ *
+ * The same discipline `lib/redis.ts` and `lib/queue.ts` already apply to their
+ * own unconfigured paths: a missing variable in development is a CHOICE (the
+ * `log` transport is the intended local default), while in production it means
+ * inquiry email is not going out and must never be invisible. `throttledError`
+ * keys its 30s window on the code, so the two kinds get two codes — otherwise
+ * one would swallow the other's line.
+ */
+function logUnconfigured(code: string, message: string): void {
+  if (process.env.NODE_ENV !== "production") return;
+  throttledError(code, message);
+}
+
 /** `GLH-RFQ-2042:notify` — stable per lead per email kind. */
 function idempotencyKey(lead: LeadForEmail, kind: DeliveryKind): string {
   return `${lead.reference}:${kind}`;
@@ -248,8 +266,15 @@ export async function processRfqSubmitted(
       // A missing recipient or API key will still be missing on the next
       // attempt, so this is recorded IMMEDIATELY and never retried — unlike a
       // provider failure, waiting changes nothing.
-      console.error(
-        "[worker] RFQ_NOTIFY_TO or the transport is unconfigured — notification skipped",
+      //
+      // LOUD ONCE PER PROCESS IN PRODUCTION, SILENT IN DEV — the shape AC7
+      // actually specifies and the one `lib/queue.ts` already uses for its own
+      // unconfigured path. A bare per-job `console.error` printed a red line on
+      // every local job (where the `log` transport is the intended default) and
+      // would have flooded production logs one line per inquiry.
+      logUnconfigured(
+        "rfq-notify-unconfigured",
+        "RFQ_NOTIFY_TO or the transport is unconfigured — notification skipped",
       );
       await recordFailure(lead.id, deliveryFailure("notify", "unconfigured"));
       outcome.notify = "unconfigured";
@@ -278,21 +303,40 @@ export async function processRfqSubmitted(
   // Attempted even when the notification failed: they are independent sends,
   // and the buyer's confirmation must not be held hostage to our own inbox.
   if (lead.confirmationSentAt === null) {
-    const message = buildConfirmation(lead);
-    const result = await deps.transport.send({
-      to: lead.email,
-      subject: message.subject,
-      text: message.text,
-      idempotencyKey: idempotencyKey(lead, "confirm"),
-    });
-    if (result.ok) {
-      await markSent(lead.id, "confirm", now());
-      outcome.confirm = "sent";
-    } else {
-      outcome.confirm = "failed";
+    // ⚠️ THIS GUARD WAS MISSING, AND ITS ABSENCE WAS FOUND BY FOUR LENSES. The
+    // notification branch above has always consulted `isEmailConfigured`; the
+    // confirmation consulted NOTHING. So a deployment with no `EMAIL_API_KEY`
+    // sent the buyer's confirmation into `ResendTransport`'s structural
+    // backstop, got a `transport` code back — the classification for "the
+    // network never answered", i.e. retryable — and burned all five attempts
+    // plus their exponential backoff on a fault that no amount of waiting
+    // fixes, before dead-lettering. `.env.example` meanwhile told the operator
+    // the confirmation was "unaffected".
+    if (!isEmailConfigured(deps.transport)) {
+      logUnconfigured(
+        "rfq-confirm-unconfigured",
+        "the transport is unconfigured — confirmation skipped",
+      );
+      await recordFailure(lead.id, deliveryFailure("confirm", "unconfigured"));
+      outcome.confirm = "unconfigured";
       outcome.status = "partial";
-      outcome.retry = true;
-      if (isFinal) await recordFailure(lead.id, deliveryFailure("confirm", result.code));
+    } else {
+      const message = buildConfirmation(lead);
+      const result = await deps.transport.send({
+        to: lead.email,
+        subject: message.subject,
+        text: message.text,
+        idempotencyKey: idempotencyKey(lead, "confirm"),
+      });
+      if (result.ok) {
+        await markSent(lead.id, "confirm", now());
+        outcome.confirm = "sent";
+      } else {
+        outcome.confirm = "failed";
+        outcome.status = "partial";
+        outcome.retry = true;
+        if (isFinal) await recordFailure(lead.id, deliveryFailure("confirm", result.code));
+      }
     }
   }
 

@@ -46,28 +46,35 @@ export default async function globalTeardown() {
   // anyway. Reported so the census line shows what a run minted. The bounded
   // client is the cache-flush.mjs recipe: node-redis's default reconnect makes
   // connect() never settle against a dead target.
-  try {
-    const url = process.env.REDIS_URL?.trim();
-    if (!url) return;
-    const { createClient } = await import("redis");
-    const redis = createClient({
-      url,
-      socket: { connectTimeout: 3000, reconnectStrategy: false },
-    });
-    redis.on("error", () => {});
-    await redis.connect();
+  //
+  // ⚠️ `if (!url) return` HERE ABORTED THE WHOLE TEARDOWN. This is one census
+  // among four, and an early `return` in the second one silently skipped the
+  // storage and queue censuses below whenever `REDIS_URL` happened to be empty
+  // — so the gate line would report on a run it had barely inspected. Each
+  // census now SKIPS ITSELF and nothing else.
+  const cacheUrl = process.env.REDIS_URL?.trim();
+  if (cacheUrl) {
     try {
-      let swept = 0;
-      for await (const keys of redis.scanIterator({ MATCH: "rfq:rl:*", COUNT: 500 })) {
-        const batch = Array.isArray(keys) ? keys : [keys];
-        if (batch.length > 0) swept += await redis.del(batch);
+      const { createClient } = await import("redis");
+      const redis = createClient({
+        url: cacheUrl,
+        socket: { connectTimeout: 3000, reconnectStrategy: false },
+      });
+      redis.on("error", () => {});
+      await redis.connect();
+      try {
+        let swept = 0;
+        for await (const keys of redis.scanIterator({ MATCH: "rfq:rl:*", COUNT: 500 })) {
+          const batch = Array.isArray(keys) ? keys : [keys];
+          if (batch.length > 0) swept += await redis.del(batch);
+        }
+        console.log(`[pollution-gate] rfq:rl counters swept=${swept}`);
+      } finally {
+        redis.destroy();
       }
-      console.log(`[pollution-gate] rfq:rl counters swept=${swept}`);
-    } finally {
-      redis.destroy();
+    } catch {
+      // Redis down — counters are disposable; nothing to report.
     }
-  } catch {
-    // Redis down or unset — counters are disposable; nothing to report.
   }
 
   // STORAGE (Story 3.7b, AC16). The leads census above cannot see this class of
@@ -107,9 +114,15 @@ export default async function globalTeardown() {
   // hold real inquiries mid-retry, and a teardown that deleted those to keep a
   // number tidy would destroy exactly what FR29 exists to protect. The counts
   // land in the story record's gate line where a human can judge them.
+  // Same self-skipping shape as the counters census above, for the same reason:
+  // a `return` here would abort anything a later story appends.
+  const queueUrl = process.env.REDIS_QUEUE_URL?.trim();
+  if (!queueUrl) {
+    console.log("[pollution-gate] queue census skipped — REDIS_QUEUE_URL unset");
+    return;
+  }
   try {
-    const url = process.env.REDIS_QUEUE_URL?.trim();
-    if (!url) return;
+    const url = queueUrl;
     const IORedis = (await import("ioredis")).default;
     const client = new IORedis(url, {
       maxRetriesPerRequest: 1,

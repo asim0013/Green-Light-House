@@ -216,9 +216,25 @@ export async function findLeadForEmail(id: string): Promise<LeadForEmail | null>
  * and nothing short of a distributed transaction with the provider closes it.
  */
 export async function markDeliverySent(id: string, kind: DeliveryKind, at: Date): Promise<void> {
+  // ⚠️ A SUCCESSFUL SEND CLEARS THAT KIND'S FAILURE REASON, and the original
+  // never did. A lead that failed terminally and was later re-driven kept its
+  // stale `notify:provider` forever: Story 4.7 would render a delivered lead as
+  // failed, and any reason-based recovery predicate — including the widened one
+  // below — would keep re-finding a lead that is already done. The other kind's
+  // entry is preserved, for the same reason `recordDeliveryFailure` accumulates.
+  const existing = await prisma.lead.findUnique({
+    where: { id },
+    select: { deliveryFailureReason: true },
+  });
+  const kept = (existing?.deliveryFailureReason ?? "")
+    .split(";")
+    .filter((part) => part.trim() !== "" && part.split(":")[0] !== kind);
   await prisma.lead.update({
     where: { id },
-    data: kind === "notify" ? { notifiedAt: at } : { confirmationSentAt: at },
+    data: {
+      ...(kind === "notify" ? { notifiedAt: at } : { confirmationSentAt: at }),
+      deliveryFailureReason: kept.length > 0 ? kept.join(";") : null,
+    },
   });
 }
 
@@ -249,10 +265,22 @@ export async function recordDeliveryFailure(id: string, reason: string): Promise
 /**
  * The enqueue-failure recovery query (AC10 — `npm run queue:replay`).
  *
- * A lead whose enqueue failed has the shape the schema docstring pins:
- * `notifiedAt` null (never sent) AND `deliveryFailureReason` null (never even
- * tried — a terminal failure would have written one). The age floor keeps the
- * replay off submissions still legitimately in flight.
+ * A lead needing replay has `notifiedAt` null and is old enough that it is not
+ * still legitimately in flight. The question is which FAILURE REASONS are still
+ * replayable, and the original answered "only a null one".
+ *
+ * ⚠️ THAT ANSWER STRANDED AN ENTIRE CLASS OF LEAD, AND FOUR LENSES FOUND IT.
+ * `unconfigured` means "we never tried" — no `RFQ_NOTIFY_TO`, no API key, a
+ * transport that delivers nothing — so the flow records it immediately and does
+ * NOT retry, which means the job COMPLETES. A completed job is not in the failed
+ * set, so `queue:retry` cannot see it; and the reason it just wrote is non-null,
+ * so `queue:replay` could not see it either. Fixing the deployment afterwards
+ * recovered nothing and surfaced nothing.
+ *
+ * So the predicate keys on the CODE, not on null: `unconfigured` is replayable
+ * by definition, while `provider` and `transport` are genuine terminal failures
+ * that belong to `queue:retry`. This is double-send-safe because the worker
+ * short-circuits per email on `notifiedAt`/`confirmationSentAt`.
  */
 export async function findLeadsAwaitingNotification(
   olderThan: Date,
@@ -261,8 +289,14 @@ export async function findLeadsAwaitingNotification(
   return prisma.lead.findMany({
     where: {
       notifiedAt: null,
-      deliveryFailureReason: null,
       createdAt: { lt: olderThan },
+      OR: [
+        { deliveryFailureReason: null },
+        // Never attempted rather than failed — see above. `contains` rather
+        // than equality because the column carries BOTH kinds' entries joined
+        // by `;`, e.g. `notify:unconfigured;confirm:provider`.
+        { deliveryFailureReason: { contains: "notify:unconfigured" } },
+      ],
     },
     select: { id: true, reference: true, createdAt: true },
     orderBy: { createdAt: "asc" },

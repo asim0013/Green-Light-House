@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { MemoryTransport } from "@/lib/email";
+import { createEmailTransport, MemoryTransport } from "@/lib/email";
 import {
   attachmentLine,
   buildConfirmation,
@@ -44,6 +44,14 @@ function lead(over: Record<string, unknown> = {}) {
     attachmentMime: null,
     attachmentSizeBytes: null,
     attachmentScanStatus: null,
+    // ⚠️ PRESENT ON PURPOSE, THOUGH `LEAD_EMAIL_SELECT` DOES NOT SELECT IT. The
+    // storage-key leak test below asserted `not.toContain("quarantine/")`
+    // against a fixture with no key at all, so a real leak would have rendered
+    // the string "undefined" and the assertion could only ever have failed
+    // against a hard-coded literal. Keeping the key here is what makes that
+    // guard bite the day someone widens the select — which is the only way the
+    // leak can happen, and exactly what the guard exists for.
+    attachmentKey: "quarantine/6f1a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8.pdf",
     notifiedAt: null,
     confirmationSentAt: null,
     deliveryFailureReason: null,
@@ -80,6 +88,74 @@ afterEach(() => {
     if (savedEnv[key] === undefined) delete process.env[key];
     else process.env[key] = savedEnv[key];
   }
+});
+
+describe("a transport that cannot deliver NEVER stamps a delivery — Story 3.3 review", () => {
+  /**
+   * ⚠️ THE DEFECT THIS PINS WAS THE WORST ONE IN THE REVIEW. `LogTransport`
+   * prints and returns `{ ok: true }`; the flow read `ok` as "the provider
+   * accepted it" and wrote `notifiedAt` AND `confirmationSentAt`. Since
+   * `queue:replay` finds leads by `notifiedAt: null` and `queue:retry` works
+   * off the failed set, a lead stamped that way was invisible to BOTH operator
+   * recovery paths and would render as delivered in Story 4.7 — for mail that
+   * never left. `.env.example` ships `EMAIL_PROVIDER=log`, so it was the
+   * default state, not an exotic one.
+   */
+  const nonDelivering = {
+    name: "log" as const,
+    delivers: false,
+    send: async () => ({ ok: true as const }),
+  };
+
+  it("records unconfigured for BOTH sends and stamps NEITHER column", async () => {
+    const repo = fakeRepo(lead());
+    const outcome = await processRfqSubmitted("lead-1", { transport: nonDelivering, ...repo.deps });
+
+    // The assertion that would have caught it: no marks at all.
+    expect(repo.marks).toEqual([]);
+    expect(outcome.notify).toBe("unconfigured");
+    expect(outcome.confirm).toBe("unconfigured");
+    expect(repo.failures).toEqual(["notify:unconfigured", "confirm:unconfigured"]);
+  });
+
+  it("does NOT retry — a missing provider is still missing on attempt five", async () => {
+    const repo = fakeRepo(lead());
+    const outcome = await processRfqSubmitted("lead-1", { transport: nonDelivering, ...repo.deps });
+    expect(outcome.retry).toBe(false);
+    expect(outcome.status).toBe("partial");
+  });
+
+  it("leaves the lead findable by queue:replay, which keys on a NULL notifiedAt", async () => {
+    // Stated as the operator property rather than the column value, because
+    // that is what the defect actually destroyed.
+    const repo = fakeRepo(lead());
+    await processRfqSubmitted("lead-1", { transport: nonDelivering, ...repo.deps });
+    expect(repo.marks.some((m) => m.kind === "notify")).toBe(false);
+  });
+});
+
+describe("a missing EMAIL_API_KEY is unconfigured, not a retryable transport fault", () => {
+  /**
+   * Four lenses filed this. The notification branch always consulted
+   * `isEmailConfigured`; the confirmation consulted NOTHING, so it reached
+   * `ResendTransport`'s structural backstop, came back with code `transport` —
+   * the classification meaning "the network never answered" — and burned all
+   * five attempts plus exponential backoff before dead-lettering. Meanwhile
+   * `.env.example` told the operator the confirmation was "unaffected".
+   */
+  it("the CONFIRMATION refuses to send and does not retry", async () => {
+    delete process.env.EMAIL_API_KEY;
+    delete process.env.EMAIL_FROM;
+    const transport = createEmailTransport("resend");
+    const repo = fakeRepo(lead());
+
+    const outcome = await processRfqSubmitted("lead-1", { transport, ...repo.deps });
+
+    expect(outcome.confirm).toBe("unconfigured");
+    expect(outcome.retry).toBe(false);
+    expect(repo.marks).toEqual([]);
+    expect(repo.failures).toContain("confirm:unconfigured");
+  });
 });
 
 describe("processRfqSubmitted — the happy path (AC4)", () => {
@@ -253,6 +329,33 @@ describe("content contracts (AC5/AC6)", () => {
     expect(russian.text).toContain("Здравствуйте");
   });
 
+  it("EVERY locale's confirmation actually RENDERS — not just EN", () => {
+    /**
+     * ⚠️ THE ONLY NON-EN ASSERTIONS WERE ANCHORED ON LITERAL COPY, which a
+     * placeholder collapse survives intact. If a `{reference}` token were
+     * misspelled in tr.json, next-intl would emit the raw key path and the
+     * buyer would receive "RfqEmail.confirmReference" — while
+     * `toContain(tr.RfqEmail.confirmSignoff)` and `toContain("Здравствуйте")`
+     * both stayed green, because the signoff and the greeting are different
+     * keys. The reference was asserted for EN only, and the integration suite
+     * seeds `locale: "en"` for every row.
+     *
+     * The reference is the right probe: a key-path collapse necessarily drops
+     * it, so one assertion per locale covers every placeholder in that chain.
+     */
+    for (const locale of ["en", "tr", "ru"] as const) {
+      const message = buildConfirmation(lead({ locale, name: "Elena" }) as never);
+      expect(message.subject, `${locale} subject must render`).toContain("GLH-RFQ-2042");
+      expect(message.text, `${locale} body must render`).toContain("GLH-RFQ-2042");
+      // A collapsed key path is the literal namespace prefix. Nothing that
+      // renders correctly can contain it.
+      expect(message.subject, `${locale} subject leaked a key path`).not.toContain("RfqEmail.");
+      expect(message.text, `${locale} body leaked a key path`).not.toContain("RfqEmail.");
+      // The interpolated name must survive too — a second, independent token.
+      expect(message.text, `${locale} dropped the sender name`).toContain("Elena");
+    }
+  });
+
   it("the NOTIFICATION is EN regardless of the lead's locale (Task 0 #13)", () => {
     // It is an internal operational document; localizing it by the buyer's
     // locale would make Aylin's inbox polyglot.
@@ -365,15 +468,53 @@ describe("content contracts (AC5/AC6)", () => {
   });
 
   it("the notification NEVER carries the storage key or an attachment", () => {
-    const notification = buildNotification(
-      lead({
-        attachmentName: "spec.pdf",
-        attachmentSizeBytes: 2048,
-        attachmentScanStatus: "clean",
-      }) as never,
-    );
+    const row = lead({
+      attachmentName: "spec.pdf",
+      attachmentSizeBytes: 2048,
+      attachmentScanStatus: "clean",
+    });
+    const notification = buildNotification(row as never);
+    // Tracks the FIXTURE's key rather than a prefix literal, so the assertion
+    // stays honest if the quarantine prefix is ever renamed.
+    expect(notification.text).not.toContain(row.attachmentKey);
     expect(notification.text).not.toContain("quarantine/");
     expect(notification.text).not.toMatch(/https?:\/\//);
+  });
+
+  it("AC5's field list actually reaches the GLH notification", () => {
+    /**
+     * ⚠️ NOTHING ASSERTED THIS. Deleting the project details, the quantities or
+     * the whole equipment block from the operator's email left all 700 tests
+     * green — and `equipment` was `[]` in every fixture, so the three-way
+     * kind mapping had never once been executed by a test.
+     */
+    const full = lead({
+      industry: "fire-safety",
+      timeline: "q4-2026",
+      quantities: "12 detectors, 2 panels",
+      projectDetails: "Retrofit of the east wing",
+      phone: "+90 555 000 0000",
+      country: "TR",
+      equipment: [
+        { kind: "freeText", text: "flame detectors" },
+        { kind: "product", slug: "panel-x", label: "Panel X" },
+        { kind: "category", slug: "beacons", label: "Beacons" },
+      ],
+    });
+    const text = buildNotification(full as never).text;
+
+    for (const value of [
+      "fire-safety",
+      "q4-2026",
+      "12 detectors, 2 panels",
+      "Retrofit of the east wing",
+      "+90 555 000 0000",
+      "flame detectors",
+      "Panel X",
+      "Beacons",
+    ]) {
+      expect(text, `AC5 requires ${value} in the notification`).toContain(value);
+    }
   });
 
   it("the SUBJECT is built from the reference alone — buyer strings stay in the body", () => {

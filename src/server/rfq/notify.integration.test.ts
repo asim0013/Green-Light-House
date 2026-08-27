@@ -4,6 +4,7 @@ import { Queue, Worker, type Job } from "bullmq";
 import { MemoryTransport } from "@/lib/email";
 import { RFQ_JOB_OPTIONS } from "@/lib/queue";
 import { processRfqSubmitted } from "./notify";
+import { isFinalAttempt } from "@/server/queue/worker-runtime";
 
 /**
  * THE PROVIDER-FAILURE KEYSTONE (Story 3.3, AC13).
@@ -53,6 +54,9 @@ interface Row {
   deliveryFailureReason: string | null;
 }
 const rows = new Map<string, Row>();
+
+/** One entry per PROCESSOR INVOCATION — the instrument the dedup test needs. */
+const processed: string[] = [];
 
 function seed(id: string, over: Partial<Row> = {}): Row {
   const row: Row = {
@@ -133,11 +137,21 @@ beforeAll(async () => {
     TEST_QUEUE,
     async (job: Job) => {
       const { leadId } = job.data as { leadId: string };
-      const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+      // EVERY PROCESSOR ENTRY IS RECORDED. Without this the dedup test below
+      // could not fail: its assertions were "the id I passed came back" and
+      // "two emails were sent", and the second holds even when the flow runs
+      // twice, because the second run short-circuits on the stamps the first
+      // one wrote. Counting invocations is the only way to observe the
+      // property the test is named for.
+      processed.push(leadId);
+      // The SHIPPED arithmetic, imported rather than copied. The harness used
+      // to duplicate the expression, which meant an error in it would be
+      // reproduced identically here and the integration suite could never
+      // detect it.
       const outcome = await processRfqSubmitted(leadId, {
         transport,
         ...repoDeps,
-        isFinalAttempt,
+        isFinalAttempt: isFinalAttempt(job),
       });
       if (outcome.retry) throw new Error(`delivery incomplete for ${leadId}`);
       return outcome;
@@ -158,6 +172,7 @@ afterAll(async () => {
 beforeEach(() => {
   rows.clear();
   transport.reset();
+  processed.length = 0;
   process.env.RFQ_NOTIFY_TO = "aylin@glh.example";
 });
 
@@ -228,12 +243,38 @@ describe("the worker, end to end against a real queue (AC13)", () => {
 
   it("jobId DEDUPLICATES: adding the same lead twice runs the flow once", async ({ skip }) => {
     if (!ready) return skip();
+    /**
+     * ⚠️ THIS TEST USED TO BE GREEN WHETHER OR NOT DEDUP HAPPENED, and three
+     * lenses filed it. Its two assertions were `second.id === first.id` — which
+     * is guaranteed because BOTH adds pass the same literal `jobId`, so the id
+     * comes from the caller and not from dedup — and `transport.sent` having
+     * length 2, which holds even when the flow runs TWICE, because the second
+     * run short-circuits on the `notifiedAt`/`confirmationSentAt` stamps the
+     * first one wrote. Neither could observe the property in the test's name.
+     *
+     * The instrument that can: count processor entries.
+     */
     const row = seed("lead-dedup");
     const first = await queue!.add("rfq.submitted", { leadId: row.id }, { jobId: row.id });
     const second = await queue!.add("rfq.submitted", { leadId: row.id }, { jobId: row.id });
-    // BullMQ ignores the second add while the record exists — same id back.
     expect(second.id).toBe(first.id);
     expect(await settle(first)).toBe("completed");
+
+    // Drain: a second job, had dedup not suppressed it, would still be waiting
+    // or active here. Settle only follows the FIRST one.
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      const counts = await queue!.getJobCounts("waiting", "active", "delayed");
+      const outstanding = (counts.waiting ?? 0) + (counts.active ?? 0) + (counts.delayed ?? 0);
+      if (outstanding === 0 || Date.now() > deadline) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+
+    // THE ASSERTION THAT CAN FAIL. Without dedup this reads 2.
+    expect(
+      processed.filter((id) => id === row.id),
+      "the flow must have been entered exactly once",
+    ).toHaveLength(1);
     expect(transport.sent).toHaveLength(2);
   }, 40_000);
 

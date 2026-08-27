@@ -10,6 +10,13 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
+# ⚠️ WITHOUT THIS THE CONTAINER CRASH-LOOPS ON BOOT. There is no `postinstall`
+# script, and at `npm ci` time only package.json and the lockfile exist — the
+# Prisma schema has not been copied yet — so nothing has ever generated the
+# client. `worker/index.ts` imports `@/lib/db` on its first line, which throws
+# "@prisma/client did not initialize yet" before a single job is read. The
+# generate must run AFTER `COPY . .`, because it reads prisma/schema.prisma.
+RUN npx prisma generate
 ENV NODE_ENV=production
 # `--env-file` is node's, not tsx's: MEASURED during Story 3.3, `npx tsx` does
 # NOT load `.env` while `node --env-file=.env --import tsx` does. In compose the

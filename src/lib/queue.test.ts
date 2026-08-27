@@ -1,11 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   enqueueRfqSubmitted,
+  getRfqQueue,
   isQueueConfigured,
   resetRfqQueueForTests,
+  setQueueFactoryForTests,
   RFQ_JOB_NAME,
   RFQ_JOB_OPTIONS,
   RFQ_QUEUE_NAME,
+  type QueueHandle,
   type RfqQueueLike,
 } from "./queue";
 import { resetLogThrottleForTests } from "./redis";
@@ -99,8 +102,12 @@ describe("enqueueRfqSubmitted — failure is never an error (AC2)", () => {
       }),
     });
     expect(result).toEqual({ enqueued: false });
+    // The code is asserted EXACTLY, not by prefix. `throttledError` keys its
+    // 30s window on the code alone, so a shared code lets one failure class
+    // swallow another's line — the 3.7a lesson. Pinning the code is what keeps
+    // the split honest.
     expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[rfq-queue]"),
+      expect.stringContaining("[rfq-queue-enqueue]"),
       expect.anything(),
     );
   });
@@ -117,7 +124,7 @@ describe("enqueueRfqSubmitted — failure is never an error (AC2)", () => {
   it("a NULL queue (unreachable) yields enqueued:false", async () => {
     const result = await enqueueRfqSubmitted("lead-5", { getQueue: async () => null });
     expect(result).toEqual({ enqueued: false });
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("[rfq-queue]"));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("[rfq-queue-enqueue]"));
   });
 
   it("A QUEUE THAT NEVER ANSWERS is bounded by the timeout — the hang-catcher", async () => {
@@ -143,6 +150,171 @@ describe("enqueueRfqSubmitted — failure is never an error (AC2)", () => {
       timeoutMs: 30,
     });
     expect(result).toEqual({ enqueued: false });
+  });
+});
+
+describe("the memo outliving its client — Story 3.3 review, 5 lenses", () => {
+  /**
+   * ⚠️ THIS BLOCK EXISTS BECAUSE EVERY OTHER TEST IN THIS FILE INJECTS
+   * `getQueue`, WHICH MEANS `getRfqQueue` HAD ZERO COVERAGE. Deleting the memo
+   * bookkeeping outright reddened nothing. The defect that shipped through the
+   * hole: `retryStrategy: () => null` makes the ioredis client give up
+   * PERMANENTLY, and the memo was cleared only for a connect that failed to be
+   * born — so one queue restart disabled RFQ email for the life of the process.
+   *
+   * The factory seam is the minimum needed to drive the real `getRfqQueue`
+   * without a live queue container (which is frequently not running, and which
+   * `.env` would point us at).
+   */
+  const saved = process.env.REDIS_QUEUE_URL;
+
+  /** A client whose lifecycle we control, mirroring ioredis's `status`. */
+  function fakeHandle(status = "ready") {
+    const connection = {
+      status,
+      disconnected: false,
+      disconnect() {
+        this.disconnected = true;
+      },
+    };
+    const handle: QueueHandle = {
+      queue: { add: async () => ({ id: "x" }) },
+      connection: connection as unknown as QueueHandle["connection"],
+    };
+    return { handle, connection };
+  }
+
+  beforeEach(() => {
+    process.env.REDIS_QUEUE_URL = "redis://localhost:6380";
+  });
+
+  afterEach(() => {
+    if (saved === undefined) delete process.env.REDIS_QUEUE_URL;
+    else process.env.REDIS_QUEUE_URL = saved;
+  });
+
+  it("memoizes while the client is READY — one connect, not one per call", async () => {
+    let built = 0;
+    const { handle } = fakeHandle("ready");
+    setQueueFactoryForTests(async () => {
+      built++;
+      return handle;
+    });
+
+    const first = await getRfqQueue();
+    const second = await getRfqQueue();
+
+    expect(built).toBe(1);
+    expect(first).toBe(second);
+    expect(first).toBe(handle.queue);
+  });
+
+  it("REBUILDS once the memoized client has died — the recovery path", async () => {
+    // The whole finding in one assertion. Under the shipped code this returned
+    // the dead client's queue forever and `built` stayed at 1.
+    let built = 0;
+    const handles = [fakeHandle("ready"), fakeHandle("ready")];
+    setQueueFactoryForTests(async () => handles[built++].handle);
+
+    const first = await getRfqQueue();
+    expect(built).toBe(1);
+
+    // ioredis reaches "end" when `retryStrategy` gives up — the terminal state
+    // that made the death permanent.
+    handles[0].connection.status = "end";
+
+    const second = await getRfqQueue();
+    expect(built).toBe(2);
+    expect(second).not.toBe(first);
+    expect(second).toBe(handles[1].handle.queue);
+    // The corpse is released rather than leaked.
+    expect(handles[0].connection.disconnected).toBe(true);
+  });
+
+  it("an enqueue AFTER the client dies still lands — the property that matters", async () => {
+    // Stated in the currency FR29 cares about: not "a new object was built" but
+    // "the buyer's inquiry email is not lost".
+    let built = 0;
+    const handles = [fakeHandle("ready"), fakeHandle("ready")];
+    const added: string[] = [];
+    for (const h of handles) {
+      // ⚠️ THE FAKE MUST DIE WHEN THE CLIENT DIES. A queue that keeps accepting
+      // `add` after its connection reaches "end" makes this test green under
+      // the very defect it is written to catch — which is what it did on its
+      // first P5 run. Real behaviour: `enableOfflineQueue: false` means a
+      // command issued on a dead client REJECTS rather than buffering.
+      h.handle.queue = {
+        add: async (_name, data) => {
+          if (h.connection.status !== "ready") {
+            throw new Error("Stream isn't writeable and enableOfflineQueue options is false");
+          }
+          added.push(data.leadId);
+        },
+      };
+    }
+    setQueueFactoryForTests(async () => handles[built++].handle);
+
+    await enqueueRfqSubmitted("lead-alive");
+    handles[0].connection.status = "end";
+    const after = await enqueueRfqSubmitted("lead-after-outage");
+
+    expect(after).toEqual({ enqueued: true });
+    expect(added).toEqual(["lead-alive", "lead-after-outage"]);
+  });
+
+  it("a client that never becomes ready is not memoized as a corpse", async () => {
+    let built = 0;
+    setQueueFactoryForTests(async () => {
+      built++;
+      throw new Error("ECONNREFUSED 127.0.0.1:6380");
+    });
+
+    expect(await getRfqQueue()).toBeNull();
+    expect(await getRfqQueue()).toBeNull();
+    // Failure-cleared: every caller retries rather than inheriting one refusal.
+    expect(built).toBe(2);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[rfq-queue-unreachable]"),
+      expect.anything(),
+    );
+  });
+
+  it("a teardown that THROWS cannot break the never-throws contract", async () => {
+    // `redis.ts` records that destroying an already-closed client throws. The
+    // same hazard, the same guard.
+    let built = 0;
+    const handles = [fakeHandle("ready"), fakeHandle("ready")];
+    handles[0].connection.disconnect = () => {
+      throw new Error("Connection is closed.");
+    };
+    setQueueFactoryForTests(async () => handles[built++].handle);
+
+    await getRfqQueue();
+    handles[0].connection.status = "end";
+
+    await expect(getRfqQueue()).resolves.toBe(handles[1].handle.queue);
+  });
+});
+
+describe("the enqueue bound is ONE budget, not one per await (AC2)", () => {
+  it("a slow client acquisition eats into the add's share of the timeout", async () => {
+    // ⚠️ The arithmetic the review caught. The original gave BOTH
+    // `withTimeout` calls the full budget, so the advertised ≤500 ms worst case
+    // was really ~1000 ms. Here: acquiring takes 160 ms of a 200 ms budget, and
+    // the add then hangs forever. Sharing one deadline bounds the whole call at
+    // ~200 ms; the per-await form would run ~360 ms.
+    const start = Date.now();
+    const result = await enqueueRfqSubmitted("lead-budget", {
+      getQueue: async () => {
+        await new Promise((r) => setTimeout(r, 160));
+        return { add: () => new Promise(() => {}) };
+      },
+      timeoutMs: 200,
+    });
+    const elapsed = Date.now() - start;
+
+    expect(result).toEqual({ enqueued: false });
+    expect(elapsed).toBeLessThan(300);
   });
 });
 

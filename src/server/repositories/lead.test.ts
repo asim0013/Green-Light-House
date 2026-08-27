@@ -16,6 +16,8 @@ import { PENDING_MAX_AGE_MS } from "@/lib/lead-attachment";
 
 const updateMany = vi.fn();
 const findUnique = vi.fn();
+const findMany = vi.fn();
+const update = vi.fn();
 const deleteLead = vi.fn();
 const deleteObject = vi.fn();
 
@@ -24,6 +26,8 @@ vi.mock("@/lib/db", () => ({
     lead: {
       updateMany: (args: unknown) => updateMany(args),
       findUnique: (args: unknown) => findUnique(args),
+      findMany: (args: unknown) => findMany(args),
+      update: (args: unknown) => update(args),
       delete: (args: unknown) => deleteLead(args),
     },
   },
@@ -33,16 +37,111 @@ vi.mock("@/lib/storage", () => ({
   deleteObject: (key: string) => deleteObject(key),
 }));
 
-const { expireStalePendingScans, deleteLeadWithAttachment } = await import("./lead");
+const {
+  expireStalePendingScans,
+  deleteLeadWithAttachment,
+  markDeliverySent,
+  recordDeliveryFailure,
+  findLeadsAwaitingNotification,
+} = await import("./lead");
 
 beforeEach(() => {
   updateMany.mockReset();
   findUnique.mockReset();
+  findMany.mockReset();
+  update.mockReset();
   deleteLead.mockReset();
   deleteObject.mockReset();
   updateMany.mockResolvedValue({ count: 0 });
   deleteLead.mockResolvedValue(undefined);
   deleteObject.mockResolvedValue(undefined);
+  update.mockResolvedValue(undefined);
+  findMany.mockResolvedValue([]);
+  findUnique.mockResolvedValue(null);
+});
+
+/**
+ * Story 3.3's send-state functions (added in the 3.3 review).
+ *
+ * ⚠️ ALL THREE SHIPPED WITH ZERO TESTS, and Completion Note 16 claimed coverage
+ * that did not exist — the review found it in the same sweep that found the
+ * defects below. This is the same failure mode the 3.7b review caught in this
+ * very file, one story later.
+ */
+describe("markDeliverySent — a success must not leave a stale failure behind", () => {
+  const AT = new Date("2026-08-27T12:00:00.000Z");
+
+  it("stamps the right column per kind", async () => {
+    await markDeliverySent("lead-1", "notify", AT);
+    expect(update.mock.calls[0][0].data.notifiedAt).toEqual(AT);
+    expect(update.mock.calls[0][0].data.confirmationSentAt).toBeUndefined();
+
+    update.mockClear();
+    await markDeliverySent("lead-1", "confirm", AT);
+    expect(update.mock.calls[0][0].data.confirmationSentAt).toEqual(AT);
+    expect(update.mock.calls[0][0].data.notifiedAt).toBeUndefined();
+  });
+
+  it("CLEARS that kind's failure reason — the defect was that it never did", async () => {
+    // A lead that failed terminally and was later re-driven kept its reason
+    // forever: Story 4.7 would render a delivered lead as failed, and the
+    // reason-keyed replay predicate would keep re-finding finished work.
+    findUnique.mockResolvedValue({ deliveryFailureReason: "notify:provider" });
+    await markDeliverySent("lead-1", "notify", AT);
+    expect(update.mock.calls[0][0].data.deliveryFailureReason).toBeNull();
+  });
+
+  it("PRESERVES the other kind's reason — one column, two independent sends", async () => {
+    findUnique.mockResolvedValue({ deliveryFailureReason: "notify:provider;confirm:transport" });
+    await markDeliverySent("lead-1", "notify", AT);
+    expect(update.mock.calls[0][0].data.deliveryFailureReason).toBe("confirm:transport");
+  });
+});
+
+describe("recordDeliveryFailure — reasons accumulate, they do not overwrite", () => {
+  it("keeps the other kind and replaces its own", async () => {
+    findUnique.mockResolvedValue({ deliveryFailureReason: "confirm:provider" });
+    await recordDeliveryFailure("lead-1", "notify:transport");
+    expect(update.mock.calls[0][0].data.deliveryFailureReason).toBe(
+      "confirm:provider;notify:transport",
+    );
+
+    update.mockClear();
+    findUnique.mockResolvedValue({ deliveryFailureReason: "notify:provider;confirm:provider" });
+    await recordDeliveryFailure("lead-1", "notify:unconfigured");
+    expect(update.mock.calls[0][0].data.deliveryFailureReason).toBe(
+      "confirm:provider;notify:unconfigured",
+    );
+  });
+});
+
+describe("findLeadsAwaitingNotification — which failures are still replayable", () => {
+  const CUTOFF = new Date("2026-08-27T12:00:00.000Z");
+
+  it("matches a NEVER-TRIED lead and an UNCONFIGURED one, but not a failed send", async () => {
+    // ⚠️ THE STRANDING BUG, PINNED. `unconfigured` means we never attempted —
+    // no RFQ_NOTIFY_TO, no API key, a transport that delivers nothing — so the
+    // flow records it and does NOT retry, which means the job COMPLETES and
+    // never enters the failed set. With the old `deliveryFailureReason: null`
+    // predicate the lead was then invisible to `queue:retry` AND to
+    // `queue:replay`: fixing the deployment recovered nothing. Four lenses
+    // filed it.
+    await findLeadsAwaitingNotification(CUTOFF);
+    const where = findMany.mock.calls[0][0].where;
+
+    expect(where.notifiedAt).toBeNull();
+    expect(where.createdAt).toEqual({ lt: CUTOFF });
+    expect(where.OR).toEqual([
+      { deliveryFailureReason: null },
+      { deliveryFailureReason: { contains: "notify:unconfigured" } },
+    ]);
+  });
+
+  it("still bounds the page and orders oldest-first", async () => {
+    await findLeadsAwaitingNotification(CUTOFF, 7);
+    expect(findMany.mock.calls[0][0].take).toBe(7);
+    expect(findMany.mock.calls[0][0].orderBy).toEqual({ createdAt: "asc" });
+  });
 });
 
 describe("expireStalePendingScans (AC11's stored-state half)", () => {

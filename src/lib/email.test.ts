@@ -223,13 +223,37 @@ describe("resolveNotifyRecipient — the ONE reader of RFQ_NOTIFY_TO (AC7)", () 
   });
 });
 
-describe("isEmailConfigured", () => {
-  it("only `resend` can be unconfigured — log and memory never call out", () => {
+describe("isEmailConfigured — two ways to fail it, and the second one shipped", () => {
+  /**
+   * ⚠️ THIS BLOCK USED TO ASSERT THE DEFECT. Its previous claim was "only
+   * `resend` can be unconfigured — log and memory never call out", which reads
+   * as a design statement and is really the bug: `log` never calls out because
+   * IT NEVER SENDS ANYTHING, and answering `true` for it told the send flow to
+   * stamp `notifiedAt` on mail that was only printed. Two review lenses filed
+   * it HIGH; `.env.example` ships `log`, so it was the default state.
+   */
+  it("a transport that DELIVERS NOTHING is never configured, whatever its name", () => {
+    process.env.EMAIL_API_KEY = "k";
+    process.env.EMAIL_FROM = "f@example.com";
+    // Credentials present and irrelevant: the log transport still cannot send.
+    expect(isEmailConfigured(createEmailTransport("log"))).toBe(false);
+    // …and an unset or misspelled EMAIL_PROVIDER resolves to exactly that one.
+    expect(isEmailConfigured(createEmailTransport("rensd"))).toBe(false);
+    expect(isEmailConfigured(createEmailTransport(""))).toBe(false);
+  });
+
+  it("`memory` DOES deliver — the CI suite counts real sends off it", () => {
     delete process.env.EMAIL_API_KEY;
-    expect(isEmailConfigured(createEmailTransport("log"))).toBe(true);
+    expect(new MemoryTransport().delivers).toBe(true);
     expect(isEmailConfigured(new MemoryTransport())).toBe(true);
+  });
+
+  it("`resend` is configured only with BOTH credentials", () => {
+    delete process.env.EMAIL_API_KEY;
+    delete process.env.EMAIL_FROM;
     expect(isEmailConfigured(createEmailTransport("resend"))).toBe(false);
     process.env.EMAIL_API_KEY = "k";
+    expect(isEmailConfigured(createEmailTransport("resend"))).toBe(false);
     process.env.EMAIL_FROM = "f@example.com";
     expect(isEmailConfigured(createEmailTransport("resend"))).toBe(true);
   });

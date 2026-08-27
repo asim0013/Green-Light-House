@@ -32,6 +32,17 @@ const QUEUE_URL = process.env.REDIS_QUEUE_URL?.trim();
 /** Leads younger than this are still legitimately in flight. */
 const REPLAY_MIN_AGE_MS = 5 * 60 * 1000;
 
+/**
+ * …and leads OLDER than this are not replayed automatically.
+ *
+ * AC10 asks this command to "skip nothing silently". The floor alone left no
+ * ceiling, so a first run against a database with months of history would mail
+ * every buyer who ever submitted an inquiry that was never notified — a
+ * confirmation quoting a reference from last quarter is worse than no email.
+ * These are LISTED, never sent, so an operator decides.
+ */
+const REPLAY_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
 function requireQueueUrl(): string {
   if (!QUEUE_URL) {
     console.error(
@@ -66,8 +77,18 @@ async function withQueue<T>(fn: (queue: Queue) => Promise<T>): Promise<T> {
   }
 }
 
-/** `queue:failed` — the dead-letter listing. */
+/** `queue:failed` — the dead-letter listing. Touches Postgres now (to resolve
+ *  references), so it must release the pool the way `queue:replay` does or the
+ *  operator's terminal never returns. */
 export async function listFailed(): Promise<void> {
+  try {
+    await listFailedInner();
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+async function listFailedInner(): Promise<void> {
   await withQueue(async (queue) => {
     const jobs = await queue.getFailed(0, 100);
     if (jobs.length === 0) {
@@ -75,12 +96,25 @@ export async function listFailed(): Promise<void> {
       return;
     }
     console.log(`[queue:failed] ${jobs.length} job(s) in the dead-letter set:\n`);
+    // AC10 asks the listing to identify leads by their REFERENCE — the handle
+    // the buyer saw on screen and quotes in email — not by the internal id. The
+    // job carries only the id, so the references are looked up in one query
+    // rather than one per job.
+    const ids = jobs.map((job) => (job.data as { leadId?: string }).leadId).filter(Boolean);
+    const rows = ids.length
+      ? await prisma.lead.findMany({
+          where: { id: { in: ids as string[] } },
+          select: { id: true, reference: true },
+        })
+      : [];
+    const referenceOf = new Map(rows.map((row) => [row.id, row.reference]));
     for (const job of jobs) {
-      const data = job.data as { leadId?: string };
+      const leadId = (job.data as { leadId?: string }).leadId;
+      // A deleted lead still has a job; `?` beats crashing the listing.
+      const reference = leadId ? (referenceOf.get(leadId) ?? "?") : "?";
       console.log(
-        `  job=${job.id} lead=${data.leadId ?? "?"} attempts=${job.attemptsMade} reason=${
-          job.failedReason ?? "?"
-        }`,
+        `  job=${job.id} lead=${reference} (id=${leadId ?? "?"}) attempts=${job.attemptsMade}` +
+          ` reason=${job.failedReason ?? "?"}`,
       );
     }
     console.log("\nRe-drive them with: npm run queue:retry");
@@ -113,18 +147,46 @@ export async function retryFailed(): Promise<void> {
 /**
  * `queue:replay` — the ENQUEUE-failure recovery.
  *
- * Finds leads that were committed but never enqueued (the AC's "a state a later
- * replay can pick up"): `notifiedAt` null AND `deliveryFailureReason` null,
- * older than the age floor. A terminal send failure writes a reason, so those
- * are excluded — they belong to `queue:retry`, not here.
+ * Finds leads that were committed but never successfully emailed and are older
+ * than the age floor: `notifiedAt` null, and a failure reason that is either
+ * absent or `notify:unconfigured` (which means "we never tried" — see
+ * `findLeadsAwaitingNotification`). A genuine terminal failure (`provider`,
+ * `transport`) writes a reason and belongs to `queue:retry`, not here.
+ *
+ * ⚠️ THE PREVIOUS VERSION OF THIS DOCSTRING WAS FALSE IN BOTH HALVES, and five
+ * lenses caught it. It claimed every non-null reason belongs to `queue:retry`,
+ * but an `unconfigured` job COMPLETES rather than failing, so it never reaches
+ * the failed set and no operator command could see it at all. And the loop
+ * below counted a lead as "enqueued" whenever `queue.add` did not throw — but
+ * `add` with an existing `jobId` silently returns the EXISTING job, so a lead
+ * whose previous job was still in the completed or failed set was reported
+ * re-driven while nothing was queued. Both are fixed below.
  *
  * SAFE AGAINST DOUBLE-SENDING by construction: the worker's per-email
  * short-circuit reads the stamps, so re-enqueueing a lead that was in fact
  * already emailed sends nothing.
  */
 export async function replayUnnotified(): Promise<void> {
-  const cutoff = new Date(Date.now() - REPLAY_MIN_AGE_MS);
-  const leads = await findLeadsAwaitingNotification(cutoff);
+  const now = Date.now();
+  const cutoff = new Date(now - REPLAY_MIN_AGE_MS);
+  const floor = new Date(now - REPLAY_MAX_AGE_MS);
+  const found = await findLeadsAwaitingNotification(cutoff);
+
+  // Reported, never sent — and reported BEFORE the count, so "skip nothing
+  // silently" holds for the ones the ceiling excludes too.
+  const tooOld = found.filter((lead) => lead.createdAt < floor);
+  const leads = found.filter((lead) => lead.createdAt >= floor);
+  if (tooOld.length > 0) {
+    console.warn(
+      `[queue:replay] ${tooOld.length} lead(s) older than ${REPLAY_MAX_AGE_MS / 86_400_000} days` +
+        ` NOT replayed — mailing a months-old reference would confuse the buyer more than silence.` +
+        ` Re-drive deliberately if you want them: ${tooOld
+          .slice(0, 10)
+          .map((lead) => lead.reference)
+          .join(", ")}`,
+    );
+  }
+
   if (leads.length === 0) {
     console.log("[queue:replay] no leads awaiting notification.");
     await prisma.$disconnect();
@@ -138,16 +200,43 @@ export async function replayUnnotified(): Promise<void> {
 
   await withQueue(async (queue) => {
     let enqueued = 0;
+    let alreadyQueued = 0;
+    let failed = 0;
     for (const lead of leads) {
       try {
+        // ⚠️ `jobId` DEDUP MAKES A BARE `add` A SILENT NO-OP. `RFQ_JOB_OPTIONS`
+        // keeps completed jobs for 24 h and failed ones forever, so the lead's
+        // previous job record is usually still there — and BullMQ answers a
+        // duplicate `jobId` by returning that existing job rather than queueing
+        // anything or throwing. The old loop incremented on exactly that.
+        const existing = await queue.getJob(lead.id);
+        if (existing) {
+          const state = await existing.getState();
+          if (state === "completed" || state === "failed") {
+            // A finished record, kept only for history — it is what blocks the
+            // re-add, so remove it and queue the lead for real.
+            await existing.remove();
+          } else {
+            // waiting / active / delayed: genuinely in the queue already.
+            // Re-adding would be the no-op; saying so is the honest report.
+            console.log(`  ${lead.reference} already queued (state=${state}) — left alone`);
+            alreadyQueued++;
+            continue;
+          }
+        }
         await queue.add(RFQ_JOB_NAME, { leadId: lead.id }, { ...RFQ_JOB_OPTIONS, jobId: lead.id });
         enqueued++;
       } catch (error) {
+        failed++;
         console.error(`  ${lead.reference} could not be enqueued:`, error);
       }
     }
-    // Never silently partial: the counts are the report.
-    console.log(`[queue:replay] enqueued ${enqueued}/${leads.length}.`);
+    // Never silently partial, and never counting a dedup as a delivery: the
+    // three numbers must add up to the number of leads listed above.
+    console.log(
+      `[queue:replay] enqueued ${enqueued}/${leads.length}` +
+        ` (already queued: ${alreadyQueued}, failed: ${failed}).`,
+    );
   });
   await prisma.$disconnect();
 }

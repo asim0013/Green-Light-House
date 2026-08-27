@@ -1,9 +1,8 @@
 import IORedis from "ioredis";
 import { Queue, Worker, type Job } from "bullmq";
 import { createEmailTransport } from "@/lib/email";
-import { RFQ_JOB_NAME, RFQ_QUEUE_NAME, type RfqJobData } from "@/lib/queue";
-import { processRfqSubmitted } from "@/server/rfq/notify";
-import { expireStalePendingScans } from "@/server/repositories/lead";
+import { RFQ_QUEUE_NAME } from "@/lib/queue";
+import { handleJob, registerSweepScheduler } from "@/server/queue/worker-runtime";
 import { prisma } from "@/lib/db";
 
 /**
@@ -42,11 +41,6 @@ import { prisma } from "@/lib/db";
 
 const QUEUE_URL = process.env.REDIS_QUEUE_URL?.trim();
 
-/** How often the stuck-`pending` sweep runs (Story 3.7b's AC11, wired here). */
-const SWEEP_SCHEDULER_ID = "attachment-sweep";
-const SWEEP_JOB_NAME = "attachment.sweep";
-const SWEEP_EVERY_MS = 60 * 60 * 1000;
-
 if (!QUEUE_URL) {
   // Refusing to start is correct here, unlike in the request path: a worker
   // with no queue has nothing to do, and idling silently would look healthy
@@ -56,6 +50,28 @@ if (!QUEUE_URL) {
 }
 
 const transport = createEmailTransport();
+
+/**
+ * ⚠️ A PRODUCTION WORKER ON A NON-DELIVERING TRANSPORT REFUSES TO START, for
+ * exactly the reason the queue check above refuses: it would look healthy while
+ * every inquiry email went unsent.
+ *
+ * `createEmailTransport` falls back to `log` for an unset, empty or misspelled
+ * `EMAIL_PROVIDER`, and `.env.example` ships `log` as the template value. Story
+ * 3.3's review found that a worker in that state printed one boot line and then
+ * processed every job to a clean `sent` — the send flow now refuses to stamp
+ * such a send (`transport.delivers`), but a running worker that can only ever
+ * record `unconfigured` is still not a worker. Dev and CI are untouched: the
+ * gate is NODE_ENV, and CI pins `EMAIL_PROVIDER=memory` under NODE_ENV=test.
+ */
+if (process.env.NODE_ENV === "production" && !transport.delivers) {
+  console.error(
+    `[worker] EMAIL_PROVIDER=${process.env.EMAIL_PROVIDER ?? "(unset)"} in production` +
+      " — this transport delivers nothing. Refusing to start.",
+  );
+  process.exit(1);
+}
+
 console.log(`[worker] starting — queue=${RFQ_QUEUE_NAME} transport=${transport.name}`);
 
 /** The blocking connection BullMQ parks on. `maxRetriesPerRequest: null` is
@@ -73,31 +89,22 @@ schedulerConnection.on("error", (error) =>
 const worker = new Worker(
   RFQ_QUEUE_NAME,
   async (job: Job) => {
-    if (job.name === SWEEP_JOB_NAME) {
-      const expired = await expireStalePendingScans();
-      return { swept: expired };
-    }
+    // The routing, the final-attempt arithmetic and the sweep all live in
+    // `@/server/queue/worker-runtime` — inside `src/`, where vitest can reach
+    // them. Nothing under `worker/` is in vitest's include glob, which is why
+    // AC11's mandated P5 was impossible to run before the 3.3 review.
+    const result = await handleJob(job, { transport });
 
-    const { leadId } = job.data as RfqJobData;
-    // BullMQ counts attempts from 1. The flow records a TERMINAL failure only
-    // on the last one, so a reason column never flickers mid-retry.
-    const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
-    const outcome = await processRfqSubmitted(leadId, { transport, isFinalAttempt });
-
-    console.log(
-      `[worker] ${RFQ_JOB_NAME} lead=${leadId} notify=${outcome.notify} confirm=${outcome.confirm}` +
-        ` attempt=${job.attemptsMade + 1}/${job.opts.attempts ?? 1}`,
-    );
-
-    if (outcome.retry) {
+    if ("retry" in result && result.retry) {
       // Throwing is BullMQ's ONLY retry signal, which is why the flow returns a
-      // value and the translation happens here at the edge — keeping
-      // `processRfqSubmitted` testable without a queue.
+      // value and the translation happens here at the edge — keeping the send
+      // flow testable without a queue.
       throw new Error(
-        `[worker] delivery incomplete for ${leadId} (notify=${outcome.notify} confirm=${outcome.confirm})`,
+        `[worker] delivery incomplete for ${(job.data as { leadId?: string }).leadId}` +
+          ` (notify=${result.notify} confirm=${result.confirm})`,
       );
     }
-    return outcome;
+    return result;
   },
   { connection: workerConnection as never },
 );
@@ -111,36 +118,14 @@ worker.on("failed", (job, error) => {
 worker.on("error", (error) => console.error("[worker] worker error:", error));
 
 /**
- * The stuck-`pending` sweep (Story 3.3 Task 0 #2, an Asim decision).
- *
- * Story 3.7b shipped `expireStalePendingScans` with ZERO callers, honestly
- * documented as waiting for whatever first wrote `pending` asynchronously.
- * BullMQ v6's Job Schedulers are the ready-made slot: `upsertJobScheduler` is
- * idempotent, so restarting the worker re-registers rather than duplicating,
- * and the scheduled job flows through the SAME Worker above — no second
- * process, no cron container, no new infrastructure.
- *
- * Under today's synchronous scan nothing writes `pending`, so the sweep finds
- * zero rows. That is the point: the guarantee should not wait for the first
- * async writer to arrive and remember to wire it.
+ * Own the scheduler's Queue handle and its lifetime; the registration DECISION
+ * — the id, the interval, the job name, and the swallow-on-failure rule — lives
+ * in `@/server/queue/worker-runtime`, where it is asserted and P5-proven.
  */
-async function registerSweepScheduler(): Promise<void> {
+async function registerSweep(): Promise<void> {
   const queue = new Queue(RFQ_QUEUE_NAME, { connection: schedulerConnection as never });
   try {
-    await queue.upsertJobScheduler(
-      SWEEP_SCHEDULER_ID,
-      { every: SWEEP_EVERY_MS },
-      {
-        name: SWEEP_JOB_NAME,
-        opts: { removeOnComplete: { count: 24 }, removeOnFail: { count: 24 } },
-      },
-    );
-    console.log(`[worker] sweep scheduler registered (every ${SWEEP_EVERY_MS}ms)`);
-  } catch (error) {
-    // A failed registration must not stop the worker from sending email: the
-    // sweep is housekeeping, and the GUARANTEE it supports is derived at read
-    // time in `toLeadAttachmentView` rather than depending on this having run.
-    console.error("[worker] sweep scheduler registration failed:", error);
+    await registerSweepScheduler(queue as unknown as Parameters<typeof registerSweepScheduler>[0]);
   } finally {
     await queue.close().catch(() => {});
   }
@@ -178,7 +163,7 @@ process.on("SIGINT", () => void shutdown("SIGINT"));
  */
 async function main(): Promise<void> {
   await worker.waitUntilReady();
-  await registerSweepScheduler();
+  await registerSweep();
   console.log("[worker] ready");
 }
 

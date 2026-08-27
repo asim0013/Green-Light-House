@@ -100,11 +100,13 @@ jobs:
       # service that provides it.
       CLAMAV_HOST: localhost
       CLAMAV_PORT: "3310"
-      # Story 3.3's deterministic mail transport. `memory` records sends in
-      # process, so the provider-failure proof is repeatable and CI never
-      # touches a real provider. RFQ_NOTIFY_TO must be non-empty or the
-      # notification path short-circuits as `unconfigured` and the proof
-      # would assert nothing.
+      # Story 3.3's mail settings. DEFENSIVE DEFAULTS, NOT A TEST DEPENDENCY —
+      # and the comment that used to sit here claimed otherwise, which the 3.3
+      # review caught. No test reads these from the ambient environment: the
+      # send-flow proof injects its own MemoryTransport and writes its own
+      # RFQ_NOTIFY_TO. They are set so that any FUTURE path reaching
+      # `createEmailTransport()` or `resolveNotifyRecipient()` in CI resolves
+      # deterministically and can never select the real provider.
       EMAIL_PROVIDER: memory
       RFQ_NOTIFY_TO: ci-notify@glh.invalid
       EMAIL_FROM: ci-rfq@glh.invalid
