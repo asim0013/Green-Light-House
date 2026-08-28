@@ -1,6 +1,7 @@
 import { createRef } from "react";
 import { describe, it, expect, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import type { RfqPrefill } from "@/server/rfq-prefill";
 import en from "../../../messages/en.json";
 import tr from "../../../messages/tr.json";
 import ru from "../../../messages/ru.json";
@@ -390,5 +391,86 @@ describe("AttachmentField standalone — the in-flight state and the border toke
     // Idle-with-file shows the filename and the remove control instead.
     expect(html).toContain("spec.pdf");
     expect(html).toContain("attachmentRemove");
+  });
+});
+
+describe("the PRE-FILLED render — the SSR paint (Story 3.4, Task 0 #54)", () => {
+  /**
+   * ⚠️ §H UNIT TEST #9, WRITTEN BY THE 3.4 REVIEW. Story 3.4 ticked "Task 10 —
+   * P5 on every new gate" while the pre-filled render had no unit coverage at
+   * all, so the whole of Task 0 #54 shipped unexercised.
+   *
+   * WHY THIS FILE AND NOT AN E2E: #54 is specifically about the SERVER HTML.
+   * `defaultValues` is react-hook-form's mechanism and it applies at MOUNT, so
+   * without an explicit `defaultValue` on each registered control the SSR paint
+   * is EMPTY and the values appear only once hydration lands — a visible flash
+   * of a blank form on the one page the buyer arrived at expecting their context
+   * to be there. An e2e runs after hydration and cannot see the difference;
+   * `renderToStaticMarkup` is exactly the pre-hydration snapshot.
+   */
+  function prefilled(overrides: Partial<RfqPrefill> = {}): RfqPrefill {
+    return {
+      params: { project: "lng-terminal-fire-gas-upgrade" },
+      resolved: { project: "lng-terminal-fire-gas-upgrade" },
+      doorway: "project",
+      industry: { slug: "oil-gas", name: "Oil & Gas", isFallback: false },
+      equipment: [
+        { kind: "product", slug: "fd-9500", label: "Flame Detector X1" },
+        { kind: "category", slug: "flame-detectors", label: "Flame detectors" },
+      ],
+      equipmentFallback: [false, false],
+      ...overrides,
+    };
+  }
+
+  const renderWith = (prefill: RfqPrefill) =>
+    renderToStaticMarkup(<RfqForm industries={INDUSTRIES} uiLocale="en" prefill={prefill} />);
+
+  it("paints the pre-selected industry into the SERVER markup", () => {
+    // P5: delete `defaultValue={prefill?.industry?.slug ?? ""}` from the select
+    // and this reddens — `defaultValues` alone leaves the option unselected in
+    // the server HTML.
+    const html = renderWith(prefilled());
+    expect(html).toMatch(/<option value="oil-gas"[^>]*selected/);
+  });
+
+  it("paints the ?q= text into the project-description textarea", () => {
+    // P5: delete `defaultValue={prefill?.query ?? ""}` from the textarea.
+    const html = renderWith(prefilled({ doorway: "search", industry: null, query: "fd9500x" }));
+    expect(html).toMatch(/<textarea[^>]*>fd9500x<\/textarea>/);
+  });
+
+  it("emits one INDIVIDUALLY removable chip per pre-loaded catalog item", () => {
+    const html = renderWith(prefilled());
+    // The mocked translator renders `key:values`, so the accessible name of each
+    // remove button carries the label it belongs to — which is also the
+    // "Remove undefined" regression guard: a chip read through `.text` instead
+    // of `labelOf` would render the literal string "undefined" here.
+    expect(html).toContain("equipmentRemove:Flame Detector X1");
+    expect(html).toContain("equipmentRemove:Flame detectors");
+    expect(html).not.toContain("undefined");
+  });
+
+  it("a NO-prefill render emits no chips and no banner — the other half of the pair", () => {
+    // Without this, "render chips unconditionally" would pass the test above.
+    const html = render();
+    expect(html).not.toContain("equipmentRemove:");
+    expect(html).not.toContain("rfq-prefill-banner");
+  });
+
+  it("renders NO banner when the doorway resolved nothing, but still mounts the form", () => {
+    // The 3.4 review's split: params survive for attribution while `doorway` is
+    // null, so AC2's "no empty banner, no placeholder text" must hold on a model
+    // that EXISTS. P5: gate the banner on `activePrefill` alone — reddens.
+    const html = renderWith({
+      params: { project: "zzq-marker-7f3" },
+      resolved: {},
+      doorway: null,
+      industry: null,
+      equipment: [],
+      equipmentFallback: [],
+    });
+    expect(html).not.toContain("rfq-prefill-banner");
+    expect(html).toContain("rfq-industry");
   });
 });

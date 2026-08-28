@@ -14,6 +14,7 @@ import {
   buildPrefillContext,
   type PrefillParams,
 } from "@/server/rfq/prefill";
+import { resolveRfqPrefill, type RfqPrefill } from "@/server/rfq-prefill";
 import {
   ATTACHMENT_MAX_BYTES,
   attachmentStorageKey,
@@ -541,20 +542,29 @@ export async function POST(request: Request) {
 
   const equipment = await resolveEquipment(input.equipment, input.locale);
 
-  // ATTRIBUTION, RE-RESOLVED SERVER-SIDE (Story 3.4, AC9).
+  // ATTRIBUTION, RE-RESOLVED SERVER-SIDE (Story 3.4, AC9 — corrected by its
+  // review, which found all three of the values below to be wrong).
   //
-  // ⚠️ `input.prefill` carries the ORIGINAL PARAMS, never a `source`. The client
-  // has no say in what this lead is attributed to: `source` is derived here by
-  // walking the frozen precedence, exactly as the page did when it rendered the
-  // banner. A body smuggling `source: "project"` is stripped by the schema as an
-  // unknown key — the same treatment `reference` and `status` get — and
-  // `route.test.ts` asserts it never reaches the create args. That assertion
-  // staying green is the proof a browser cannot forge its own provenance.
+  // `input.prefill` carries the ORIGINAL PARAMS, never a `source`: the schema
+  // has no such field, so a body smuggling `source: "project"` is stripped as an
+  // unknown key exactly as `reference` and `status` are, and `route.test.ts`
+  // asserts it never reaches the create args.
   //
-  // The one thing only the client knows is whether the buyer pressed Clear, so
-  // that single boolean is accepted and recorded. `edited` is derived rather
-  // than trusted: a doorway that resolved values which did NOT arrive back in
-  // the payload was edited, whatever the client says.
+  // ⚠️ WHAT THAT BUYS, AND WHAT IT DOES NOT. The first version of this comment
+  // claimed a browser "cannot forge its own provenance"; that was false, and the
+  // review proved it. Stripping the key stops a client NAMING a source — but
+  // under the frozen 1:1 param→source mapping, choosing WHICH PARAM to send is
+  // choosing the source, so a client that never visited a doorway can still
+  // submit a real slug and be attributed to it. Only signing the context at
+  // render time would prevent that, and it is not worth it here: `Lead.source`
+  // is an analytics signal, not an authenticated fact, and no authorization,
+  // routing or SLA decision keys on it.
+  //
+  // What the re-resolution below DOES guarantee is that every recorded origin
+  // names a row that really exists and is published. A fabricated, deleted or
+  // draft slug now falls through to the next precedence entry instead of being
+  // written verbatim into `prefillContext.resolved`, which is what that field's
+  // frozen docstring always promised.
   const prefillParams: PrefillParams = {};
   if (input.prefill) {
     for (const param of SLUG_PREFILL_PARAMS) {
@@ -563,10 +573,16 @@ export async function POST(request: Request) {
     }
     if (input.prefill.q) prefillParams.q = input.prefill.q;
   }
+  // Re-run the PAGE'S OWN resolution so `source`, `resolved` and `edited` all
+  // describe what the buyer was actually shown. Skipped entirely for a cold
+  // visit, which is the common case and must cost nothing.
+  const seeded = hasPrefillParams(prefillParams)
+    ? await resolveRfqPrefill(prefillParams, input.locale, await listIndustries(input.locale))
+    : null;
   const cleared = input.prefill?.cleared ?? false;
-  const edited = !cleared && wasPrefillEdited(prefillParams, input);
-  const source = resolvePrefillSource(prefillParams);
-  const prefillContext = buildPrefillContext(prefillParams, { cleared, edited });
+  const edited = !cleared && wasPrefillEdited(seeded, input);
+  const source = resolvePrefillSource(seeded?.resolved ?? {});
+  const prefillContext = buildPrefillContext(seeded?.resolved ?? {}, { cleared, edited });
 
   // AC4's column map. What is ABSENT is load-bearing: `reference` and `status`
   // are not merely omitted — `LeadCreateData` excludes them, so supplying one
@@ -699,19 +715,42 @@ export async function POST(request: Request) {
   return Response.json({ reference: created.reference }, { status: 201 });
 }
 
+/** Did the body carry any doorway param at all? Gates the extra reads below. */
+function hasPrefillParams(params: PrefillParams): boolean {
+  return SLUG_PREFILL_PARAMS.some((param) => params[param]) || Boolean(params.q);
+}
+
 /**
  * Did the buyer change what the doorway gave them? (AC9's `edited` flag.)
  *
  * DERIVED, NOT TRUSTED. The client could report this, but it has every reason to
- * be wrong about it and no reason to be right — so it is inferred from what
- * actually arrived: an industry the doorway supplied that is not in the payload
- * was removed, and a query it supplied that is not the project description was
- * rewritten. Chips are deliberately NOT compared: the buyer adding their own
- * `freeText` chip alongside the pre-filled ones is normal use, not an edit of
- * the pre-fill.
+ * be wrong about it and no reason to be right — so it is inferred by comparing
+ * the payload against what the pre-fill ACTUALLY SEEDED.
+ *
+ * ⚠️ COMPARED AGAINST THE RESOLVED MODEL, NOT THE RAW PARAMS (3.4 review). The
+ * first version compared `params.industry` and `params.q`, which made this
+ * function STRUCTURALLY DEAD for three of the five doorways: `?project=`,
+ * `?product=` and `?category=` supply neither param — a project doorway seeds
+ * its industry by RESOLVING the project, so `params.industry` is undefined and
+ * the industry comparison could never fire. Every project-doorway lead recorded
+ * `edited: false` no matter what the buyer did, and Story 4.7's admin would have
+ * reported it as untouched.
+ *
+ * Chips are compared in ONE direction only: a seeded catalog chip the buyer
+ * REMOVED is an edit, while chips they ADD are not — typing an extra `freeText`
+ * line alongside the pre-fill is normal use, not a rejection of it.
  */
-function wasPrefillEdited(params: PrefillParams, input: RfqInput): boolean {
-  if (params.industry && input.industry !== params.industry) return true;
-  if (params.q && input.projectDetails !== params.q) return true;
+function wasPrefillEdited(seeded: RfqPrefill | null, input: RfqInput): boolean {
+  if (!seeded) return false;
+  if (seeded.industry && input.industry !== seeded.industry.slug) return true;
+  if (seeded.query && input.projectDetails !== seeded.query) return true;
+  const submitted = input.equipment ?? [];
+  for (const chip of seeded.equipment) {
+    if (!("slug" in chip)) continue;
+    const kept = submitted.some(
+      (item) => item.kind === chip.kind && "slug" in item && item.slug === chip.slug,
+    );
+    if (!kept) return true;
+  }
   return false;
 }

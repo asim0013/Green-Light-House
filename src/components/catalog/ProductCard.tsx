@@ -25,8 +25,16 @@ import type { ProductCardItem } from "@/server/repositories/product";
  * resolution, while a card affordance is a catalogue interaction that changes
  * the grid and inverts three assertions. `/rfq` is live since 3.2, so DP-12 is
  * no longer the reason — this is UNASSIGNED work, and naming a story that
- * already declined it would be worse than naming none. The download href is the /api route — a plain <a>, NOT the
- * next-intl Link: /api URLs carry no locale segment.
+ * already declined it would be worse than naming none.
+ *
+ * ⚠️ THAT IS A DEVIATION FROM TASK 0 #18, recorded here rather than left
+ * silent (3.4 review). The decision said "re-point all three comments at a
+ * NAMED later story"; no story in Epic 3 or 4 claims a product-card inquiry
+ * affordance, so there was nothing truthful to point at. Whoever picks this up
+ * owns inverting `e2e/catalog.spec.ts` and `e2e/documents.spec.ts` with it.
+ *
+ * The download href is the /api route — a plain <a>, NOT the next-intl Link:
+ * /api URLs carry no locale segment.
  *
  * THE CARD IS NOW A LINK (Story 2.4) — to `/products/<slug>`, the detail page it
  * had been promising since 2.1. It is built as a STRETCHED OVERLAY, not a wrapper:

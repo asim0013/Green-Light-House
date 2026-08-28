@@ -98,8 +98,16 @@ export interface PrefillDisposition {
  * Assemble the `Lead.prefillContext` value.
  *
  * SLUGS ONLY in `resolved` — every value here has already passed `isValidSlug`
- * via `readPrefillParams`, and `parsePrefillContext` re-gates on the way back out
- * of JSONB. `q` is kept separately because it is buyer text, not a slug.
+ * via `readPrefillParams`, AND (since the 3.4 review) resolved to a real
+ * published row, so a fabricated slug is never recorded. `q` is kept separately
+ * because it is buyer text, not a slug.
+ *
+ * ⚠️ `parsePrefillContext` HAS NO PRODUCTION CALLER YET, and this docstring used
+ * to imply it ran ("re-gates on the way back out of JSONB"). Nothing in `src/`
+ * reads `Lead.prefillContext` — Story 4.7's admin will be the first. The guard
+ * and its tests are written ahead of that reader deliberately, exactly as
+ * `parseLeadEquipment` was before this story wired it into `notify.ts`; stating
+ * it as a property of the current code was the error, not writing it early.
  */
 export function buildPrefillContext(
   params: PrefillParams,

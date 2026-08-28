@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/db";
 import { queryIndustries, queryIndustryBySlug } from "./industry";
-import { queryPublishedProjects, queryProjectBySlug } from "./project";
+import { queryPublishedProjects, queryProjectBySlug, queryProjectPrefill } from "./project";
 import {
   queryTopLevelCategories,
   queryCategoriesByIndustry,
@@ -1183,6 +1183,67 @@ describe("Story 3.1 — project detail read (integration)", () => {
     } finally {
       await prisma.projectProduct.deleteMany({ where: { productId: draft.id } });
       await prisma.product.delete({ where: { id: draft.id } });
+    }
+  });
+
+  it("queryProjectPrefill NEVER offers a DRAFT product's category as a chip (Task 0 #45)", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    /**
+     * ⚠️ THE DOORWAY'S OWN COPY OF THE GUARD, WHICH HAD NO TEST. Story 3.4
+     * ticked Task 0 #45 — "extend the fixture; assert the draft product's
+     * CATEGORY is absent from the chip set" — without writing it; its review
+     * found the gap. The guard sits in a `where` on the JOIN ROWS, the only
+     * place it works: Story 3.1 proved live that a `ProductInclude` cannot
+     * filter the product.
+     *
+     * What leaks if it regresses is worse here than on the equipment grid: the
+     * category of an unpublished product would be pre-loaded as a chip and ride
+     * into the buyer's own inquiry email.
+     *
+     * The category is created FRESH rather than reused — it has to be one that
+     * NO published product links to, or its absence would prove nothing.
+     *
+     * P5: move the `status` filter off the join-row `where` (e.g. into the
+     * product include) and this reddens.
+     */
+    const manufacturer = await prisma.manufacturer.findFirstOrThrow();
+    const lng = await prisma.project.findUniqueOrThrow({ where: { slug: PROJECT_SLUG } });
+    const unreleased = await prisma.category.create({
+      data: {
+        slug: "zzz-int-test-unreleased-category",
+        translations: { create: [{ locale: "en", name: "ZZZ Unreleased Category" }] },
+      },
+    });
+    const draft = await prisma.product.create({
+      data: {
+        slug: "zzz-int-test-draft-chip",
+        model: "ZZZ-DRAFT-2",
+        status: "draft",
+        manufacturerId: manufacturer.id,
+        categoryId: unreleased.id,
+        attributes: {},
+        translations: { create: [{ locale: "en", name: "ZZZ Draft Chip" }] },
+      },
+    });
+    try {
+      await prisma.projectProduct.create({ data: { projectId: lng.id, productId: draft.id } });
+
+      const prefill = await queryProjectPrefill(PROJECT_SLUG, "en");
+      expect(prefill?.categories.map((c) => c.slug)).not.toContain(
+        "zzz-int-test-unreleased-category",
+      );
+
+      // …and it DOES appear once published, so the absence above is the status
+      // filter talking rather than a broken join.
+      await prisma.product.update({ where: { id: draft.id }, data: { status: "published" } });
+      const republished = await queryProjectPrefill(PROJECT_SLUG, "en");
+      expect(republished?.categories.map((c) => c.slug)).toContain(
+        "zzz-int-test-unreleased-category",
+      );
+    } finally {
+      await prisma.projectProduct.deleteMany({ where: { productId: draft.id } });
+      await prisma.product.delete({ where: { id: draft.id } });
+      await prisma.category.delete({ where: { id: unreleased.id } });
     }
   });
 

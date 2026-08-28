@@ -104,10 +104,41 @@ const RICH_TAG = /<(\/?)(\w+)>/g;
  * own nested argument would need a real parse. If that day comes, the message to
  * read is this comment, not the regex.
  */
-const PLURAL_BRANCH = /\b(?:zero|one|two|few|many|other|=\d+)\s*\{[^{}]*\}/g;
+const PLURAL_BRANCH = /(?:\b(?:zero|one|two|few|many|other)|=\d+)\s*\{[^{}]*\}/g;
+
+/**
+ * Does this message actually CONTAIN an ICU plural/select construct?
+ *
+ * ⚠️ TWO HOLES IN THE FIRST VERSION OF THIS GATE, both found by its own review.
+ *
+ * (1) `zero|one|two|few|many|other` are ORDINARY ENGLISH WORDS. Applied
+ * unconditionally, the strip ate plain prose: `"Choose one {option}"` had
+ * `one {option}` removed as though it were a branch, so `{option}` was never
+ * tokenised — and a `tr.json` that DROPPED `{option}` compared [] to [] and
+ * passed. A gate that silently stops counting the thing it exists to count is
+ * worse than no gate. Stripping now happens only inside a message that really
+ * has a plural/select construct.
+ *
+ * (2) The `=\d+` alternative was UNREACHABLE. `\b` gated the whole group, and
+ * between a space and `=` there is no word boundary, so `=0 {none}` was never
+ * stripped and its body was mis-read as a placeholder. The `\b` now scopes only
+ * to the keyword alternatives, where it belongs.
+ *
+ * HONEST LIMIT, unchanged: this is a regex, not an ICU parser. A message that
+ * mixes a real plural construct with prose containing `one {…}` would still
+ * over-strip, and a branch body carrying its own nested argument needs a real
+ * parse. If that day comes, the message to read is this comment, not the regex.
+ */
+const HAS_PLURAL_CONSTRUCT = /\{\s*\w+\s*,\s*(?:plural|select|selectordinal)\s*,/;
 
 function tokensOf(value: string): string[] {
-  return [...value.replace(PLURAL_BRANCH, "").matchAll(TOKEN)].map((match) => match[1]).sort();
+  const body = HAS_PLURAL_CONSTRUCT.test(value) ? value.replace(PLURAL_BRANCH, "") : value;
+  return [...body.matchAll(TOKEN)].map((match) => match[1]).sort();
+}
+
+/** The DISTINCT rich-tag names in a message, for set comparison. */
+function tagsOf(value: string): string[] {
+  return [...new Set([...value.matchAll(RICH_TAG)].map((match) => match[2]))].sort();
 }
 
 function tagBalanceOf(value: string): Record<string, number> {
@@ -117,6 +148,43 @@ function tagBalanceOf(value: string): Record<string, number> {
   }
   return balance;
 }
+
+describe("the branch-stripper itself — the gate's own instrument (3.4 review)", () => {
+  /**
+   * ⚠️ THESE TEST THE GATE, NOT THE MESSAGES, and that is deliberate: both holes
+   * the review found in `tokensOf` are LATENT against today's message files. No
+   * shipped string mixes prose with a branch-like word, and none uses `=0`, so
+   * neither bug could be reddened by any fixture — which is precisely why they
+   * survived. An instrument whose faults are invisible to the data it inspects
+   * has to be tested directly.
+   */
+  it("does NOT strip prose that merely contains a branch-like word", () => {
+    // The hole: `one` is an ordinary English word. Under the first version this
+    // returned [] — so a locale that DROPPED `{option}` compared [] to [] and
+    // passed the gate that exists to catch exactly that.
+    expect(tokensOf("Choose one {option}")).toEqual(["option"]);
+    expect(tokensOf("We keep {many} other {records}")).toEqual(["many", "records"]);
+  });
+
+  it("DOES strip real plural branch bodies, keeping only the argument", () => {
+    expect(tokensOf("{count, plural, one {product} other {products}}")).toEqual(["count"]);
+    // Russian's four branches and Turkish's one must compare equal — the branch
+    // SET is a property of the language, which is what the stripping is for.
+    expect(tokensOf("{count, plural, other {ürün}}")).toEqual(["count"]);
+  });
+
+  it("strips an =N branch body — the alternative that was unreachable", () => {
+    // `\b=0` can never match: between a space and `=` there is no word boundary.
+    // Before the fix this returned ["count", "none"] and any locale with a
+    // different branch set failed as a FALSE POSITIVE.
+    expect(tokensOf("{count, plural, =0 {none} other {some}}")).toEqual(["count"]);
+  });
+
+  it("compares rich tags as a SET, so a rename is visible", () => {
+    expect(tagsOf("<ref>{reference}</ref>")).toEqual(["ref"]);
+    expect(tagsOf("<reference>{reference}</reference>")).not.toEqual(tagsOf("<ref>x</ref>"));
+  });
+});
 
 describe("ICU placeholders and rich tags survive translation", () => {
   const reference = load(REFERENCE);
@@ -147,6 +215,23 @@ describe("ICU placeholders and rich tags survive translation", () => {
         for (const [tag, balance] of Object.entries(tagBalanceOf(value))) {
           expect(balance, `${locale}.${key} leaves <${tag}> unbalanced`).toBe(0);
         }
+      }
+    });
+
+    it(`${locale}.json carries the SAME rich-tag set as ${REFERENCE}.json`, () => {
+      // ⚠️ BALANCE IS NOT PARITY, and the check above only tested balance (found
+      // by this gate's own review). A translator who renamed `<b>` to `<strong>`
+      // left it perfectly balanced — and next-intl resolves rich tags by NAME
+      // against the handlers the call site passes, so the renamed tag has no
+      // handler and the buyer reads the literal key path. That is the exact
+      // failure this whole file exists to prevent, slipping through the half of
+      // the gate that was supposed to catch it.
+      const messages = load(locale);
+      for (const key of referenceLeaves) {
+        const expected = valueAt(reference, key);
+        const actual = valueAt(messages, key);
+        if (typeof expected !== "string" || typeof actual !== "string") continue;
+        expect(tagsOf(actual), `${locale}.${key} rich-tag set differs`).toEqual(tagsOf(expected));
       }
     });
   }

@@ -36,6 +36,10 @@ async function upsertIndustryNames(industryId: string, translations: Tr[]) {
       create: { industryId, locale, name },
     });
   }
+  await deleteUnlistedLocales(
+    (locales) => prisma.industryTranslation.deleteMany({ where: { industryId, locale: locales } }),
+    translations,
+  );
 }
 
 async function upsertCategoryNames(categoryId: string, translations: Tr[]) {
@@ -46,6 +50,34 @@ async function upsertCategoryNames(categoryId: string, translations: Tr[]) {
       create: { categoryId, locale, name },
     });
   }
+  await deleteUnlistedLocales(
+    (locales) => prisma.categoryTranslation.deleteMany({ where: { categoryId, locale: locales } }),
+    translations,
+  );
+}
+
+/**
+ * Retract translations the fixture no longer lists.
+ *
+ * ⚠️ THE HALF THE UPSERT CANNOT DO, and the one that actually drew blood (3.4
+ * review). An upsert repairs a CHANGED row but leaves a REMOVED one behind.
+ * Story 3.4 seeded its new project fixture with Russian names, which un-thinned
+ * `/ru/projects` and broke two SEO proofs — and deleting them from this file was
+ * NOT enough: the orphan row had to be removed from the database by hand, with
+ * nothing in the repo encoding that repair. A seed that cannot retract is a seed
+ * whose output depends on every version of itself that has ever run.
+ *
+ * ⚠️ IMPLICATION, stated deliberately: for these two entities the seed is now
+ * DECLARATIVE — this file is the whole truth, and a locale absent from it will
+ * be deleted on the next run. That is what makes it idempotent; it also means
+ * Epic 4's admin must not treat `db:seed` as safe to run against rows a human
+ * has edited.
+ */
+async function deleteUnlistedLocales(
+  remove: (locales: { notIn: Locale[] }) => Promise<unknown>,
+  translations: Tr[],
+) {
+  await remove({ notIn: translations.map((t) => t.locale) });
 }
 
 async function main() {

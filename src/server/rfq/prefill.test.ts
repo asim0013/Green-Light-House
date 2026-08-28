@@ -42,6 +42,17 @@ describe("resolvePrefillSource — walking the frozen precedence (AC9)", () => {
   it("never yields `service` — it is a RESERVED origin with no param that transmits it", () => {
     // contracts.ts hands 3.4 the decision and 3.4 declined: the services CTA
     // ships context-free, so nothing in the frozen vocabulary can write this.
+    //
+    // ⚠️ THE ASSERTION IS ON A `service` PARAM THAT DOES NOT EXIST, deliberately
+    // (3.4 review). The first version passed every REAL param and asserted the
+    // result was not "service" — which precedence guarantees on its own, so it
+    // could never fail and would not have noticed the vocabulary being widened.
+    // Smuggling the key in is what makes the guard falsifiable: add `service` to
+    // `SLUG_PREFILL_PARAMS`/`PREFILL_PRECEDENCE` and this reddens.
+    const smuggled = { service: "installation" } as unknown as Parameters<
+      typeof resolvePrefillSource
+    >[0];
+    expect(resolvePrefillSource(smuggled)).toBe("direct");
     const everyParam = { project: "p", product: "x", industry: "i", category: "c", q: "t" };
     expect(resolvePrefillSource(everyParam)).not.toBe("service");
   });

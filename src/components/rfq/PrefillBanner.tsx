@@ -28,9 +28,39 @@ import { labelOf } from "./EquipmentChips";
  * on the zero-result page they arrived from, and re-gated at the route.
  */
 
-/** U+00B7. Spelled by code point so no literal byte hides in the source, and so
- *  the byte-hygiene gate has nothing to object to. */
+/** U+00B7. Spelled by code point so no literal multi-byte character hides in the
+ *  source. Pinned by the `?project=` doorway assertion in `e2e/rfq.spec.ts` —
+ *  which was NOT true when this comment first claimed it, and is now (3.4
+ *  review). Swapping it for a hyphen reddens there. */
 const SEPARATOR = ` ${String.fromCharCode(0x00b7)} `;
+
+/**
+ * One server-resolved catalog name, with its fallback marking.
+ *
+ * ⚠️ `lang="en"` GOES ON THE CONTENT, not just beside it (3.4 review).
+ * `FallbackNotice`'s own docstring writes the caller's half of the contract
+ * down: "The fallen-back *content* is marked `lang='en'` by the caller so screen
+ * readers announce the language switch (AC4) — this component only renders the
+ * honest 'fallback happened' hint next to it." The banner shipped honouring the
+ * visible half and skipping the announced one, so a Turkish buyer's screen
+ * reader pronounced an English product name with Turkish phonemes — the WCAG
+ * 3.1.2 failure the convention exists to prevent, on the one surface whose whole
+ * job is composing names from three locales.
+ */
+function ResolvedName({
+  children,
+  isFallback,
+}: {
+  children: React.ReactNode;
+  isFallback: boolean;
+}) {
+  return (
+    <>
+      {isFallback ? <span lang="en">{children}</span> : children}
+      <FallbackNotice isFallback={isFallback} />
+    </>
+  );
+}
 
 const LEAD_IN = {
   project: "prefillProject",
@@ -56,16 +86,18 @@ export function PrefillBanner({
   prefill.equipment.forEach((item, index) => {
     parts.push(
       <span key={`chip-${index}`}>
-        {labelOf(item)}
-        <FallbackNotice isFallback={prefill.equipmentFallback[index] ?? false} />
+        <ResolvedName isFallback={prefill.equipmentFallback[index] ?? false}>
+          {labelOf(item)}
+        </ResolvedName>
       </span>,
     );
   });
   if (prefill.industry) {
     parts.push(
       <span key="industry">
-        {prefill.industry.name}
-        <FallbackNotice isFallback={prefill.industry.isFallback} />
+        <ResolvedName isFallback={prefill.industry.isFallback}>
+          {prefill.industry.name}
+        </ResolvedName>
       </span>,
     );
   }
@@ -76,7 +108,14 @@ export function PrefillBanner({
 
   // AC2: "no empty banner, no placeholder text". A doorway that resolved nothing
   // renders nothing at all rather than a shell.
-  if (parts.length === 0) return null;
+  //
+  // `doorway` is null for exactly that case since the 3.4 review — the params
+  // still travel for attribution, but there is no lead-in to name and nothing
+  // to show. Both halves are checked because they can fail independently: a
+  // doorway can resolve (`doorway` set) while every part is empty, and the
+  // params can survive with no doorway at all.
+  const doorway = prefill.doorway;
+  if (!doorway || parts.length === 0) return null;
 
   return (
     <div
@@ -86,7 +125,7 @@ export function PrefillBanner({
       className="flex flex-wrap items-center gap-x-2 gap-y-1 border border-ink-2 bg-surface px-4 py-3 text-[15px] text-ink"
       data-testid="rfq-prefill-banner"
     >
-      <span className="text-ink-2">{t(LEAD_IN[prefill.doorway])}</span>
+      <span className="text-ink-2">{t(LEAD_IN[doorway])}</span>
       <span className="font-medium">
         {parts.map((part, index) => (
           <span key={index}>

@@ -137,6 +137,32 @@ function optionalText(max: number) {
 }
 
 /**
+ * The `?q=` echo, measured the way the gate that produced it measures.
+ *
+ * ⚠️ CODE POINTS, NOT UTF-16 UNITS — and getting this wrong was a live defect
+ * (3.4 review). `searchQueryOf` caps the doorway query at 80 CODE POINTS
+ * deliberately, because slicing by code unit cut astral characters in half and
+ * made Prisma throw on the lone surrogate (the 2.5 review's 500). But
+ * `optionalText`'s `.max()` counts `String.length`, i.e. UTF-16 units — so a
+ * query of 80 emoji passes the page's gate at 160 units and is rejected HERE as
+ * `tooLong`.
+ *
+ * That failure is invisible and unrecoverable: the value is re-seeded from the
+ * URL on every render, it rides inside the `prefill` sub-object which has no
+ * form control, so the 422 maps to no field the buyer can see or edit. Every
+ * submit from that URL fails identically. Two gates on one value must measure
+ * it the same way.
+ */
+function optionalSearchEcho(max: number) {
+  return z
+    .string("invalid")
+    .trim()
+    .refine((value) => [...value].length <= max, "tooLong")
+    .refine(isStorableText, "invalid")
+    .optional();
+}
+
+/**
  * Slug-gated string: the shared shape+length gate (`isValidSlug`), so a
  * malformed value never reaches a query, a cache key, or a JSONB column.
  */
@@ -224,7 +250,7 @@ export const rfqSchema = z.object({
       // 80 == `SEARCH_QUERY_MAX_LENGTH` (`@/server/catalog-page`), spelled as a
       // literal rather than imported: this module is bundled into the CLIENT
       // island, and `catalog-page` reaches Prisma through the repositories.
-      q: optionalText(80),
+      q: optionalSearchEcho(80),
       cleared: z.boolean().default(false),
     })
     .optional(),

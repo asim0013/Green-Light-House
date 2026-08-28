@@ -195,6 +195,24 @@ export function parseLeadEquipment(value: unknown): LeadEquipment {
   return value.filter(isLeadEquipmentItem);
 }
 
+/**
+ * The display label of one chip, whichever variant it is.
+ *
+ * ⚠️ FOUR CALL SITES READ THIS, AND ALL FOUR READ `item.text` BEFORE Story 3.4:
+ * the announcement, the React key, the visible label and the remove button's
+ * ACCESSIBLE NAME. `product` and `category` items carry `label`, not `text` — so
+ * a pre-filled catalog chip announced itself as "Remove undefined". The frozen
+ * union discriminates on an explicit `kind`, never on which field is present, so
+ * this narrows rather than guessing.
+ *
+ * LIVES HERE, not in `EquipmentChips`, since the 3.4 review: `notify.ts` builds
+ * the internal email from the same union and a server module cannot import from
+ * a `"use client"` component. One accessor, one union, both callers.
+ */
+export function labelOf(item: LeadEquipmentItem): string {
+  return item.kind === "freeText" ? item.text : item.label;
+}
+
 // ---------------------------------------------------------------------------
 // 4. Lead.prefillContext
 // ---------------------------------------------------------------------------

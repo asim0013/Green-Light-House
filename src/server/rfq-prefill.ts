@@ -3,7 +3,7 @@ import { listCategoryTree, type CategoryTreeNode } from "@/server/repositories/c
 import { getProductBySlug } from "@/server/repositories/product";
 import { queryProjectPrefill, type PrefillName } from "@/server/repositories/project";
 import type { IndustryListItem } from "@/server/repositories/industry";
-import type { LeadEquipmentItem } from "@/server/rfq/contracts";
+import { SLUG_PREFILL_PARAMS, type LeadEquipmentItem } from "@/server/rfq/contracts";
 import type { PrefillParams } from "@/server/rfq/prefill";
 
 /**
@@ -14,12 +14,30 @@ import type { PrefillParams } from "@/server/rfq/prefill";
  * `/contact`, so the shape this returns is the shape `/contact` will also have
  * to satisfy — keep it a plain data model with no React in it.
  *
- * ⚠️ EVERY READ HERE IS UNCACHED, and that is a security posture rather than a
- * performance oversight. `/rfq` accepts up to four attacker-controlled slugs on
- * ONE URL and `PREFILL_PRECEDENCE` decides `Lead.source` only, so every present
- * param still has to resolve for `prefillContext` — caching per-slug would make
- * this the cheapest cache-cardinality amplifier on the site. The page is already
- * `force-dynamic`.
+ * ⚠️ CACHING, STATED EXACTLY — an earlier version of this comment claimed
+ * "EVERY READ HERE IS UNCACHED", and that was false (3.4 review). Per param:
+ *
+ *   ?project=  `queryProjectPrefill` — genuinely UNCACHED. This is the read the
+ *              story added, and the one Task 0 #38 was about: its payload is
+ *              keyed by an attacker-supplied slug and embeds category names that
+ *              depend on product status, so a per-slug entry here would be both
+ *              a cardinality amplifier AND a correctness trap.
+ *   ?industry= resolved off the list the PAGE already loaded, keyed by locale.
+ *              Zero new entries.
+ *   ?category= `listCategoryTree(locale)` — cached, but keyed by LOCALE ONLY.
+ *              Three entries total, none attacker-influenced.
+ *   ?product=  `getProductBySlug` — cached. The detail entry is keyed by ID, but
+ *              the slug→id hop underneath it (`product-id:{slug}`) stores a null
+ *              for an unknown slug, so a fabricated slug does mint one entry.
+ *
+ * That last one is a REAL but PRE-EXISTING item: the same key space is already
+ * reachable through `/products/{slug}`, `resolveProductId`'s own docstring names
+ * it, and it is on the deferred list as an unbounded-cardinality issue. This
+ * page adds another route to it, not a new exposure — and one request can touch
+ * it once, exactly as one product-detail request can. Fixing it belongs with the
+ * other negative-caching sites, not here.
+ *
+ * The page is already `force-dynamic`.
  */
 
 /** One resolved doorway, ready to render and to seed the form. */
@@ -35,8 +53,24 @@ export interface RfqPrefill {
    * `Lead.source` from the same input the page used.
    */
   params: PrefillParams;
-  /** Which doorway the banner should name — the precedence winner. */
-  doorway: "project" | "product" | "industry" | "category" | "search";
+  /**
+   * The SUBSET of `params` that resolved to a real, published row.
+   *
+   * ⚠️ ADDED BY THE 3.4 REVIEW, which found `Lead.prefillContext.resolved` being
+   * filled from `params` — so a slug naming nothing was recorded as though it
+   * had resolved, contradicting the field's own frozen docstring in
+   * `contracts.ts`. `q` is carried here whenever it survived its gates: it is
+   * buyer text, so "resolving" it means nothing more than that.
+   */
+  resolved: PrefillParams;
+  /**
+   * Which doorway the banner should name — the precedence winner, or `null`
+   * when nothing resolved and there is therefore nothing to show.
+   *
+   * ⚠️ NULLABLE SINCE THE 3.4 REVIEW, and the nullability is the whole point:
+   * rendering and attribution are separate questions. See `resolveRfqPrefill`.
+   */
+  doorway: "project" | "product" | "industry" | "category" | "search" | null;
   /** Industry slug to pre-select, when one resolved. */
   industry: PrefillName | null;
   /** Equipment chips to pre-load, already de-duplicated and ordered. */
@@ -80,6 +114,7 @@ export async function resolveRfqPrefill(
 ): Promise<RfqPrefill | null> {
   const equipment: LeadEquipmentItem[] = [];
   const equipmentFallback: boolean[] = [];
+  const resolved: PrefillParams = {};
   let industry: PrefillName | null = null;
 
   const push = (item: PrefillName, kind: "product" | "category") => {
@@ -99,6 +134,7 @@ export async function resolveRfqPrefill(
   if (params.project) {
     const project = await queryProjectPrefill(params.project, locale);
     if (project) {
+      resolved.project = params.project;
       industry = project.industry;
       for (const category of project.categories) push(category, "category");
     }
@@ -108,7 +144,13 @@ export async function resolveRfqPrefill(
   if (params.product) {
     const product = await getProductBySlug(params.product, locale);
     if (product) {
+      resolved.product = params.product;
       push({ slug: product.slug, name: product.name, isFallback: product.isFallback }, "product");
+      // Defensive only: `ProductDetail.category` is non-nullable (`product.ts`)
+      // and `categoryId` is a required column, so this branch cannot be false
+      // through the shipped read — the "and its category" half of AC3 is
+      // unconditional in practice. Kept narrow rather than asserted, but do not
+      // read it as evidence that an uncategorised product exists (3.4 review).
       if (product.category) {
         push(
           {
@@ -123,9 +165,17 @@ export async function resolveRfqPrefill(
   }
 
   // --- ?industry= : resolved off the already-loaded list, never a fresh read
-  if (params.industry && !industry) {
+  if (params.industry) {
     const match = industries.find((candidate) => candidate.slug === params.industry);
-    if (match) industry = { slug: match.slug, name: match.name, isFallback: match.isFallback };
+    if (match) {
+      // Recorded as resolved whether or not it wins the SELECT: a project
+      // doorway that also carried `?industry=` still resolved that param, and
+      // `prefillContext` records what resolved, not what was displayed.
+      resolved.industry = params.industry;
+      if (!industry) {
+        industry = { slug: match.slug, name: match.name, isFallback: match.isFallback };
+      }
+    }
   }
 
   // --- ?category= : a chip, not an origin. Frozen and accepted since Story 3.0;
@@ -134,25 +184,65 @@ export async function resolveRfqPrefill(
   if (params.category) {
     const tree = await listCategoryTree(locale);
     const node = findCategoryNode(tree, params.category);
-    if (node) push({ slug: node.slug, name: node.name, isFallback: node.isFallback }, "category");
+    if (node) {
+      resolved.category = params.category;
+      push({ slug: node.slug, name: node.name, isFallback: node.isFallback }, "category");
+    }
   }
+  // `q` needs no lookup — it is the buyer's own text and already passed
+  // `searchQueryOf` composed with `isStorableText` at the page seam.
+  if (params.q) resolved.q = params.q;
 
-  const doorway = doorwayOf(params, industry, equipment.length);
-  if (!doorway) return null;
+  // ⚠️ A DOORWAY THAT RESOLVED NOTHING STILL CARRIES ATTRIBUTION (3.4 review).
+  // This returned `null` whenever `doorwayOf` found nothing to SHOW, which also
+  // threw the params away: `/rfq?project=<unpublished-or-unknown>` reached the
+  // island as a cold visit, sent no `prefill` payload, and persisted as
+  // `direct` — silently contradicting the docstring on `doorwayOf` below, which
+  // states that a doorway resolving nothing "is still where the buyer came
+  // from". Rendering and attribution are now separate: `doorway` is null when
+  // there is nothing to display, while `params` travel regardless so
+  // `POST /api/rfq` can still record the origin.
+  if (!hasAnyParam(params)) return null;
 
-  const prefill: RfqPrefill = { params, doorway, industry, equipment, equipmentFallback };
+  const prefill: RfqPrefill = {
+    params,
+    resolved,
+    doorway: doorwayOf(params, industry, equipment.length),
+    industry,
+    equipment,
+    equipmentFallback,
+  };
   if (params.q) prefill.query = params.q;
   return prefill;
+}
+
+/** Did the URL carry any gated doorway param at all? The one condition under
+ *  which there is genuinely nothing to carry — a cold visit. */
+function hasAnyParam(params: PrefillParams): boolean {
+  return SLUG_PREFILL_PARAMS.some((param) => params[param]) || Boolean(params.q);
 }
 
 /**
  * Which doorway the BANNER names.
  *
- * Distinct from `resolvePrefillSource`, which answers a different question:
- * that one decides `Lead.source` from the params ALONE (a doorway that resolved
- * nothing is still where the buyer came from). This one decides what to SHOW,
- * so it only counts context that actually resolved — the AC's "no empty banner,
- * no placeholder text" depends on exactly that difference.
+ * Distinct from `resolvePrefillSource`, which answers a different question: that
+ * one decides `Lead.source`, this one decides what to SHOW — the AC's "no empty
+ * banner, no placeholder text" depends on that difference.
+ *
+ * ⚠️ THE TWO WALK DIFFERENT MEMBER LISTS, and that divergence is user-visible
+ * (3.4 review). `PREFILL_PRECEDENCE` has four members and deliberately EXCLUDES
+ * `category` — a category is equipment context, not an origin, and `LeadSource`
+ * has no member to write. This function has five branches and DOES name
+ * `category`, because a resolved category chip is something to show.
+ *
+ * So `/rfq?category=flame-detectors&q=fd9500` shows the buyer "Pre-filled from
+ * the category you were viewing…" while the lead records `source: search`. Both
+ * are individually correct and the pair reads as a contradiction in Story 4.7's
+ * admin. Left as-is rather than "fixed": changing the precedence list breaks a
+ * frozen cross-story contract, and changing this one would show a banner naming
+ * a doorway whose chip is not the one that resolved. Reachable only by a
+ * hand-typed URL today — 3.4 ships no `?category=` emitter — but written down
+ * here so whoever adds one decides deliberately.
  */
 function doorwayOf(
   params: PrefillParams,

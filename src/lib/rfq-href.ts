@@ -23,7 +23,16 @@ function doorway(param: "project" | "product" | "industry" | "category", slug: s
   return `${SITE.rfqHref}?${param}=${encodeURIComponent(slug)}`;
 }
 
-/** "I have a similar project" — the project detail band (shipped in 3.1). */
+/**
+ * "I have a similar project" — the project detail band.
+ *
+ * ⚠️ NO CALLER, like `rfqCategoryHref` below. That band shipped in Story 3.1
+ * and `ProjectCta` still builds the same URL by hand, so this builder is the
+ * canonical spelling rather than the one in use. Said plainly because the
+ * previous wording — "(shipped in 3.1)" — read as naming a caller that is
+ * actually a different expression in a different file (3.4 review). Whoever
+ * touches `ProjectCta` next should route it through here.
+ */
 export function rfqProjectHref(slug: string): string {
   return doorway("project", slug);
 }

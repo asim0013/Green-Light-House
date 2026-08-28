@@ -33,6 +33,7 @@ const burnLeadReference = vi.fn();
 const listIndustries = vi.fn();
 const getProductBySlug = vi.fn();
 const listCategoryTree = vi.fn();
+const queryProjectPrefill = vi.fn();
 const checkRateLimit = vi.fn();
 const scanBuffer = vi.fn();
 const putObject = vi.fn();
@@ -74,6 +75,14 @@ vi.mock("@/server/repositories/industry", () => ({
 }));
 vi.mock("@/server/repositories/product", () => ({
   getProductBySlug: (slug: string, locale: string) => getProductBySlug(slug, locale),
+}));
+// ⚠️ MOCKED SINCE THE 3.4 REVIEW, and it is not optional. The handler now
+// re-runs the page's own resolution to derive `source`/`resolved`/`edited`, so
+// an unmocked `queryProjectPrefill` would reach LIVE POSTGRES from a unit test —
+// vitest loads `.env`, which is the same trap the queue and limiter mocks above
+// exist to close.
+vi.mock("@/server/repositories/project", () => ({
+  queryProjectPrefill: (slug: string, locale: string) => queryProjectPrefill(slug, locale),
 }));
 vi.mock("@/server/repositories/category", () => ({
   listCategoryTree: (locale: string) => listCategoryTree(locale),
@@ -192,6 +201,7 @@ beforeEach(() => {
   listIndustries.mockReset();
   getProductBySlug.mockReset();
   listCategoryTree.mockReset();
+  queryProjectPrefill.mockReset();
   checkRateLimit.mockReset();
   scanBuffer.mockReset();
   putObject.mockReset();
@@ -204,6 +214,10 @@ beforeEach(() => {
   listIndustries.mockResolvedValue([{ slug: "fire-safety" }, { slug: "oil-gas" }]);
   getProductBySlug.mockResolvedValue(null);
   listCategoryTree.mockResolvedValue([]);
+  // Default: NOTHING resolves. Each attribution test opts in to the rows its
+  // doorway needs, so a test that forgets to is a test whose slug named nothing
+  // — which is now a meaningfully different outcome from one that resolved.
+  queryProjectPrefill.mockResolvedValue(null);
   checkRateLimit.mockResolvedValue({ allowed: true });
 });
 
@@ -1051,6 +1065,12 @@ describe("attribution is SERVER-DERIVED, never client-reported (Story 3.4, AC9)"
     // in the payload. (Dropping it is the `edited` case, proven separately
     // below — `VALID` alone carries no industry, so omitting it here would
     // silently assert the wrong branch.)
+    // The doorway must RESOLVE for its slug to be recorded — the handler re-runs
+    // the page's own reads since the 3.4 review.
+    queryProjectPrefill.mockResolvedValue({
+      industry: { slug: "oil-gas", name: "Oil & Gas", isFallback: false },
+      categories: [],
+    });
     const res = await post({
       ...VALID,
       industry: "oil-gas",
@@ -1077,6 +1097,9 @@ describe("attribution is SERVER-DERIVED, never client-reported (Story 3.4, AC9)"
   });
 
   it("a CATEGORY-only doorway is `direct` — category is equipment context, not an origin", async () => {
+    listCategoryTree.mockResolvedValue([
+      { slug: "flame-detectors", name: "Flame detectors", isFallback: false, children: [] },
+    ]);
     const res = await post({ ...VALID, prefill: { category: "flame-detectors" } });
     expect(res.status).toBe(201);
     const args = createLead.mock.calls[0][0];
@@ -1084,6 +1107,77 @@ describe("attribution is SERVER-DERIVED, never client-reported (Story 3.4, AC9)"
     // …and the value is still preserved, so the lead stays distinguishable
     // from cold traffic.
     expect(args.prefillContext).toMatchObject({ resolved: { category: "flame-detectors" } });
+  });
+
+  it("a FABRICATED slug resolves to nothing and is NOT recorded as an origin", async () => {
+    /**
+     * ⚠️ THE 3.4 REVIEW'S HEADLINE FINDING, and the proof it is closed. `source`
+     * used to be derived from the client's params ALONE, with no lookup of any
+     * kind — so a body naming any well-formed slug had it written straight into
+     * `Lead.source` and `prefillContext.resolved`, from a client that never
+     * loaded `/rfq`. `zzq-marker-7f3` is the marker the doorway e2e already
+     * uses: a VALID slug matching no row.
+     *
+     * P5: drop the `resolveRfqPrefill` call and pass `prefillParams` directly to
+     * `resolvePrefillSource`/`buildPrefillContext` — this reddens immediately,
+     * because the fabricated slug is recorded as a project origin again.
+     *
+     * ⚠️ WHAT THIS DOES NOT PROVE: that attribution is unforgeable. A client can
+     * still submit a REAL slug it never visited. See the handler's comment —
+     * `Lead.source` is an analytics signal, not an authenticated fact.
+     */
+    queryProjectPrefill.mockResolvedValue(null);
+    const res = await post({ ...VALID, prefill: { project: "zzq-marker-7f3" } });
+    expect(res.status).toBe(201);
+    const args = createLead.mock.calls[0][0];
+    expect(args.source).toBe("direct");
+    expect(args.prefillContext).toMatchObject({ resolved: {} });
+  });
+
+  it("`edited` is TRUE when a project-doorway buyer changes the industry it seeded", async () => {
+    /**
+     * ⚠️ STRUCTURALLY IMPOSSIBLE BEFORE THE 3.4 REVIEW, which is what made this
+     * worth writing. `wasPrefillEdited` compared `params.industry` — a param a
+     * `?project=` doorway NEVER supplies, because the industry is derived by
+     * resolving the project. So every project lead recorded `edited: false`
+     * whatever the buyer did, and Story 4.7 would report it as untouched.
+     *
+     * P5: compare against `params` instead of the resolved model — reddens.
+     */
+    queryProjectPrefill.mockResolvedValue({
+      industry: { slug: "oil-gas", name: "Oil & Gas", isFallback: false },
+      categories: [],
+    });
+    const res = await post({
+      ...VALID,
+      industry: "fire-safety", // the buyer picked a different sector
+      prefill: { project: "lng-terminal-fire-gas-upgrade", cleared: false },
+    });
+    expect(res.status).toBe(201);
+    const args = createLead.mock.calls[0][0];
+    expect(args.source).toBe("project");
+    expect(args.prefillContext).toMatchObject({ edited: true });
+  });
+
+  it("`edited` is TRUE when the buyer removes a chip the doorway seeded", async () => {
+    // The other half of `edited` for doorways that seed ONLY equipment
+    // (`?product=`, `?category=`): removal is an edit, while chips the buyer
+    // ADDS are not — which is why the payload here still carries a freeText one.
+    getProductBySlug.mockResolvedValue({
+      slug: "fd-9500",
+      name: "Flame Detector X1",
+      isFallback: false,
+      category: { slug: "flame-detectors", name: "Flame detectors", isFallback: false },
+    });
+    const res = await post({
+      ...VALID,
+      equipment: [{ kind: "freeText", text: "2 control panels" }],
+      prefill: { product: "fd-9500" },
+    });
+    expect(res.status).toBe(201);
+    const args = createLead.mock.calls[0][0];
+    expect(args.source).toBe("product");
+    expect(args.prefillContext).toMatchObject({ edited: true });
   });
 
   it("records `cleared` — the one thing only the client can know", async () => {

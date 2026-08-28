@@ -72,6 +72,33 @@ test.describe("the Projects index (AC1)", () => {
     await expect(
       page.locator('a[href="/en/projects/refinery-gas-detection-retrofit"]'),
     ).toHaveCount(1);
+
+    // ⚠️ THE NULL-INDUSTRY GROUP, LIVE FOR THE FIRST TIME. Story 3.4 seeded
+    // `standalone-workshop-fitout` with no industry — which made
+    // `groupByIndustry`'s NO_INDUSTRY_KEY branch reachable in production after
+    // shipping untested, and nothing asserted it (found by the 3.4 review's
+    // completeness critic; the story only edited this file's fixture COMMENT).
+    // The branch's own docstring says such a project "MUST NOT VANISH".
+    expect(groups.join(" ")).toContain("Other sectors");
+    await expect(page.locator('a[href="/en/projects/standalone-workshop-fitout"]')).toHaveCount(1);
+  });
+
+  test("a project with NO industry renders its detail page, minus the industry crumb", async ({
+    page,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+    // The second branch the null-industry fixture animated: the breadcrumb omits
+    // the industry crumb rather than rendering an empty one. Also unasserted
+    // until the 3.4 review — nothing in `e2e/` ever loaded this project's page.
+    await page.goto("/en/projects/standalone-workshop-fitout");
+
+    await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+    const crumbs = page.getByRole("navigation", { name: /breadcrumb/i });
+    await expect(crumbs).toBeVisible();
+    // The crumb trail exists and leads back to the index; no blank crumb sits in
+    // it where the industry would be.
+    await expect(crumbs.locator('a[href="/en/projects"]')).toHaveCount(1);
+    await expect(crumbs.getByRole("link", { name: /^\s*$/ })).toHaveCount(0);
   });
 
   test("an industry with no published project is not emitted as a heading", async ({

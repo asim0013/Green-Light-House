@@ -54,6 +54,11 @@ interface PrismaLike {
       consentAt: Date | null;
       consentVersion: string | null;
       source: string;
+      // Story 3.4's other attribution column. Added by that story's REVIEW: the
+      // story shipped `prefillContext` with no test that it ever reached
+      // Postgres, and this hand-written row type is why — it silently omitted
+      // the column, so no e2e could have asserted it.
+      prefillContext: unknown;
       reference: string;
       attachmentKey: string | null;
       attachmentName: string | null;
@@ -1061,6 +1066,11 @@ test.describe("doorway pre-fill (Story 3.4)", () => {
     await expect(banner).toContainText("Fire & gas detection");
     await expect(banner).toContainText("Flame detectors");
     await expect(banner).toContainText("Oil & Gas");
+    // ⚠️ THE SEPARATOR IS U+00B7 (·), NOT A HYPHEN (Task 0 #23) — and nothing
+    // pinned it until the 3.4 review, though `PrefillBanner`'s docstring said
+    // "it is pinned in an e2e assertion". Spelled from its code point so no
+    // literal multi-byte character enters this file.
+    await expect(banner).toContainText(String.fromCharCode(0x00b7));
     // Each chip is individually removable — the 44px floor, not the chip idiom.
     await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(2);
   });
@@ -1076,6 +1086,63 @@ test.describe("doorway pre-fill (Story 3.4)", () => {
     await expect(page.getByTestId("rfq-prefill-banner")).toHaveCount(0);
     await expect(page.getByLabel("Industry")).toHaveValue("");
     await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(0);
+  });
+
+  test("?project= with an industry but ZERO products names ONLY the industry", async ({
+    page,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+    /**
+     * ⚠️ THE PARTIAL-RESOLUTION BRANCH, which no shipped test covered (§H E2E
+     * #12, written by the 3.4 review's completeness critic). The two doorway
+     * tests either side of it exercise the extremes — LNG resolves BOTH an
+     * industry and chips, `standalone-workshop-fitout` resolves NEITHER — so
+     * nothing exercised exactly one. That is the branch AC2 is actually about:
+     * "the banner names only the context that actually resolved".
+     *
+     * A regression that required BOTH an industry and chips before showing a
+     * banner, or that emitted an empty chip section, would pass every other
+     * doorway test in this file.
+     */
+    await openDoorway(page, "?project=refinery-gas-detection-retrofit");
+
+    const banner = page.getByTestId("rfq-prefill-banner");
+    await expect(banner).toBeVisible();
+    await expect(banner).toContainText("Oil & Gas");
+    // The industry resolved; there are no linked published products, so there
+    // are no chips and no placeholder standing in for them.
+    await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(0);
+    await expect(page.getByLabel("Industry")).toHaveValue("oil-gas");
+  });
+
+  test("AC13: the banner and every pre-filled value SURVIVE a failed submit", async ({
+    page,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+    /**
+     * ⚠️ AC13 WAS EXAMINED BY NO REVIEW LENS AND HAS NO TEST AT ANY LEVEL —
+     * found by the 3.4 review's completeness critic, which noticed the whole
+     * acceptance criterion had shipped on inspection alone. Task 8 ticks both
+     * halves.
+     *
+     * This half guards a SHIPPED invariant the form's own docstring calls
+     * load-bearing: failed submits never clear entered input. An edit that
+     * unmounted the banner on error, or called `reset()` on the 422 path, would
+     * take every pre-filled value with it and nothing would go red.
+     */
+    await openDoorway(page, "?project=lng-terminal-fire-gas-upgrade");
+    await expect(page.getByTestId("rfq-prefill-banner")).toBeVisible();
+
+    // Force the submit to fail at the transport, leaving the form mounted.
+    await page.route("**/api/rfq", (route) => route.abort());
+    await page.getByLabel("Quantities").fill("12 detectors");
+    await page.getByRole("button", { name: /send|submit/i }).click();
+
+    // The banner is still here, and so is everything the doorway seeded.
+    await expect(page.getByTestId("rfq-prefill-banner")).toBeVisible();
+    await expect(page.getByLabel("Industry")).toHaveValue("oil-gas");
+    await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(2);
+    await expect(page.getByLabel("Quantities")).toHaveValue("12 detectors");
   });
 
   test("?product= loads the product AND its category, each removable independently", async ({
@@ -1128,23 +1195,35 @@ test.describe("doorway pre-fill (Story 3.4)", () => {
     await expect(page.getByLabel("Quantities")).toHaveValue("12 detectors, 2 panels");
     // The removal is announced through the form's EXISTING live region.
     await expect(page.locator('[role="status"]')).toContainText("cleared");
+    // ⚠️ FOCUS, WHICH NOTHING ASSERTED AT ANY LEVEL before the 3.4 review —
+    // AC8 ends "focus moves to the first control the pre-fill touched" and
+    // Task 4 ticked it. Deleting `target?.focus()` dropped focus to <body> when
+    // the banner unmounted (the exact WCAG failure the code says it prevents)
+    // and reddened nothing. This doorway seeded the industry, so that is first.
+    await expect(page.getByLabel("Industry")).toBeFocused();
   });
 
-  test("AC12: a SOFT navigation to a different doorway re-fills — the island is keyed", async ({
+  test("AC12: reaching a SECOND doorway through a client-side journey re-fills", async ({
     page,
   }, testInfo) => {
     if (!dbReady) testInfo.skip();
     /**
-     * ⚠️ EVERY STEP AFTER THE FIRST `goto` MUST BE A CLIENT-SIDE NAVIGATION, and
-     * the first version of this test got that wrong: it called `page.goto()`
-     * twice, which is a FULL RELOAD. React remounts on a reload whatever the
-     * key is, so the test passed with the key deleted — a test that could not
-     * fail, guarding the highest-risk defect in the story.
+     * ⚠️ THIS TEST DOES NOT PROVE AN ISLAND KEY, AND ITS TITLE USED TO SAY IT
+     * DID (3.4 review). No key exists: one was written, nothing could redden on
+     * its removal, and a probe showed Next 16's App Router already remounts the
+     * island across this navigation on its own (Completion Note 3). A test
+     * naming a mechanism the code does not contain sends the next reader looking
+     * for it.
      *
-     * The defect itself: `RfqForm` reads its defaultValues once at mount and
-     * never calls `reset()`. Without a key on the resolved identity, React keeps
-     * the SAME mounted island across a soft navigation and the buyer sees the
-     * first doorway's chips on a page whose URL says the second.
+     * What it DOES pin is the observable behaviour AC12 asks for: arrive at one
+     * doorway, journey to another, and the form reflects the SECOND. If a future
+     * Next version stops remounting, this goes red and whoever fixes it does so
+     * with a failing test in hand.
+     *
+     * Note the route changes in between (`/rfq` → `/products` → `/rfq`), so the
+     * island unmounts for that reason alone. The same-route case — two `/rfq`
+     * URLs with no other page between — is covered by the language-switch test
+     * below, which is the only in-app link that navigates `/rfq` → `/rfq`.
      */
     // Start at the CATALOGUE, so every later step can be a client-side click.
     await page.goto("/en/products");
@@ -1184,6 +1263,50 @@ test.describe("doorway pre-fill (Story 3.4)", () => {
     await expect(banner).not.toContainText("Flame Detector");
   });
 
+  test("KEYSTONE: a doorway submit persists source + prefillContext, and the banner goes with the form", async ({
+    page,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+    /**
+     * ⚠️ §H E2E #19, "THE KEYSTONE", WAS NEVER WRITTEN (3.4 review). Story 3.4
+     * ticked Task 6 and Task 10 while the only attribution tests mocked
+     * `createLead` — so nothing anywhere proved that `Lead.source` and
+     * `Lead.prefillContext` survive the round trip into Postgres. The columns
+     * are what Story 4.7's admin reads; a JSONB shape that never reached the
+     * database would have been discovered there.
+     *
+     * It also carries AC13's SUCCESS half (Task 0 #58), which no lens examined:
+     * the banner is rendered inside the success conditional, so on a 201 it must
+     * disappear with the form rather than sit beside the thank-you surface still
+     * offering a Clear button for a submission that already happened.
+     */
+    const email = uniqueEmail(testInfo.workerIndex);
+    await page
+      .context()
+      .setExtraHTTPHeaders({ "x-forwarded-for": fakeClientIp(testInfo.workerIndex) });
+
+    await openDoorway(page, "?project=lng-terminal-fire-gas-upgrade");
+    await expect(page.getByTestId("rfq-prefill-banner")).toBeVisible();
+    await fillMinimalForm(page, email);
+    await page.getByRole("button", { name: "Send project inquiry" }).click();
+
+    await expect(page.getByRole("heading", { name: "Inquiry sent" })).toBeVisible();
+    // AC13's success half: the banner left with the form.
+    await expect(page.getByTestId("rfq-prefill-banner")).toHaveCount(0);
+
+    const referenceText = await page.getByText(/^GLH-RFQ-\d+$/).innerText();
+    const row = await withPrisma((db) =>
+      db.lead.findUnique({ where: { reference: referenceText } }),
+    );
+    expect(row, `no lead row for on-screen reference ${referenceText}`).not.toBeNull();
+    // The doorway, recorded server-side — not a value the browser chose.
+    expect(row!.source).toBe("project");
+    expect(row!.prefillContext).toMatchObject({
+      resolved: { project: "lng-terminal-fire-gas-upgrade" },
+      cleared: false,
+    });
+  });
+
   test("the banner RENDERS in TR and RU — not just EN", async ({ page }, testInfo) => {
     if (!dbReady) testInfo.skip();
     // ⚠️ NOTHING ASSERTED THAT /tr/rfq OR /ru/rfq RENDER AT ALL before Story
@@ -1201,5 +1324,91 @@ test.describe("doorway pre-fill (Story 3.4)", () => {
       // locale it fell back from.
       await expect(banner).toContainText(/Oil|Нефть|Petrol/);
     }
+  });
+
+  test("a pre-filled URL stays canonical to the BARE /rfq — no parameter-spam indexing", async ({
+    page,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+    /**
+     * Task 0 #41 wrote its own verification instruction — "e2e/rfq.spec.ts:524
+     * and rfq-page.test.ts prove index,follow for the BARE URL only, so do not
+     * read their greenness as coverage" — and nobody discharged it (3.4 review's
+     * completeness critic).
+     *
+     * It matters because this page is deliberately INDEXABLE and, since Story
+     * 3.4, reflects up to 80 code points of buyer text from `?q=` into rendered
+     * markup. The only thing between that and parameter-spam indexing is
+     * `alternatesFor` being searchParams-independent — one function call that no
+     * test observed on a doorway URL.
+     */
+    await page.goto("/en/rfq?q=fd9500x&project=lng-terminal-fire-gas-upgrade");
+    const canonical = page.locator('link[rel="canonical"]');
+    await expect(canonical).toHaveAttribute("href", /\/en\/rfq$/);
+  });
+
+  test("AC7: a fallen-back name in the banner is MARKED, visibly and for a screen reader", async ({
+    page,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+    /**
+     * ⚠️ `oil-gas` CANNOT EXERCISE THIS, which is why the test above does not
+     * (3.4 review). The seed gives `oil-gas` both a Turkish and a Russian name
+     * (`seed.ts`), so it never falls back and `FallbackNotice` renders nothing —
+     * the story's own §H mutation "drop the marker" was inert against it.
+     *
+     * `energy` is EN-ONLY in the seed, so it falls back in BOTH other locales.
+     * That makes UX-DR21's per-value marker observable for the first time.
+     */
+    const marker = { tr: "İngilizce gösteriliyor", ru: "показано на английском" };
+    for (const locale of ["tr", "ru"] as const) {
+      await page.goto(`/${locale}/rfq?industry=energy`);
+      const banner = page.getByTestId("rfq-prefill-banner");
+      await expect(banner).toBeVisible();
+      // The VISIBLE half: the localized "shown in English" hint.
+      await expect(banner).toContainText(marker[locale]);
+      // The ANNOUNCED half: the fallen-back CONTENT itself carries lang="en",
+      // so a screen reader switches voice rather than reading an English name
+      // with Turkish or Russian phonemes (FallbackNotice's caller contract).
+      await expect(banner.locator('[lang="en"]')).toContainText("Energy");
+    }
+  });
+
+  test("AC12: the LANGUAGE SWITCH preserves the doorway and re-resolves it, both directions", async ({
+    page,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+    /**
+     * Task 0 #57 — ticked by Story 3.4 with no test behind it anywhere, which
+     * its own review found. This is also the ONLY genuine same-route soft
+     * navigation on this page: `LanguageSwitcher` preserves the query string
+     * deliberately, so `/en/rfq?project=x` → `/tr/rfq?project=x` is a
+     * client-side navigation between two DIFFERENT `/rfq` URLs.
+     *
+     * It crosses the fallback logic too: one project's names can be a fallback
+     * in one locale and native in another, so re-resolution must actually re-run
+     * rather than carry the first locale's strings across.
+     */
+    await openDoorway(page, "?project=lng-terminal-fire-gas-upgrade");
+    await expect(page.locator('select[name="industry"]')).toHaveValue("oil-gas");
+
+    const header = page.getByRole("banner");
+    await header.getByRole("link", { name: "Türkçe" }).click();
+    await page.waitForURL("**/tr/rfq?project=lng-terminal-fire-gas-upgrade");
+
+    // The doorway SURVIVED the switch and re-resolved in Turkish.
+    const banner = page.getByTestId("rfq-prefill-banner");
+    await expect(banner).toBeVisible();
+    await expect(banner).not.toContainText("Rfq.");
+    await expect(banner).toContainText("Petrol ve Gaz");
+    await expect(page.locator('select[name="industry"]')).toHaveValue("oil-gas");
+
+    // …and back again. The reverse direction is asserted because the switcher
+    // builds its href from the CURRENT pathname, so the two directions are not
+    // the same code path.
+    await header.getByRole("link", { name: "English" }).click();
+    await page.waitForURL("**/en/rfq?project=lng-terminal-fire-gas-upgrade");
+    await expect(page.getByTestId("rfq-prefill-banner")).toContainText("Oil & Gas");
+    await expect(page.locator('select[name="industry"]')).toHaveValue("oil-gas");
   });
 });

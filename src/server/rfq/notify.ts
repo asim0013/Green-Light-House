@@ -10,6 +10,7 @@ import {
   resolveNotifyRecipient,
   type EmailTransport,
 } from "@/lib/email";
+import { parseLeadEquipment, labelOf } from "@/server/rfq/contracts";
 import {
   deliveryFailure,
   findLeadForEmail,
@@ -150,12 +151,19 @@ export function buildNotification(lead: LeadForEmail): { subject: string; text: 
   const none = t("notifyNone");
   const value = (v: string | null | undefined) => (v && v.trim() !== "" ? v : none);
 
-  const equipment = Array.isArray(lead.equipment)
-    ? (lead.equipment as { kind: string; text?: string; label?: string }[])
-        .map((item) => item.text ?? item.label ?? "")
-        .filter(Boolean)
-        .join(", ")
-    : "";
+  // ⚠️ THROUGH THE FROZEN GUARD, NOT A CAST (Task 0 #34, applied in the 3.4
+  // review — Story 3.4 ticked this subtask without doing it). The previous code
+  // cast the JSONB straight to a structural type and discriminated by FIELD
+  // PRESENCE (`item.text ?? item.label`), which `contracts.ts` explicitly
+  // forbids: the union discriminates on `kind`. That was harmless only while
+  // every stored item was `freeText`, and Story 3.4 is the first story to write
+  // catalog items into a real lead — so the moment a product chip reached this
+  // email the cast was load-bearing and unvalidated. `parseLeadEquipment` drops
+  // malformed items instead of emitting an empty string for them.
+  const equipment = parseLeadEquipment(lead.equipment)
+    .map(labelOf)
+    .filter((label) => label.trim() !== "")
+    .join(", ");
 
   const lines = [
     t("notifyIntro"),

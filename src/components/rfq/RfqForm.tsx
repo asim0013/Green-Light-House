@@ -194,6 +194,26 @@ export function RfqForm({
     [prefill, prefillCleared],
   );
 
+  /**
+   * Which of the CURRENT chips are showing an English fallback (UX-DR21).
+   *
+   * ⚠️ KEYED BY IDENTITY, NOT BY POSITION, and that is the whole difficulty.
+   * `RfqPrefill.equipmentFallback` is parallel to the chips the doorway SEEDED,
+   * but the buyer can remove any of them and add their own, so after one removal
+   * a positional lookup marks the wrong chip. Catalog chips carry a slug and the
+   * form creates `freeText` chips exclusively, so `kind:slug` is an exact,
+   * free identifier — and a buyer's own chip is never a fallback.
+   */
+  const seededFallback = useMemo(() => {
+    const byIdentity = new Map<string, boolean>();
+    prefill?.equipment.forEach((item, index) => {
+      if ("slug" in item) {
+        byIdentity.set(`${item.kind}:${item.slug}`, prefill.equipmentFallback[index] ?? false);
+      }
+    });
+    return byIdentity;
+  }, [prefill]);
+
   const normalize = useCallback(
     (values: RfqFormValues) => ({
       industry: values.industry || undefined,
@@ -264,6 +284,12 @@ export function RfqForm({
     industries.find((option) => option.slug === selectedIndustry)?.isFallback ?? false;
   /* eslint-enable react-hooks/incompatible-library */
 
+  // Parallel to the CURRENT chips — recomputed on every add/remove, so the
+  // marking follows the chip rather than its index (see `seededFallback`).
+  const equipmentFallback = equipment.map((item) =>
+    "slug" in item ? (seededFallback.get(`${item.kind}:${item.slug}`) ?? false) : false,
+  );
+
   // Registered once so their refs can be merged with the focus handles Clear
   // needs (see the two controls below).
   const registerIndustry = register("industry");
@@ -320,11 +346,18 @@ export function RfqForm({
     // FIRST CONTROL THE PRE-FILL ACTUALLY TOUCHED — not unconditionally the
     // industry select, which for the `?q=` doorway was never seeded and would
     // strand the buyer somewhere they had no reason to be.
+    //
+    // ⚠️ THE LADDER IS IN DOM ORDER: industry → equipment → project details.
+    // It used to test `query` before equipment, so a doorway seeding BOTH chips
+    // and `?q=` (`?category=x&q=y`) moved focus PAST the equipment control it
+    // had just emptied, landing the buyer below the change they were watching
+    // (3.4 review). "First control the pre-fill touched" is only meaningful in
+    // the order the controls appear.
     const target = seeded.industry
       ? industryRef.current
-      : seeded.query
-        ? projectDetailsRef.current
-        : equipmentInputRef.current;
+      : seeded.equipment.length > 0
+        ? equipmentInputRef.current
+        : projectDetailsRef.current;
     target?.focus();
   };
 
@@ -468,7 +501,12 @@ export function RfqForm({
               submission that already happened. It DOES survive a failed submit —
               this branch is only taken on success, and the failure paths never
               reset state (the shipped invariant at the top of this file). */}
-          {activePrefill && (
+          {/* `?.doorway`, not merely `activePrefill`: since the 3.4 review a
+              doorway whose slugs resolved to nothing still yields a prefill
+              object (its params travel for attribution) but has NO doorway to
+              name. Gating on the object alone would paint this `mb-5` spacer
+              above a banner that renders null. */}
+          {activePrefill?.doorway && (
             <div className="mb-5">
               <PrefillBanner
                 prefill={activePrefill}
@@ -544,6 +582,7 @@ export function RfqForm({
                   inputId="rfq-equipment"
                   inputRef={equipmentInputRef}
                   items={equipment}
+                  fallback={equipmentFallback}
                   draft={equipmentDraft}
                   onDraftChange={setEquipmentDraft}
                   onCommit={commitDraft}

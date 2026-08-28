@@ -4,22 +4,15 @@ import { useEffect, useRef, type RefObject } from "react";
 import { X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { buttonClasses } from "@/components/ui/buttonClasses";
+import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { controlClasses } from "./Field";
-import type { LeadEquipmentItem } from "@/server/rfq/contracts";
+import { labelOf, type LeadEquipmentItem } from "@/server/rfq/contracts";
 
-/**
- * The display label of one chip, whichever variant it is.
- *
- * ⚠️ FOUR CALL SITES READ THIS, AND ALL FOUR READ `item.text` BEFORE Story 3.4:
- * the announcement, the React key, the visible label and the remove button's
- * ACCESSIBLE NAME. `product` and `category` items carry `label`, not `text` — so
- * a pre-filled catalog chip announced itself as "Remove undefined". The frozen
- * union discriminates on an explicit `kind`, never on which field is present
- * (contracts.ts), so this narrows rather than guessing.
- */
-export function labelOf(item: LeadEquipmentItem): string {
-  return item.kind === "freeText" ? item.text : item.label;
-}
+// `labelOf` MOVED to `@/server/rfq/contracts` in the 3.4 review: the internal
+// notification email needs the same accessor, and a server module cannot import
+// from a `"use client"` file. Re-exported so this component stays the import
+// site its existing callers already use.
+export { labelOf };
 
 /**
  * The EQUIPMENT chips input (Story 3.2, AC5).
@@ -47,6 +40,7 @@ export function EquipmentChips({
   inputId,
   inputRef,
   items,
+  fallback,
   draft,
   onDraftChange,
   onCommit,
@@ -59,6 +53,17 @@ export function EquipmentChips({
   /** Parent-owned ref to the add input — the focus target for equipment errors. */
   inputRef: RefObject<HTMLInputElement | null>;
   items: readonly LeadEquipmentItem[];
+  /**
+   * Per-item fallback marking, parallel to `items` (UX-DR21).
+   *
+   * ⚠️ ADDED BY THE 3.4 REVIEW. The pre-fill already knew which catalog names
+   * had fallen back to English — `RfqPrefill.equipmentFallback` carried it and
+   * the BANNER rendered it — but the chips below the banner, showing the same
+   * names, had no way to receive it. So one surface marked a fallen-back name
+   * and the surface directly beneath it did not. Absent or short (the buyer's
+   * own `freeText` chips, which never fall back) reads as `false`.
+   */
+  fallback?: readonly boolean[];
   /** Parent-owned draft text (committed by Add, Enter, or form submit). */
   draft: string;
   onDraftChange: (draft: string) => void;
@@ -100,7 +105,8 @@ export function EquipmentChips({
               key={`${item.kind}:${labelOf(item)}-${index}`}
               className="inline-flex items-center border border-muted bg-surface-2 pl-2.5 text-[13px] text-ink"
             >
-              {labelOf(item)}
+              {fallback?.[index] ? <span lang="en">{labelOf(item)}</span> : labelOf(item)}
+              <FallbackNotice isFallback={fallback?.[index] ?? false} />
               <button
                 type="button"
                 ref={(el) => {

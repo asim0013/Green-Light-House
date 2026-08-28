@@ -346,7 +346,12 @@ export async function queryPublishedProjects(
  * read could supply this — `ProjectDetail.products` is `ProductCardItem[]` and
  * `CARD_INCLUDE` carries no category at all, so the detail page cannot derive
  * it. Widening `CARD_INCLUDE` would touch every card-producing surface on the
- * site; a dedicated projection costs one indexed query.
+ * site; a dedicated projection is the cheaper blast radius.
+ *
+ * ⚠️ NOT "one indexed query", which is what this said before the 3.4 review.
+ * Prisma issues a statement per relation level for a nested select, so this is
+ * several — the argument for a dedicated read is the blast radius it avoids,
+ * never the statement count.
  *
  * ⚠️ THE STATUS FILTER IS THE SAME LOAD-BEARING GUARD AS `queryProjectBySlug`'s,
  * and for the same reason (3.1 review, proven live): it must sit in a `where` on
@@ -459,8 +464,12 @@ export function distinctCategories(
 ): PrefillName[] {
   const bySlug = new Map<string, PrefillName>();
   for (const row of rows) {
-    // A product's category is nullable in the schema; a link to an uncategorised
-    // product contributes no chip rather than an empty one.
+    // ⚠️ `Product.category` IS NOT NULLABLE — this comment used to claim it was
+    // (3.4 review). `prisma/schema.prisma` declares `categoryId String` with a
+    // required relation, so the `!row` arm is unreachable through the shipped
+    // query and cannot be exercised by any fixture. It is kept as a defensive
+    // narrow for the `CategoryRow | null` the select's type admits, NOT because
+    // an uncategorised product exists. `bySlug.has` is the arm that does work.
     if (!row || bySlug.has(row.slug)) continue;
     bySlug.set(row.slug, { slug: row.slug, ...pickName(row.translations, row.slug, locale) });
   }
