@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ProjectListItem } from "@/server/repositories/project";
+import type { SlaContent } from "@/server/repositories/sla";
+import { slaTextFor } from "../../../scripts/sla-fixtures";
 
 /**
  * Hero chrome + proof card (Story 1.7, AC1/AC2/AC5/AC6).
@@ -62,14 +64,21 @@ const BARE: ProjectListItem = {
   deliveredAt: null,
 };
 
+/**
+ * The response process (Story 3.5). REAL COPY, not the key-echoing mock: the
+ * SLA stopped being a `messages` key and became content, so a test that asserts
+ * the key name would assert nothing about what a buyer reads.
+ */
+const SLA: SlaContent = { ...slaTextFor("en"), isFallback: false };
+
 describe("HomeHero — always-on chrome", () => {
   it("renders exactly one h1", () => {
-    const html = renderToStaticMarkup(<HomeHero project={FULL} />);
+    const html = renderToStaticMarkup(<HomeHero project={FULL} sla={SLA} />);
     expect(html.match(/<h1\b/g) ?? []).toHaveLength(1);
   });
 
   it("renders both co-equal CTAs: the RFQ link and a tel: action", () => {
-    const html = renderToStaticMarkup(<HomeHero project={FULL} />);
+    const html = renderToStaticMarkup(<HomeHero project={FULL} sla={SLA} />);
     expect(html).toContain('href="/rfq"');
     expect(html).toContain('href="tel:');
   });
@@ -79,12 +88,12 @@ describe("HomeHero — always-on chrome", () => {
     // a wrong-slug link would survive every gate — the target soft-404s with a
     // 200, and EXPERIENCE.md:97 calls this doorway the site's most important
     // interaction. The e2e pins the same URL against the live seed.
-    const html = renderToStaticMarkup(<HomeHero project={FULL} />);
+    const html = renderToStaticMarkup(<HomeHero project={FULL} sla={SLA} />);
     expect(html).toContain(`href="/projects/${FULL.slug}"`);
   });
 
   it("keeps the visible phone number inside the accessible name (WCAG 2.5.3)", () => {
-    const html = renderToStaticMarkup(<HomeHero project={FULL} />);
+    const html = renderToStaticMarkup(<HomeHero project={FULL} sla={SLA} />);
     const tel = html.match(/<a\b[^>]*href="tel:[^"]*"[^>]*>/)?.[0] ?? "";
     expect(tel.match(/aria-label="([^"]*)"/)?.[1] ?? "").toContain("+90");
   });
@@ -94,16 +103,37 @@ describe("HomeHero — always-on chrome", () => {
     // passed with BOTH copy lines deleted, so it proved nothing on its own.
     // EXPERIENCE.md: the SLA is load-bearing copy and must be present; `muted` is
     // 3.10:1 on white and cannot carry it.
-    const html = renderToStaticMarkup(<HomeHero project={FULL} />);
-    expect(html).toContain("sla");
+    //
+    // ⚠️ ASSERTS THE COPY, NOT THE KEY (Story 3.5). This used to assert
+    // `toContain("sla")` — the KEY NAME, which only appeared because the
+    // next-intl mock above echoes keys. Once the SLA moved into the content
+    // model that string stopped rendering at all, and the assertion had been
+    // pinning the mock rather than the hero for its whole life.
+    const html = renderToStaticMarkup(<HomeHero project={FULL} sla={SLA} />);
+    expect(html).toContain(SLA.summary);
     expect(html).toContain("noPrices");
     expect(html).not.toContain("text-muted");
+  });
+
+  it("renders NO SLA block at all when the content model is empty", () => {
+    // AC8's degenerate branch on a real surface. The block is conditional
+    // because it is ruled: rendering the `border-t` above nothing would leave a
+    // stray hairline where the promise used to be. P5: drop the `{sla && …}`
+    // guard and this reddens on the border class.
+    const html = renderToStaticMarkup(<HomeHero project={FULL} sla={null} />);
+    expect(html).not.toContain(SLA.summary);
+    // `mt-7 border-t`, not `border-border-subtle pt-5`: the proof card carries
+    // that second string too, so asserting it could never have failed.
+    expect(html).not.toContain("mt-7 border-t");
+    // …and the rest of the hero is untouched.
+    expect(html).toContain('href="/rfq"');
+    expect(html).toContain("noPrices");
   });
 });
 
 describe("HomeHero — proof card", () => {
   it("shows the project title, outcome, industry and delivered date", () => {
-    const html = renderToStaticMarkup(<HomeHero project={FULL} />);
+    const html = renderToStaticMarkup(<HomeHero project={FULL} sla={SLA} />);
     expect(html).toContain("LNG terminal fire &amp; gas upgrade");
     expect(html).toContain("142 field devices, ATEX Zone 1, delivered in six weeks.");
     expect(html).toContain("Oil &amp; Gas");
@@ -111,13 +141,13 @@ describe("HomeHero — proof card", () => {
   });
 
   it("titles the project as an h2, not a second h1", () => {
-    const html = renderToStaticMarkup(<HomeHero project={FULL} />);
+    const html = renderToStaticMarkup(<HomeHero project={FULL} sla={SLA} />);
     expect(html).toContain("<h2");
   });
 
   it("omits the outcome, industry and date rows when those fields are null", () => {
-    const full = renderToStaticMarkup(<HomeHero project={FULL} />);
-    const bare = renderToStaticMarkup(<HomeHero project={BARE} />);
+    const full = renderToStaticMarkup(<HomeHero project={FULL} sla={SLA} />);
+    const bare = renderToStaticMarkup(<HomeHero project={BARE} sla={SLA} />);
     expect(bare).toContain("Refinery gas-detection retrofit");
     // The outcome text must actually be ABSENT — the original test never checked
     // it, so a card that always rendered the outcome would have passed.
@@ -129,25 +159,27 @@ describe("HomeHero — proof card", () => {
   });
 
   it("marks fallen-back project text with lang=en and the shown-in-English notice", () => {
-    const html = renderToStaticMarkup(<HomeHero project={{ ...FULL, isFallback: true }} />);
+    const html = renderToStaticMarkup(
+      <HomeHero project={{ ...FULL, isFallback: true }} sla={SLA} />,
+    );
     expect(html).toContain('lang="en"');
     expect(html).toContain("shownInEnglish");
   });
 
   it("does not mark content that is in the requested locale", () => {
-    const html = renderToStaticMarkup(<HomeHero project={FULL} />);
+    const html = renderToStaticMarkup(<HomeHero project={FULL} sla={SLA} />);
     expect(html).not.toContain("shownInEnglish");
   });
 });
 
 describe("HomeHero — empty state (AC5)", () => {
   it("renders the defined empty state instead of the card when there is no project", () => {
-    const html = renderToStaticMarkup(<HomeHero project={null} />);
+    const html = renderToStaticMarkup(<HomeHero project={null} sla={SLA} />);
     expect(html).toContain("proofEmpty");
   });
 
   it("still renders the h1 and both CTAs with no project", () => {
-    const html = renderToStaticMarkup(<HomeHero project={null} />);
+    const html = renderToStaticMarkup(<HomeHero project={null} sla={SLA} />);
     expect(html.match(/<h1\b/g) ?? []).toHaveLength(1);
     expect(html).toContain('href="/rfq"');
     expect(html).toContain('href="tel:');

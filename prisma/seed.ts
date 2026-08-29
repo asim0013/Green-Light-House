@@ -1,6 +1,12 @@
 import { PrismaClient, Prisma, Locale, PublishStatus, DocumentType } from "@prisma/client";
 import { fixtureSize } from "../scripts/doc-fixtures";
 import { MEDIA_FIXTURES } from "../scripts/media-fixtures";
+import {
+  SLA_PROCESS_TEXT,
+  SLA_STEPS,
+  type SlaProcessText,
+  type SlaStepText,
+} from "../scripts/sla-fixtures";
 
 const prisma = new PrismaClient();
 
@@ -75,9 +81,44 @@ async function upsertCategoryNames(categoryId: string, translations: Tr[]) {
  */
 async function deleteUnlistedLocales(
   remove: (locales: { notIn: Locale[] }) => Promise<unknown>,
-  translations: Tr[],
+  translations: readonly { locale: Locale }[],
 ) {
   await remove({ notIn: translations.map((t) => t.locale) });
+}
+
+// --- Story 3.5: the response process / SLA ---------------------------------
+//
+// The COPY lives in `scripts/sla-fixtures.ts`, not here, so the AC5 hygiene gate
+// can derive its needles from the same strings without a database — the same
+// arrangement `doc-fixtures` and `media-fixtures` already use.
+
+/** Repairable AND retractable, exactly like `upsertIndustryNames` above. */
+async function upsertSlaProcessText(processId: string, translations: SlaProcessText[]) {
+  for (const { locale, kicker, summary } of translations) {
+    await prisma.slaProcessTranslation.upsert({
+      where: { processId_locale: { processId, locale } },
+      update: { kicker, summary },
+      create: { processId, locale, kicker, summary },
+    });
+  }
+  await deleteUnlistedLocales(
+    (locale) => prisma.slaProcessTranslation.deleteMany({ where: { processId, locale } }),
+    translations,
+  );
+}
+
+async function upsertSlaStepText(stepId: string, translations: SlaStepText[]) {
+  for (const { locale, badge, title, description } of translations) {
+    await prisma.slaStepTranslation.upsert({
+      where: { stepId_locale: { stepId, locale } },
+      update: { badge, title, description },
+      create: { stepId, locale, badge, title, description },
+    });
+  }
+  await deleteUnlistedLocales(
+    (locale) => prisma.slaStepTranslation.deleteMany({ where: { stepId, locale } }),
+    translations,
+  );
 }
 
 async function main() {
@@ -628,6 +669,49 @@ async function main() {
       create: { serviceId: rec.id, industryId: oilGas.id },
     });
   }
+
+  // --- The response process / SLA (Story 3.5 — FR30/FR34a/FR38) ---
+  //
+  // ⚠️ THIS IS NOW THE ONLY SOURCE OF SLA COPY ON THE SITE. Until this story the
+  // same sentence was byte-copied into FOUR `messages/` namespaces × three
+  // locales, plus a fifth key for the kicker — fifteen strings, all deleted. Every
+  // one of the eight render sites reads these rows instead.
+  //
+  // The SUMMARY is not a convenience: six of those eight surfaces draw a
+  // one-line sentence rather than the stepper, and that sentence is NOT
+  // composable from the step data (EN steps say "Spec + proposal" where the
+  // sentence says "specced proposal"; TR inverts the order entirely). It is
+  // seeded verbatim from the `sla` keys this story removes, so no copy changes.
+  //
+  // REPAIRABLE AND RETRACTABLE, like industries and categories: a corrected
+  // Turkish description propagates on the next seed, and a locale dropped from
+  // this fixture is DELETED rather than left orphaned.
+  const slaProcess = await prisma.slaProcess.upsert({
+    // The key the repository read looks up — `SLA_PROCESS_KEY` in
+    // `src/server/repositories/sla.ts`. If these two ever diverge the read
+    // returns null and every SLA surface silently empties, which is why
+    // `repository.integration.test.ts` asserts the seeded row is findable.
+    where: { key: "default" },
+    update: {},
+    create: { key: "default" },
+  });
+
+  await upsertSlaProcessText(slaProcess.id, SLA_PROCESS_TEXT);
+
+  for (const step of SLA_STEPS) {
+    const rec = await prisma.slaStep.upsert({
+      where: { processId_sort: { processId: slaProcess.id, sort: step.sort } },
+      update: {},
+      create: { processId: slaProcess.id, sort: step.sort },
+    });
+    await upsertSlaStepText(rec.id, step.text);
+  }
+
+  // A fixture edit that REMOVES a step must not leave the old one behind — the
+  // same retraction argument as `deleteUnlistedLocales`, one level up.
+  await prisma.slaStep.deleteMany({
+    where: { processId: slaProcess.id, sort: { notIn: SLA_STEPS.map((s) => s.sort) } },
+  });
 
   const counts = {
     industries: await prisma.industry.count(),

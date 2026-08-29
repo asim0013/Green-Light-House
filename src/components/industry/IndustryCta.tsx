@@ -6,6 +6,8 @@ import { buttonClasses } from "@/components/ui/buttonClasses";
 import { CONTAINER } from "@/components/layout/container";
 import { SITE } from "@/config/site";
 import { rfqIndustryHref } from "@/lib/rfq-href";
+import { SlaSummary } from "@/components/sla/SlaSummary";
+import type { SlaContent } from "@/server/repositories/sla";
 
 /**
  * Closing CTA band (Story 2.1) — the last beat of EXPERIENCE.md's industry stack.
@@ -19,14 +21,19 @@ import { rfqIndustryHref } from "@/lib/rfq-href";
  * use the `onDark*` variants; a navy button on the ink band is an explicit DON'T.
  *
  * The SLA numbers are identical to every other surface that promises them, which is
- * why they live in `messages` rather than being written per page.
+ * why they lived in `messages` rather than being written per page — until Story
+ * 3.5 moved them into the content model, so an admin can revise them without a
+ * deploy (FR30). The consistency argument is unchanged; only the source moved.
  */
 export function IndustryCta({
   industryName,
   industrySlug,
+  sla,
   isFallback = false,
 }: {
   industryName: string;
+  /** The response process (Story 3.5); `null` only when unseeded. */
+  sla: SlaContent | null;
   /** ⚠️ ADDED BY STORY 3.4. This component received only the NAME, so it could
    *  not build its own doorway href — the single reason this CTA was more than
    *  a one-line edit while its sibling IndustryHero already carried the slug. */
@@ -61,9 +68,14 @@ export function IndustryCta({
                 {t("ctaTitle", { industry: industryName })}
               </h2>
               <p className="mt-4 max-w-[62ch] leading-relaxed text-on-dark-text">{t("ctaLead")}</p>
-              <p className="mt-6 font-mono text-[11px] uppercase leading-relaxed tracking-[0.15em] text-on-dark-text">
-                {t("sla")}
-              </p>
+              {/* From the content model since Story 3.5 — one source, eight
+                  surfaces, one revalidate. Conditional because an unseeded model
+                  must leave no empty line in the band. */}
+              {sla && (
+                <p className="mt-6 font-mono text-[11px] uppercase leading-relaxed tracking-[0.15em] text-on-dark-text">
+                  <SlaSummary sla={sla} tone="onDark" />
+                </p>
+              )}
             </div>
           }
           side={

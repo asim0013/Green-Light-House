@@ -5,7 +5,9 @@ import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { buttonClasses } from "@/components/ui/buttonClasses";
 import { SITE } from "@/config/site";
 import { rfqProductHref } from "@/lib/rfq-href";
+import { SlaSummary } from "@/components/sla/SlaSummary";
 import type { ProductDetail } from "@/server/repositories/product";
+import type { SlaContent } from "@/server/repositories/sla";
 
 /**
  * The quote / facts anchor card (Story 2.4 — UX-DR7).
@@ -33,7 +35,14 @@ import type { ProductDetail } from "@/server/repositories/product";
  * Story 3.4 it carries `?product=`, so the RFQ opens with this product AND its
  * category already loaded as individually removable chips.
  */
-export function ProductAnchorCard({ product }: { product: ProductDetail }) {
+export function ProductAnchorCard({
+  product,
+  sla,
+}: {
+  product: ProductDetail;
+  /** The response process (Story 3.5); `null` only when unseeded. */
+  sla: SlaContent | null;
+}) {
   const t = useTranslations("Product");
   const tNav = useTranslations("Nav");
 
@@ -90,10 +99,19 @@ export function ProductAnchorCard({ product }: { product: ProductDetail }) {
           <Phone size={16} aria-hidden />
           {SITE.phoneDisplay}
         </a>
-        {/* The mono trust line, verbatim the same SLA promise the homepage and
-            every industry page make — EXPERIENCE.md § Voice: "consistent numbers
-            across nav CTA, RFQ, and dark bands". */}
-        <p className="mt-4 font-mono text-[11px] leading-relaxed text-ink-2">{t("sla")}</p>
+        {/* The mono trust line — the same SLA promise the homepage and every
+            industry page make, now literally the same ROW rather than a fourth
+            byte-copy of it (Story 3.5). EXPERIENCE.md § Voice: "consistent
+            numbers across nav CTA, RFQ, and dark bands"; consistency used to be
+            a convention nobody could enforce, and is now structural.
+
+            ⚠️ The only non-uppercase SLA treatment on the site — kept, because
+            this aside is denser than the hero bands. */}
+        {sla && (
+          <p className="mt-4 font-mono text-[11px] leading-relaxed text-ink-2">
+            <SlaSummary sla={sla} tone="light" />
+          </p>
+        )}
       </div>
     </aside>
   );

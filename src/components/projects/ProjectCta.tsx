@@ -5,6 +5,8 @@ import { Kicker, DarkBand, TwoColumn } from "@/components/ui";
 import { buttonClasses } from "@/components/ui/buttonClasses";
 import { CONTAINER } from "@/components/layout/container";
 import { SITE } from "@/config/site";
+import { SlaSummary } from "@/components/sla/SlaSummary";
+import type { SlaContent } from "@/server/repositories/sla";
 
 /**
  * The closing CTA band for the Projects surfaces (Story 3.1, AC15).
@@ -15,11 +17,12 @@ import { SITE } from "@/config/site";
  * the dark band the treatment for closing CTAs, and a third instance that drifted
  * would strand this page when the shared treatment next changes.
  *
- * ⚠️ THE SLA COMES FROM THE EXISTING KEY. `Industry.sla` and `Product.sla` already
- * carry "Technical review in 24 h · specced proposal in 3 working days" with
- * reviewed TR/RU. The 2.6 review found FOUR uncentralised copies, with TR and RU
- * inventing a commitment EN never made — so this reads `Industry.sla` rather than
- * minting a fifth.
+ * ⚠️ THE SLA COMES FROM THE CONTENT MODEL (Story 3.5), threaded in as a prop by
+ * the page. It used to BORROW the `Industry.sla` message key — the 2.6 review had
+ * found four uncentralised copies, with TR and RU inventing a commitment EN never
+ * made, so this surface refused to mint a fifth. Those keys are now deleted and
+ * the sharing is structural rather than a convention: one row, eight surfaces,
+ * and an admin edit reaches all of them without a deploy.
  *
  * ✅ THE PROMISE NOW SHIPS (Story 3.4, Task 0 #20 — an Asim decision). Story 3.1
  * deliberately withheld the canvas's "We'll open an inquiry pre-filled with this
@@ -34,11 +37,16 @@ import { SITE } from "@/config/site";
  * different thing from the copy, and the reason 3.4's amendment list names only
  * the product, industry and search CTAs.
  */
-export function ProjectCta({ projectSlug }: { projectSlug?: string }) {
+export function ProjectCta({
+  projectSlug,
+  sla,
+}: {
+  projectSlug?: string;
+  /** The response process (Story 3.5); `null` only when unseeded. */
+  sla: SlaContent | null;
+}) {
   const t = useTranslations("Projects");
   const tNav = useTranslations("Nav");
-  // Read from `Industry`, not re-declared here — see the SLA note above.
-  const tIndustry = useTranslations("Industry");
 
   const rfqHref = projectSlug
     ? `${SITE.rfqHref}?project=${encodeURIComponent(projectSlug)}`
@@ -68,9 +76,14 @@ export function ProjectCta({ projectSlug }: { projectSlug?: string }) {
                   {t("ctaPrefillPromise")}
                 </p>
               )}
-              <p className="mt-6 font-mono text-[11px] uppercase leading-relaxed tracking-[0.15em] text-on-dark-text">
-                {tIndustry("sla")}
-              </p>
+              {/* From the content model since Story 3.5. This surface BORROWED
+                  `Industry.sla` to avoid minting a fifth copy — that key is gone
+                  and the borrow is now a real shared source. */}
+              {sla && (
+                <p className="mt-6 font-mono text-[11px] uppercase leading-relaxed tracking-[0.15em] text-on-dark-text">
+                  <SlaSummary sla={sla} tone="onDark" />
+                </p>
+              )}
             </div>
           }
           side={

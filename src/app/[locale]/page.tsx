@@ -4,6 +4,7 @@ import { hasLocale } from "next-intl";
 import { setRequestLocale } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
+import { getSlaContent } from "@/server/repositories/sla";
 import { alternatesFor, robotsFor } from "@/lib/seo";
 import { listIndustries } from "@/server/repositories/industry";
 import { listManufacturers } from "@/server/repositories/manufacturer";
@@ -63,9 +64,16 @@ export async function generateMetadata(props: {
 
   const { projects, industries, categories, manufacturers } = await getHomepageData(locale);
 
-  // Every translatable thing the homepage shows. `itemCount === 0` means an empty
-  // database, which is genuinely thin; `fallbackFields === totalFields` means not a
-  // single row had content in this locale (FR42a's "fallback-only").
+  // Every translatable thing the homepage shows AS ITS OWN CONTENT. `itemCount
+  // === 0` means an empty database, which is genuinely thin;
+  // `fallbackFields === totalFields` means not a single row had content in this
+  // locale (FR42a's "fallback-only").
+  //
+  // ⚠️ THE SLA IS EXCLUDED, DELIBERATELY (Story 3.5). It became DB content with
+  // per-locale rows, so it could be listed here — but it is site-wide chrome
+  // rendered identically on eight surfaces, and a fully-translated chrome
+  // element must never be the evidence that a THIN page deserves indexing. Same
+  // exclusion, same reason, in `rfq-page.ts` and `services-page.ts`.
   const translated = [...projects, ...industries, ...categories, ...manufacturers];
   const signals = {
     locale,
@@ -106,12 +114,17 @@ export default async function LocaleHome(props: { params: Promise<{ locale: stri
   // resolves without threading the locale through every component.
   setRequestLocale(locale);
 
+  // Story 3.5: ONE read per request, threaded down. The components cannot fetch
+  // (see `SlaStepper`), and `getSlaContent` is React-`cache()`d so a page mounting
+  // two consumers still makes a single round trip.
+  const sla = await getSlaContent(locale);
+
   // Shared with `generateMetadata` above — one set of reads per request.
   const { projects, industries, categories, manufacturers } = await getHomepageData(locale);
 
   return (
     <>
-      <HomeHero project={projects[0] ?? null} />
+      <HomeHero project={projects[0] ?? null} sla={sla} />
       <HomeIndustries industries={industries} />
       <HomeCategories categories={categories} />
       <HomeManufacturers manufacturers={manufacturers} />

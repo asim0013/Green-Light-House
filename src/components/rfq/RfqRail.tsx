@@ -3,19 +3,20 @@ import { useTranslations } from "next-intl";
 import { Kicker } from "@/components/ui";
 import { buttonClasses } from "@/components/ui/buttonClasses";
 import { SITE } from "@/config/site";
+import { SlaStepper } from "@/components/sla/SlaStepper";
+import type { SlaContent } from "@/server/repositories/sla";
 
 /**
  * The `/rfq` 360px side rail (Story 3.2, AC1): the dark SLA card, the
  * "Prefer to talk?" card, and the borderless "WHY NO PRICES?" card.
  *
- * - THE SLA CARD RENDERS THE ONE-LINER, NOT THE THREE-STEP PROCESS. The canvas
- *   draws a 3-step stepper here ("24h → Technical review → …") but that content
- *   is Story 3.5's (the sprint resequencing put 3.2 five stories before it) —
- *   this card reads the EXISTING `Industry.sla` key, exactly like `ProjectCta`,
- *   and 3.5 swaps the source when the content model lands. Kicker default tone
- *   (`accent-soft`) is the DARK-band tone; the body is `on-dark-text` — the
- *   mock's untokenized #9AA6B4 hex swapped for the token (tokenization, not a
- *   contrast fix: the hex itself measured 7.19:1).
+ * - THE SLA CARD NOW RENDERS THE THREE-STEP PROCESS the canvas draws, from the
+ *   content model (Story 3.5). Until then it borrowed the `Industry.sla`
+ *   one-liner because the model did not exist; that key is deleted and the
+ *   stepper is shared with `RfqConfirmation`, which is what makes an admin edit
+ *   reach both surfaces at once. `tone="onDark"` because this card is `bg-ink`:
+ *   it drives the kicker (`accent-soft`, 4.68:1 here) and the fallback marker,
+ *   neither of which has a tone that passes on both grounds.
  * - The talk card follows the shipped `tel:` anatomy (ProjectCta): the button's
  *   visible label is the canvas's "Call an engineer", its accessible name
  *   contains that label plus the number (2.5.3), and the NUMBER renders in the
@@ -23,18 +24,18 @@ import { SITE } from "@/config/site";
  * - The cert marks are locale-invariant and deliberately NOT in messages
  *   (they are marks, not copy) — bare mono text, no chips, per the canvas.
  */
-export function RfqRail() {
+export function RfqRail({ sla }: { sla: SlaContent | null }) {
   const t = useTranslations("Rfq");
-  const tIndustry = useTranslations("Industry");
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="bg-ink p-5">
-        <Kicker>{t("slaKicker")}</Kicker>
-        <p className="mt-3 font-mono text-[11px] uppercase leading-relaxed tracking-[0.15em] text-on-dark-text">
-          {tIndustry("sla")}
-        </p>
-      </div>
+      {/* The whole card is conditional: an unseeded model must leave no empty
+          ink block floating above the talk card. */}
+      {sla && (
+        <div className="bg-ink p-5">
+          <SlaStepper sla={sla} tone="onDark" showKicker />
+        </div>
+      )}
 
       <div className="border border-border-subtle bg-surface p-5">
         <h2 className="font-heading text-[17px] font-bold tracking-tight text-ink">

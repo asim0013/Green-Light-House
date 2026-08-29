@@ -13,7 +13,6 @@
     "kicker": "Project supply",
     "title": "Industrial and fire-safety equipment, specified and delivered.",
     "lead": "We select, certify and supply equipment for high-stakes industrial projects across the Türkiye–Russia corridor — with the certificates, customs handling and delivery dates the project actually needs.",
-    "sla": "Technical review in 24 h · specced proposal in 3 working days",
     "noPrices": "No price shown — a project-specced quote, fast.",
     "proofKicker": "Delivered project",
     "deliveredOn": "Delivered {date}",
@@ -35,7 +34,6 @@
     "ctaTitle": "Send us your specification."
   },
   "Industry": {
-    "sla": "Technical review in 24 h · specced proposal in 3 working days",
     "anchorTitle": "Tell us what the project needs.",
     "anchorNoPrices": "No price shown — a project-specced quote, fast.",
     "suppliesKicker": "Equipment",
@@ -103,7 +101,6 @@
     "anchorTitle": "Specced for your project.",
     "anchorNoPrices": "No price shown — a project-specced quote, fast.",
     "quoteCta": "Request a quote for this product",
-    "sla": "Technical review in 24 h · specced proposal in 3 working days",
     "notFoundCrumb": "Not found",
     "notFoundKicker": "Not found",
     "notFoundTitle": "We do not have a page for that product",
@@ -117,8 +114,7 @@
     "empty": "Service details are being published. Tell us what the project needs and we will scope it directly.",
     "ctaKicker": "Next step",
     "ctaTitle": "Tell us what the project needs.",
-    "ctaLead": "Send the specification, the standards it is audited against and the dates. You get a technical review and a specced proposal — no price list to chase.",
-    "sla": "Technical review in 24 h · specced proposal in 3 working days"
+    "ctaLead": "Send the specification, the standards it is audited against and the dates. You get a technical review and a specced proposal — no price list to chase."
   },
   "Projects": {
     "indexKicker": "Proof",
@@ -148,7 +144,7 @@
   },
   "Rfq": {
     "title": "Request a project quote",
-    "lead": "Tell us the project. We reply with a technical review in 24h and a specced proposal in 3 working days — no prices to chase, no black box.",
+    "lead": "Tell us the project. We reply with a technical review and a specced proposal — no prices to chase, no black box.",
     "sectionProject": "1 · Your project",
     "sectionDetails": "2 · Your details",
     "industryLabel": "Industry",
@@ -189,8 +185,7 @@
     "languageLabel": "Preferred language",
     "consent": "I agree that GREENLIGHTHOUSE may process the details above to respond to my inquiry, per the Privacy Policy. We never gate documents or sell your data.",
     "submit": "Send project inquiry",
-    "submitNote": "You'll get an instant confirmation. A GLH engineer reviews within 24h.",
-    "slaKicker": "What happens next",
+    "submitNote": "You'll get an instant confirmation, then a GLH engineer reviews your inquiry.",
     "talkTitle": "Prefer to talk?",
     "talkHours": "Mon–Fri · answered in EN / TR / RU",
     "talkCta": "Call an engineer",

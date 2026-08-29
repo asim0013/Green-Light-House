@@ -6,6 +6,8 @@ import { Phone } from "lucide-react";
 import { routing } from "@/i18n/routing";
 import { alternatesFor, robotsFor } from "@/lib/seo";
 import { getServicesPageData, servicesSignals } from "@/server/services-page";
+import { getSlaContent } from "@/server/repositories/sla";
+import { SlaSummary } from "@/components/sla/SlaSummary";
 import { Link } from "@/i18n/navigation";
 import { Breadcrumb, DarkBand, Kicker, TwoColumn } from "@/components/ui";
 import { buttonClasses } from "@/components/ui/buttonClasses";
@@ -72,6 +74,7 @@ export default async function ServicesPage(props: { params: Promise<{ locale: st
   setRequestLocale(locale);
 
   const services = await getServicesPageData(locale);
+  const sla = await getSlaContent(locale);
   const t = await getTranslations({ locale, namespace: "Services" });
   const tNav = await getTranslations({ locale, namespace: "Nav" });
 
@@ -135,13 +138,17 @@ export default async function ServicesPage(props: { params: Promise<{ locale: st
                 <p className="mt-4 max-w-[62ch] leading-relaxed text-on-dark-text">
                   {t("ctaLead")}
                 </p>
-                {/* The SLA numbers live in `messages` and are identical on every
-                    surface that promises them. TR and RU had inlined them into
-                    `ctaLead` prose instead — a fourth, uncentralised copy that the
-                    next SLA revision would have missed (2.6 review). */}
-                <p className="mt-6 font-mono text-[11px] uppercase leading-relaxed tracking-[0.15em] text-on-dark-text">
-                  {t("sla")}
-                </p>
+                {/* The SLA numbers are identical on every surface that promises
+                    them. TR and RU had inlined them into `ctaLead` prose instead
+                    — a fourth, uncentralised copy the next revision would have
+                    missed (2.6 review). Story 3.5 moved them out of `messages`
+                    into the content model, so that revision now reaches all eight
+                    surfaces at once and needs no deploy. */}
+                {sla && (
+                  <p className="mt-6 font-mono text-[11px] uppercase leading-relaxed tracking-[0.15em] text-on-dark-text">
+                    <SlaSummary sla={sla} tone="onDark" />
+                  </p>
+                )}
               </div>
             }
             side={

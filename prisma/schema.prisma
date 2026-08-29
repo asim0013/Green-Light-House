@@ -308,6 +308,79 @@ model ServiceTranslation {
   @@map("service_translations")
 }
 
+/// The site-wide response process shown in place of prices (Story 3.5 —
+/// FR30/FR34a/FR38).
+///
+/// A SINGLETON, addressed by a stable `key` rather than by "the first row":
+/// the read must be deterministic, and Story 4.8's editor needs something to
+/// address. One process carries a per-locale kicker + summary and exactly three
+/// ordered steps.
+///
+/// ⚠️ THE SUMMARY IS NOT DECORATION. Six of the eight consuming surfaces render
+/// a one-line sentence, not the stepper, and that sentence is NOT composable
+/// from the step data — the EN steps say "Spec + proposal" where the shipped
+/// sentence says "specced proposal", and TR inverts the order entirely. Without
+/// a stored summary those six surfaces cannot be served from this model at all.
+model SlaProcess {
+  id           String                 @id @default(cuid())
+  key          String                 @unique
+  createdAt    DateTime               @default(now()) @map("created_at")
+  updatedAt    DateTime               @updatedAt @map("updated_at")
+  translations SlaProcessTranslation[]
+  steps        SlaStep[]
+
+  @@map("sla_processes")
+}
+
+model SlaProcessTranslation {
+  id        String     @id @default(cuid())
+  processId String     @map("process_id")
+  locale    Locale
+  /// The stepper heading, previously the `Rfq.slaKicker` message key.
+  kicker    String
+  /// The one-line trust sentence, previously the four duplicated `sla` keys.
+  summary   String
+  process   SlaProcess @relation(fields: [processId], references: [id], onDelete: Cascade)
+
+  @@unique([processId, locale])
+  @@map("sla_process_translations")
+}
+
+/// One step of the process. THREE per process, ordered by `sort`.
+///
+/// ⚠️ `sort` IS A NEW PRECEDENT. No other model in this schema has an ordering
+/// column — `Service` orders by slug and the only other `sort` in the repo lives
+/// inside a JSON blob. Slug-ordering cannot express 24h -> 3 days -> arrow, so an
+/// explicit integer is the only option consistent with these conventions. Story
+/// 3.1b's BOM ordering should follow this shape.
+model SlaStep {
+  id           String               @id @default(cuid())
+  processId    String               @map("process_id")
+  sort         Int
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+  process      SlaProcess           @relation(fields: [processId], references: [id], onDelete: Cascade)
+  translations SlaStepTranslation[]
+
+  @@unique([processId, sort])
+  @@map("sla_steps")
+}
+
+model SlaStepTranslation {
+  id          String  @id @default(cuid())
+  stepId      String  @map("step_id")
+  locale      Locale
+  /// TRANSLATED, not a structural token: EN "24h", TR "24 saat", RU "24 ч".
+  /// Step three's badge is a literal arrow and is the one locale-invariant value.
+  badge       String
+  title       String
+  description String
+  step        SlaStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+
+  @@unique([stepId, locale])
+  @@map("sla_step_translations")
+}
+
 // Written now so the model exists; the RFQ that creates leads is Epic 3,
 // the admin that reads/deletes them is Epic 4. Not built here.
 model Lead {

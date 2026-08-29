@@ -14,6 +14,16 @@ import type { ContentSignals } from "@/lib/seo";
  * select is still a fully usable inquiry form (the field is optional), so
  * `itemCount` must not be derived from it.
  *
+ * ⚠️ STORY 3.5 MOVED THE SLA OUT OF `messages/`, so "messages-driven BY
+ * CONSTRUCTION" is no longer literally true of everything this page renders —
+ * the process card is DB content that can fall back like any other row. It is
+ * DELIBERATELY EXCLUDED from these signals anyway: the SLA is chrome that
+ * appears on every route, not this page's own content, and it renders
+ * identically on eight surfaces. Counting it would make a site-wide element
+ * decide a per-page question — and because it is fully translated it would push
+ * thin pages TOWARD indexing, which is the exact mixed signal FR42a exists to
+ * prevent. Same reasoning in `services-page.ts` and the homepage.
+ *
  * Consumed by BOTH the page's `generateMetadata` and `sitemap.ts`, so the
  * robots tag and the sitemap's inclusion rule can never disagree (FR42a).
  */

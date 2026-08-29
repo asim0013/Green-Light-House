@@ -36,8 +36,17 @@ export const getServicesPageData = cache(async (locale: Locale): Promise<Service
  * a page worth indexing.
  *
  * The FALLBACK signals count the services themselves, because on this surface
- * the service names and descriptions ARE the content — there is no other
- * translated string carrying it. On the current seed every service is EN-only,
+ * the service names and descriptions ARE the content.
+ *
+ * ⚠️ THE SLA IS NOT COUNTED, and since Story 3.5 that is a real choice rather
+ * than an absence of options: the process card became DB content with its own
+ * per-locale rows, so it COULD be counted. It must not be. With five EN-only
+ * services plus one fully-translated SLA row the arithmetic would flip
+ * `/tr/services` and `/ru/services` to `index, follow` while they still render
+ * five English cards — a page advertised as Turkish that is not. The SLA is
+ * chrome on every route; it cannot be evidence that THIS page has content.
+ *
+ * On the current seed every service is EN-only,
  * so `/tr/services` and `/ru/services` are fallback-only ⇒ `noindex` ⇒ absent
  * from the sitemap. That is correct, not a bug: those pages have nothing in the
  * requested language yet, and the visible FallbackNotice says so to the reader.

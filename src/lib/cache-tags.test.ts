@@ -28,7 +28,21 @@ describe("collection tags", () => {
     expect(TAGS.documents).toBe("documents");
   });
 
+  it("names the extension Story 3.5 added for the site-wide response process", () => {
+    expect(TAGS.sla).toBe("sla");
+    // Its own tag, not `catalog`: the SLA renders on every route, so folding it
+    // into a catalogue flush would make a one-line copy edit invalidate the whole
+    // catalogue — and a catalogue publish needlessly re-render the SLA.
+    expect(TAGS.sla).not.toBe(TAGS.catalog);
+  });
+
   it("lists every collection tag in ALL_COLLECTION_TAGS", () => {
+    // ⚠️ A DELIBERATELY CLOSED SET. Every story that mints a tag must come here
+    // and say so — that is the whole point, and it is why adding `sla` (Story
+    // 3.5) turned this red rather than passing silently. An open-ended assertion
+    // would let a typo'd tag join the map unnoticed, and a mistyped tag makes
+    // `revalidateTag` a no-op: the admin's edit never goes live and the symptom
+    // reads as ordinary staleness.
     expect([...ALL_COLLECTION_TAGS].sort()).toEqual(
       [
         "catalog",
@@ -38,6 +52,7 @@ describe("collection tags", () => {
         "manufacturers",
         "projects",
         "services",
+        "sla",
       ].sort(),
     );
   });

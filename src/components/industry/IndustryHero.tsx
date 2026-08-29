@@ -7,7 +7,9 @@ import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { CONTAINER } from "@/components/layout/container";
 import { SITE } from "@/config/site";
 import { rfqIndustryHref } from "@/lib/rfq-href";
+import { SlaSummary } from "@/components/sla/SlaSummary";
 import type { IndustryDetail } from "@/server/repositories/industry";
+import type { SlaContent } from "@/server/repositories/sla";
 
 /**
  * Sector hero (Story 2.1) — EXPERIENCE.md § IA names it as the first beat of the
@@ -33,7 +35,14 @@ import type { IndustryDetail } from "@/server/repositories/industry";
  * Server Component: no client JS on the page's LCP surface, which is why the CTAs
  * are `buttonClasses` on links rather than the `"use client"` <Button>.
  */
-export function IndustryHero({ industry }: { industry: IndustryDetail }) {
+export function IndustryHero({
+  industry,
+  sla,
+}: {
+  industry: IndustryDetail;
+  /** The response process (Story 3.5); `null` only when unseeded. */
+  sla: SlaContent | null;
+}) {
   const t = useTranslations("Industry");
   const tNav = useTranslations("Nav");
   const lang = industry.isFallback ? "en" : undefined;
@@ -70,9 +79,13 @@ export function IndustryHero({ industry }: { industry: IndustryDetail }) {
                 </p>
               )}
 
-              <p className="mt-8 border-t border-on-dark-border pt-6 font-mono text-[11px] uppercase leading-relaxed tracking-[0.15em] text-on-dark-text">
-                {t("sla")}
-              </p>
+              {/* From the content model since Story 3.5 — one source, eight
+                  surfaces. Conditional so the rule does not draw above nothing. */}
+              {sla && (
+                <p className="mt-8 border-t border-on-dark-border pt-6 font-mono text-[11px] uppercase leading-relaxed tracking-[0.15em] text-on-dark-text">
+                  <SlaSummary sla={sla} tone="onDark" />
+                </p>
+              )}
             </div>
           }
           side={

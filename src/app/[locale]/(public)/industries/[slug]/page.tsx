@@ -3,6 +3,7 @@ import { hasLocale } from "next-intl";
 import { setRequestLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
+import { getSlaContent } from "@/server/repositories/sla";
 import { alternatesFor, robotsFor } from "@/lib/seo";
 import { getIndustryPageData, industrySignals, industryHref } from "@/server/industry-page";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
@@ -86,6 +87,11 @@ export default async function IndustryPage(props: {
   // resolves without threading the locale through every component.
   setRequestLocale(locale);
 
+  // Story 3.5: ONE read per request, threaded down. The components cannot fetch
+  // (see `SlaStepper`), and `getSlaContent` is React-`cache()`d so a page mounting
+  // two consumers still makes a single round trip.
+  const sla = await getSlaContent(locale);
+
   const data = await getIndustryPageData(slug, locale);
   const t = await getTranslations({ locale, namespace: "Industry" });
   const tNav = await getTranslations({ locale, namespace: "Nav" });
@@ -114,7 +120,7 @@ export default async function IndustryPage(props: {
           { label: industry.name, isFallback: industry.isFallback },
         ]}
       />
-      <IndustryHero industry={industry} />
+      <IndustryHero industry={industry} sla={sla} />
       <IndustrySupplies categories={categories} />
       <IndustryCertificates certificates={certificates} />
       <IndustryServices services={services} />
@@ -123,6 +129,7 @@ export default async function IndustryPage(props: {
       <IndustryCta
         industryName={industry.name}
         industrySlug={industry.slug}
+        sla={sla}
         isFallback={industry.isFallback}
       />
     </>

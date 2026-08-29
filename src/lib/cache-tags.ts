@@ -32,6 +32,14 @@ export const COLLECTION_TAGS = {
   services: "services",
   /** Extension (Story 2.1) — the certificates block; documents are `Document` rows. */
   documents: "documents",
+  /**
+   * Extension (Story 3.5) — the site-wide response process shown in place of
+   * prices. Its own tag rather than `catalog`: the SLA appears on every route,
+   * so folding it into a catalogue-wide flush would make an admin's one-line
+   * copy edit invalidate the entire catalogue, and a catalogue publish would
+   * needlessly re-render the SLA. One tag, eight surfaces, one revalidate.
+   */
+  sla: "sla",
 } as const;
 
 export type CollectionTag = (typeof COLLECTION_TAGS)[keyof typeof COLLECTION_TAGS];

@@ -3,6 +3,7 @@ import { hasLocale } from "next-intl";
 import { setRequestLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
+import { getSlaContent } from "@/server/repositories/sla";
 import { alternatesFor, robotsFor } from "@/lib/seo";
 import { getProjectsPageData, projectsIndexSignals, groupByIndustry } from "@/server/project-page";
 import { ProjectCard } from "@/components/projects/ProjectCard";
@@ -53,6 +54,11 @@ export default async function ProjectsPage(props: { params: Promise<{ locale: st
   const { locale } = await props.params;
   if (!hasLocale(routing.locales, locale)) notFound();
   setRequestLocale(locale);
+
+  // Story 3.5: ONE read per request, threaded down. The components cannot fetch
+  // (see `SlaStepper`), and `getSlaContent` is React-`cache()`d so a page mounting
+  // two consumers still makes a single round trip.
+  const sla = await getSlaContent(locale);
 
   const t = await getTranslations({ locale, namespace: "Projects" });
   const projects = await getProjectsPageData(locale);
@@ -105,7 +111,7 @@ export default async function ProjectsPage(props: { params: Promise<{ locale: st
         </div>
       </section>
 
-      <ProjectCta />
+      <ProjectCta sla={sla} />
     </>
   );
 }

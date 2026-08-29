@@ -3,6 +3,7 @@ import { hasLocale } from "next-intl";
 import { setRequestLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
+import { getSlaContent } from "@/server/repositories/sla";
 import { alternatesFor, robotsFor } from "@/lib/seo";
 import { rfqSignals } from "@/server/rfq-page";
 import { resolveRfqPrefill } from "@/server/rfq-prefill";
@@ -90,6 +91,11 @@ export default async function RfqPage(props: {
   }
   setRequestLocale(locale);
 
+  // Story 3.5: ONE read per request, threaded down. The components cannot fetch
+  // (see `SlaStepper`), and `getSlaContent` is React-`cache()`d so a page mounting
+  // two consumers still makes a single round trip.
+  const sla = await getSlaContent(locale);
+
   const industries = await listIndustries(locale);
   const params = readPrefillParams(await props.searchParams);
   const prefill = await resolveRfqPrefill(params, locale, industries);
@@ -117,9 +123,10 @@ export default async function RfqPage(props: {
               }))}
               uiLocale={locale}
               prefill={prefill}
+              sla={sla}
             />
           }
-          side={<RfqRail />}
+          side={<RfqRail sla={sla} />}
         />
       </div>
     </div>

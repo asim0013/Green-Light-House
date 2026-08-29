@@ -3,6 +3,7 @@ import { hasLocale } from "next-intl";
 import { setRequestLocale, getTranslations, getFormatter } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
+import { getSlaContent } from "@/server/repositories/sla";
 import { alternatesFor, robotsFor } from "@/lib/seo";
 import { isValidSlug } from "@/lib/slug";
 import { getProjectPageData, projectSignals, projectHref } from "@/server/project-page";
@@ -79,6 +80,11 @@ export default async function ProjectDetailPage(props: {
   const { locale, slug } = await props.params;
   if (!hasLocale(routing.locales, locale)) notFound();
   setRequestLocale(locale);
+
+  // Story 3.5: ONE read per request, threaded down. The components cannot fetch
+  // (see `SlaStepper`), and `getSlaContent` is React-`cache()`d so a page mounting
+  // two consumers still makes a single round trip.
+  const sla = await getSlaContent(locale);
 
   const t = await getTranslations({ locale, namespace: "Projects" });
   // Read from `Industry`: `deliveredOn` already exists there with reviewed TR/RU,
@@ -203,7 +209,7 @@ export default async function ProjectDetailPage(props: {
         </section>
       )}
 
-      <ProjectCta projectSlug={project.slug} />
+      <ProjectCta projectSlug={project.slug} sla={sla} />
     </>
   );
 }

@@ -7,6 +7,7 @@ import { routing } from "@/i18n/routing";
 import { rfqSchema, TIMELINE_KEYS, type RfqInput } from "@/server/rfq/schema";
 import type { LeadEquipmentItem } from "@/server/rfq/contracts";
 import type { RfqPrefill } from "@/server/rfq-prefill";
+import type { SlaContent } from "@/server/repositories/sla";
 import { zodResolver } from "@/lib/zod-resolver";
 import { buttonClasses } from "@/components/ui/buttonClasses";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
@@ -140,9 +141,21 @@ export function RfqForm({
   industries,
   uiLocale,
   prefill = null,
+  sla = null,
 }: {
   industries: readonly RfqIndustryOption[];
   uiLocale: AppLocale;
+  /**
+   * The response process (Story 3.5), threaded straight through to
+   * `RfqConfirmation`.
+   *
+   * ⚠️ IT TRAVELS AS A PROP BECAUSE IT CANNOT BE FETCHED HERE. This island and
+   * the confirmation it swaps in are both client components, so neither can be
+   * async or touch a repository. The PAGE reads it once and hands it down —
+   * which is also the shape Story 3.8 must satisfy when it mounts this island on
+   * `/contact`.
+   */
+  sla?: SlaContent | null;
   /** The resolved doorway context, or null for a cold visit. The PAGE resolves
    *  it; this island never reads a URL (Story 3.8 mounts it on /contact too). */
   prefill?: RfqPrefill | null;
@@ -492,7 +505,7 @@ export function RfqForm({
       </div>
 
       {reference ? (
-        <RfqConfirmation reference={reference} />
+        <RfqConfirmation reference={reference} sla={sla} />
       ) : (
         <>
           {/* INSIDE the success conditional, deliberately: on a 201 the banner
