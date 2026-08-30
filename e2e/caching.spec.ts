@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
+import { slaTextFor } from "../scripts/sla-fixtures";
 
 /**
  * Story 1.8 — the live-publish caching contract, end to end.
@@ -74,6 +75,22 @@ interface PrismaLike {
       data: { name: string };
     }): Promise<{ count: number }>;
   };
+  // Story 3.5 — the SLA singleton. Hand-written like the row type above, and for
+  // the same reason; ⚠️ the 3.4 review found that omitting a column HERE is why
+  // no e2e could have asserted it. Both shapes below are matched on their CURRENT
+  // value rather than by id, so the probe swap and its restore are symmetrical.
+  slaProcessTranslation: {
+    updateMany(args: {
+      where: { locale: "en"; summary: string };
+      data: { summary: string };
+    }): Promise<{ count: number }>;
+  };
+  slaStepTranslation: {
+    updateMany(args: {
+      where: { locale: "en"; title: string };
+      data: { title: string };
+    }): Promise<{ count: number }>;
+  };
   $disconnect(): Promise<void>;
 }
 
@@ -97,6 +114,11 @@ async function revalidate(request: APIRequestContext, tags: string[], secret = S
 test.afterAll(async () => {
   // Safety net: never leave the shared seed mutated, even if an assertion threw.
   await renameIndustry(PROBE, ORIGINAL).catch(() => 0);
+  // ⚠️ The SLA rows are a SINGLETON — there is one process row site-wide, on
+  // eight surfaces. A probe left in place would not look like a stale test
+  // fixture, it would be the live copy on every public page.
+  await setSlaSummary(SLA_SUMMARY_PROBE, SLA_SUMMARY).catch(() => 0);
+  await setSlaStepTitle(SLA_STEP_PROBE, SLA_STEP_TITLE).catch(() => 0);
 });
 
 test("serves STALE data until the tag is revalidated, then serves fresh (FR5/FR40)", async ({
@@ -241,4 +263,136 @@ test("revalidation endpoint rejects unauthenticated and malformed calls", async 
   const unknownTag = await revalidate(request, ["definitely-not-a-tag"]);
   expect(unknownTag.status()).toBe(422);
   expect((await unknownTag.json()).error.code).toBe("unknown_tag");
+});
+
+/**
+ * Story 3.5 — the SLA copy, and the seven NAVIGABLE surfaces it publishes to.
+ *
+ * ⚠️ THE SEEDED COPY IS IMPORTED, NEVER RETYPED. `e2e/` is inside the AC5
+ * hygiene gate sweep, so a literal sentence here would be a second source of the
+ * copy and the gate would (correctly) fail on it. `slaTextFor` reads the same
+ * module `prisma/seed.ts` writes into the database.
+ */
+const SLA_SUMMARY = slaTextFor("en").summary;
+const SLA_STEP_TITLE = slaTextFor("en").steps[0].title;
+const SLA_SUMMARY_PROBE = "ZZZ-SLA-SUMMARY-PROBE";
+const SLA_STEP_PROBE = "ZZZ-SLA-STEP-PROBE";
+
+/**
+ * The six surfaces that draw the one-line SUMMARY, one per mounting page type.
+ *
+ * `/industries/[slug]` appears once but mounts TWO consumers (the hero and the
+ * closing band) — the reason the read is wrapped in React `cache()`.
+ */
+const SLA_SUMMARY_PAGES = [
+  "/en",
+  "/en/industries/fire-safety",
+  "/en/products/fd-9500",
+  "/en/services",
+  "/en/projects",
+  "/en/projects/hospital-fire-suppression",
+];
+
+/** The seventh: the only navigable surface that draws the STEPPER. */
+const SLA_STEPPER_PAGE = "/en/rfq";
+
+async function setSlaSummary(from: string, to: string): Promise<number> {
+  return withPrisma(async (db) => {
+    const { count } = await db.slaProcessTranslation.updateMany({
+      where: { locale: "en", summary: from },
+      data: { summary: to },
+    });
+    return count;
+  });
+}
+
+async function setSlaStepTitle(from: string, to: string): Promise<number> {
+  return withPrisma(async (db) => {
+    const { count } = await db.slaStepTranslation.updateMany({
+      where: { locale: "en", title: from },
+      data: { title: to },
+    });
+    return count;
+  });
+}
+
+test("one SLA edit publishes to all seven navigable surfaces, warm cache, no redeploy (Story 3.5 AC6)", async ({
+  page,
+  request,
+}) => {
+  // FR30's deploy-free half, end to end. The SLA is the one piece of content that
+  // renders on EVERY public route, so this is also the widest blast radius any
+  // single `revalidateTag` has in the app.
+  //
+  // ⚠️ THE EIGHTH SURFACE IS DELIBERATELY ABSENT. The submitted confirmation
+  // mounts only after a successful POST, and this config declares NO
+  // `globalTeardown` — a lead created here would escape the pollution gate the
+  // main suite relies on. It is proven separately, by unit render, in
+  // `src/components/rfq/RfqConfirmation.test.tsx`.
+
+  // ── WARM THE CACHE ──────────────────────────────────────────────────────────
+  // Nothing flushes Redis before this suite, so entries may already exist; these
+  // navigations guarantee it either way, and assert the seeded copy is what is
+  // being served before anything changes.
+  for (const path of SLA_SUMMARY_PAGES) {
+    await page.goto(path);
+    await expect(
+      page.getByText(SLA_SUMMARY).first(),
+      `${path} does not show the SLA`,
+    ).toBeVisible();
+  }
+  await page.goto(SLA_STEPPER_PAGE);
+  await expect(page.getByText(SLA_STEP_TITLE).first()).toBeVisible();
+
+  // Edit the content model behind the app back — no revalidation yet. This is
+  // what a Story 4.8 admin save will do.
+  expect(await setSlaSummary(SLA_SUMMARY, SLA_SUMMARY_PROBE)).toBe(1);
+  expect(await setSlaStepTitle(SLA_STEP_TITLE, SLA_STEP_PROBE)).toBe(1);
+
+  // ── THE LOAD-BEARING ASSERTIONS ─────────────────────────────────────────────
+  // Postgres now says PROBE. If these pages are NOT cached, they show it here and
+  // this fails. Everything after this block is meaningless without it: a suite
+  // that only checked "the new text appears after revalidating" passes just as
+  // happily with caching switched off entirely, which is the exact failure mode
+  // the Story 1.7 review found.
+  for (const path of SLA_SUMMARY_PAGES) {
+    await page.goto(path);
+    await expect(page.getByText(SLA_SUMMARY_PROBE), `${path} was NOT cached`).toHaveCount(0);
+  }
+  await page.goto(SLA_STEPPER_PAGE);
+  await expect(page.getByText(SLA_STEP_PROBE), `${SLA_STEPPER_PAGE} was NOT cached`).toHaveCount(0);
+
+  // ── PUBLISH ─────────────────────────────────────────────────────────────────
+  // One tag. If it were not registered in `COLLECTION_TAGS` this is a 422
+  // `unknown_tag` rather than a silent no-op — the endpoint refuses tags it does
+  // not know, which is why the closed set in `cache-tags.test.ts` is worth having.
+  const res = await revalidate(request, ["sla"]);
+  expect(res.status()).toBe(200);
+  expect((await res.json()).revalidated).toEqual(["sla"]);
+
+  // ...and every surface is live, from ONE edit and ONE revalidate.
+  for (const path of SLA_SUMMARY_PAGES) {
+    await page.goto(path);
+    await expect(
+      page.getByText(SLA_SUMMARY_PROBE).first(),
+      `${path} did not pick up the revalidated SLA`,
+    ).toBeVisible();
+  }
+  await page.goto(SLA_STEPPER_PAGE);
+  await expect(page.getByText(SLA_STEP_PROBE).first()).toBeVisible();
+
+  // ── RESTORE, and prove the restore is itself live ───────────────────────────
+  // Repeatable invalidation, not a one-shot — and it leaves the singleton exactly
+  // as seeded, which matters more here than anywhere else in this file.
+  expect(await setSlaSummary(SLA_SUMMARY_PROBE, SLA_SUMMARY)).toBe(1);
+  expect(await setSlaStepTitle(SLA_STEP_PROBE, SLA_STEP_TITLE)).toBe(1);
+  expect((await revalidate(request, ["sla"])).status()).toBe(200);
+
+  for (const path of [...SLA_SUMMARY_PAGES, SLA_STEPPER_PAGE]) {
+    await page.goto(path);
+    await expect(page.getByText(SLA_SUMMARY_PROBE), `${path} still shows the probe`).toHaveCount(0);
+    await expect(page.getByText(SLA_STEP_PROBE), `${path} still shows the probe`).toHaveCount(0);
+  }
+  await page.goto(SLA_SUMMARY_PAGES[0]);
+  await expect(page.getByText(SLA_SUMMARY).first()).toBeVisible();
 });

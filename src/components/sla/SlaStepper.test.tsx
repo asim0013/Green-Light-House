@@ -96,8 +96,9 @@ describe("SlaStepper — tone and kicker", () => {
   });
 
   it("omits the kicker unless asked — the confirmation surface has none", () => {
-    // The rail draws "What happens next" above the steps; the confirmation did
-    // not before this story and does not after it.
+    // The rail draws the model's kicker above the steps; the confirmation did
+    // not before this story and does not after it. The kicker is referenced
+    // through the fixture below, never quoted — the AC5 gate sweeps this file.
     const without = renderToStaticMarkup(<SlaStepper sla={EN} tone="light" />);
     const with_ = renderToStaticMarkup(<SlaStepper sla={EN} tone="light" showKicker />);
     expect(without).not.toContain(EN.kicker);

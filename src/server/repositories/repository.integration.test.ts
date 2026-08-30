@@ -26,6 +26,10 @@ import {
 } from "./document";
 import { queryServicesByIndustry, queryServices } from "./service";
 import { queryManufacturerOptions } from "./series";
+import { querySlaContent, SLA_PROCESS_KEY } from "./sla";
+// The seeded copy, read from the module the SEED writes from. Retyping any of it
+// here would mint a second source and the AC5 hygiene gate would fail on it.
+import { slaTextFor } from "../../../scripts/sla-fixtures";
 
 /**
  * Integration tests — need a reachable Postgres (DATABASE_URL). They self-seed
@@ -1418,5 +1422,186 @@ describe("Story 3.0 — Lead foundations (integration)", () => {
       const lead = await prisma.lead.create({ data: { ...baseLead(), source } });
       expect(lead.source, source).toBe(source);
     }
+  });
+});
+
+/**
+ * Story 3.5 — the SLA singleton, against a real database.
+ *
+ * TWO THINGS ONLY THE DATABASE CAN PROVE, and the mapper tests in `sla.test.ts`
+ * cannot:
+ *
+ *   1. AC2's convention half — EN presence is enforced by the SEED, not by a
+ *      constraint. Nothing in the schema stops an EN row going missing, so the
+ *      only thing standing between a fresh environment and eight empty surfaces
+ *      is that `db:seed` writes it. That is a claim about the seed, so it is
+ *      asserted against seeded data.
+ *   2. AC8's degenerate branch reached through `querySlaContent` itself —
+ *      `findUnique` returning null, and a row whose usable translations are all
+ *      gone. `sla.test.ts` proves `toSlaContent` handles both shapes; this
+ *      proves the query hands it those shapes rather than throwing first.
+ *
+ * ⚠️ THE ROWS ARE A SINGLETON AND THESE TESTS DELETE THEM. There is exactly one
+ * process row site-wide, so unlike every other fixture in this file they cannot
+ * be created under a `zzz-int-test-` prefix and thrown away. `npm test` runs
+ * BEFORE both Playwright suites in CI with no reseed between them, so a test
+ * that left the SLA deleted would take out every e2e assertion downstream and
+ * the failure would look like a caching bug.
+ *
+ * The AC sanctions two ways out and this takes the second: a `beforeAll`
+ * snapshot restored in `afterAll`, on the `e2e/caching.spec.ts:97-100` pattern.
+ * A rolled-back transaction was the other option and does NOT work here —
+ * `querySlaContent` is bound to the module-level `prisma` client, so it would
+ * never observe an uncommitted delete made through a transaction client, and the
+ * test would pass against untouched rows while appearing to prove the opposite.
+ *
+ * The restore writes back every id, timestamp and string, and `afterAll` ASSERTS
+ * the graph is identical to the snapshot rather than trusting that it is.
+ */
+describe("Story 3.5 — the SLA singleton (integration)", () => {
+  it("db:seed leaves an EN row present — AC2 convention half, unenforced by any constraint", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+
+    const process = await prisma.slaProcess.findUnique({
+      where: { key: SLA_PROCESS_KEY },
+      select: {
+        translations: { where: { locale: "en" }, select: { kicker: true, summary: true } },
+        steps: {
+          orderBy: { sort: "asc" },
+          select: {
+            sort: true,
+            translations: { where: { locale: "en" }, select: { title: true } },
+          },
+        },
+      },
+    });
+
+    // The key itself: `SLA_PROCESS_KEY` and the seed literal must agree, or the
+    // read returns null in production and every SLA surface silently empties.
+    expect(process, `no SlaProcess with key ${SLA_PROCESS_KEY} — did db:seed run?`).not.toBeNull();
+    expect(process!.translations).toHaveLength(1);
+    expect(process!.steps).toHaveLength(3);
+    // AC2: three ordered steps, EACH with EN text. A step whose EN row is missing
+    // is DROPPED by the mapper, so a partial seed shows a shorter stepper rather
+    // than an error — which is why step-level EN presence is asserted too.
+    expect(process!.steps.map((s) => s.sort)).toEqual([1, 2, 3]);
+    for (const step of process!.steps) {
+      expect(step.translations, `step ${step.sort} has no EN row`).toHaveLength(1);
+    }
+
+    // ...and the read composed from it is the seeded copy, not a fallback.
+    const content = await querySlaContent("en");
+    expect(content).not.toBeNull();
+    expect(content!.isFallback).toBe(false);
+    expect(content!.summary).toBe(slaTextFor("en").summary);
+    expect(content!.steps.map((s) => s.title)).toEqual(slaTextFor("en").steps.map((s) => s.title));
+  });
+
+  describe("the degenerate branch, reached through the real query (AC8)", () => {
+    /** The whole graph as seeded, captured before anything is deleted. */
+    let snapshot: Awaited<ReturnType<typeof readGraph>> = null;
+
+    /** Read the graph in a stable order so two reads are directly comparable. */
+    async function readGraph() {
+      return prisma.slaProcess.findUnique({
+        where: { key: SLA_PROCESS_KEY },
+        select: {
+          id: true,
+          key: true,
+          createdAt: true,
+          updatedAt: true,
+          translations: {
+            orderBy: { locale: "asc" },
+            select: { id: true, locale: true, kicker: true, summary: true },
+          },
+          steps: {
+            orderBy: { sort: "asc" },
+            select: {
+              id: true,
+              sort: true,
+              createdAt: true,
+              updatedAt: true,
+              translations: {
+                orderBy: { locale: "asc" },
+                select: { id: true, locale: true, badge: true, title: true, description: true },
+              },
+            },
+          },
+        },
+      });
+    }
+
+    beforeAll(async () => {
+      if (!dbReachable) return;
+      snapshot = await readGraph();
+    });
+
+    afterAll(async () => {
+      if (!dbReachable || !snapshot) return;
+
+      // Rebuild from the snapshot, ids and timestamps included. `createdAt` and
+      // `updatedAt` are written EXPLICITLY: `@updatedAt` only fills a value that
+      // was not supplied, so a restore that omitted them would stamp "now" and
+      // the identity assertion below — the one thing proving this suite left no
+      // trace — would have to be weakened to ignore the columns it should check.
+      await prisma.slaProcess.deleteMany({ where: { key: snapshot.key } });
+      await prisma.slaProcess.create({
+        data: {
+          id: snapshot.id,
+          key: snapshot.key,
+          createdAt: snapshot.createdAt,
+          updatedAt: snapshot.updatedAt,
+          translations: { create: snapshot.translations },
+          steps: {
+            create: snapshot.steps.map((step) => ({
+              id: step.id,
+              sort: step.sort,
+              createdAt: step.createdAt,
+              updatedAt: step.updatedAt,
+              translations: { create: step.translations },
+            })),
+          },
+        },
+      });
+
+      // Trust nothing: prove the restore is byte-identical, in `afterAll`, where
+      // a mismatch still fails the run rather than silently poisoning the e2e
+      // suites that run after `npm test` with no reseed.
+      expect(await readGraph(), "the SLA singleton was not restored exactly").toEqual(snapshot);
+    });
+
+    it("returns null when neither the requested locale NOR EN has a row — no throw", async (ctx) => {
+      if (!dbReachable) return ctx.skip();
+
+      // Construct the state the schema deliberately permits: EN gone, and the
+      // REQUESTED locale gone with it. TR is left in place, so this also proves
+      // the null comes from the resolution rule and not from an empty table.
+      const { count } = await prisma.slaProcessTranslation.deleteMany({
+        where: { process: { key: SLA_PROCESS_KEY }, locale: { in: ["en", "ru"] } },
+      });
+      expect(count, "expected seeded en+ru process translations to delete").toBe(2);
+
+      await expect(querySlaContent("ru")).resolves.toBeNull();
+      // ...and TR, which still has its row, is unaffected: the branch is about
+      // the requested locale, not about the process being unreadable.
+      expect(await querySlaContent("tr")).not.toBeNull();
+    });
+
+    it("returns null when the process row is gone entirely — no throw", async (ctx) => {
+      if (!dbReachable) return ctx.skip();
+
+      const { count } = await prisma.slaProcess.deleteMany({ where: { key: SLA_PROCESS_KEY } });
+      expect(count).toBe(1);
+
+      // The `if (!process) return null` line, reached for real. This is the state
+      // a production `migrate deploy` without a seed leaves behind.
+      await expect(querySlaContent("en")).resolves.toBeNull();
+      await expect(querySlaContent("tr")).resolves.toBeNull();
+
+      // Cascade check, free here: the translations went with it, so the restore
+      // in `afterAll` cannot collide with orphans.
+      expect(await prisma.slaProcessTranslation.count()).toBe(0);
+      expect(await prisma.slaStepTranslation.count()).toBe(0);
+    });
   });
 });

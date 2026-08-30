@@ -3,6 +3,9 @@ import { probeDbReady, warmUp } from "./dbReady";
 import { probeClamavReady } from "./clamavReady";
 import { storageKeyExists, listStorageKeys, deleteStorageKey } from "./storageReady";
 import { cleanPdf, eicarPdf, plainZip } from "../scripts/attachment-fixtures";
+// The seeded SLA copy, from the module the seed writes from. NEVER retyped:
+// `e2e/` is inside the AC5 hygiene gate sweep.
+import { slaTextFor } from "../scripts/sla-fixtures";
 
 /**
  * Story 3.2 — the RFQ form and its persist-first write path, end to end.
@@ -1410,5 +1413,53 @@ test.describe("doorway pre-fill (Story 3.4)", () => {
     await page.waitForURL("**/en/rfq?project=lng-terminal-fire-gas-upgrade");
     await expect(page.getByTestId("rfq-prefill-banner")).toContainText("Oil & Gas");
     await expect(page.locator('select[name="industry"]')).toHaveValue("oil-gas");
+  });
+});
+
+test.describe("Story 3.5 — the SLA stepper on the rail, in every locale", () => {
+  test("renders the MODEL's steps in TR and RU, with no literal key path", async ({
+    page,
+  }, testInfo) => {
+    if (!dbReady) testInfo.skip();
+    /**
+     * ⚠️ THE FAILURE THIS EXISTS TO CATCH IS SILENT AND LOCALE-SHAPED. Story 3.5
+     * deleted `Rfq.slaKicker` and the four `sla` keys; next-intl here does NOT
+     * throw on a missing key and `t()` is not compiler-checked, so a surviving
+     * call site renders the literal string `Rfq.slaKicker` to a buyer while every
+     * EN-only assertion in this file stays green. It is the same class Story
+     * 3.3's review found in the email copy and Story 3.4's banner test closed for
+     * the banner — closed here for the stepper.
+     *
+     * It also proves the second half of FR34a on this surface: the copy is DB
+     * content with per-locale rows, so TR and RU must show TURKISH and RUSSIAN
+     * steps, not the EN fallback. P5: delete the TR step rows and this reddens —
+     * the page would still render 200, in English, with a fallback notice.
+     *
+     * The copy is imported from the module the seed writes from, never retyped:
+     * `e2e/` is inside the AC5 hygiene gate sweep.
+     */
+    for (const locale of ["tr", "ru"] as const) {
+      await page.goto(`/${locale}/rfq`);
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+
+      const sla = slaTextFor(locale);
+      // The kicker heads the rail card; the three step titles are the process.
+      await expect(page.getByText(sla.kicker).first()).toBeVisible();
+      for (const step of sla.steps) {
+        await expect(
+          page.getByText(step.title).first(),
+          `${locale}: step "${step.title}" missing from the rail`,
+        ).toBeVisible();
+      }
+
+      // A collapsed key path is the literal namespace prefix. The rail reads the
+      // `Rfq` namespace for its other cards, so this is the shape a survivor takes.
+      await expect(page.locator("main")).not.toContainText("Rfq.");
+
+      // ...and NOT the English copy: a fallback here would mean the TR/RU rows
+      // never reached the database, which is exactly what a partial seed does.
+      const en = slaTextFor("en");
+      await expect(page.getByText(en.steps[0].title)).toHaveCount(0);
+    }
   });
 });

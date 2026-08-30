@@ -109,7 +109,7 @@ describe("SLA copy lives in the content model and nowhere else (AC5)", () => {
     // ⚠️ NEXT-INTL DOES NOT THROW ON A MISSING KEY here and `t()` is not
     // compiler-checked, so a call site left behind renders the literal string
     // `Home.sla` to a buyer with the whole suite green. This is the gate that
-    // notices, together with the `t("sla")` sweep below.
+    // notices, together with the call-site sweep below.
     for (const locale of ["en", "tr", "ru"]) {
       const messages = JSON.parse(readFileSync(`messages/${locale}.json`, "utf8"));
       const namespaces = Object.values(messages) as Record<string, unknown>[];
@@ -121,8 +121,16 @@ describe("SLA copy lives in the content model and nowhere else (AC5)", () => {
   });
 
   it("no component still reads the deleted translation keys", () => {
-    // The call-site half. A surviving `t("sla")` compiles, renders 200, and
-    // shows a key path to a buyer — so the source is swept directly.
+    // The call-site half. A surviving read of a deleted key compiles, renders
+    // 200, and shows a key path to a buyer — so the source is swept directly.
+    //
+    // ⚠️ THE PATTERN IS NOT WRITTEN OUT IN PROSE ANYWHERE IN THIS FILE, and that
+    // is deliberate rather than stylistic. This sweep runs over `src/**`, which
+    // INCLUDES this file: a comment quoting the call form verbatim makes the gate
+    // match itself and fail on its own explanation. `source-hygiene.test.ts`
+    // learned the identical lesson from the EICAR needle — do not write the guard
+    // pattern down. The regex below is the only place it appears, and it does not
+    // match its own source.
     const offenders = files
       .filter((file) => file.startsWith("src/") && /\.tsx?$/.test(file))
       .filter((file) => {

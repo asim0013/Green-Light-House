@@ -51,7 +51,12 @@ const INDUSTRIES = [
 ];
 
 function render() {
-  return renderToStaticMarkup(<RfqForm industries={INDUSTRIES} uiLocale="en" />);
+  // `sla={null}` (Story 3.5): the prop is REQUIRED so that a mount which forgets
+  // to thread the content model fails to compile. Null is the honest value for
+  // every assertion in this file — the SLA renders only on the confirmation,
+  // which this island swaps in after a POST and no test here reaches. The
+  // confirmation is covered by `RfqConfirmation.test.tsx`.
+  return renderToStaticMarkup(<RfqForm industries={INDUSTRIES} uiLocale="en" sla={null} />);
 }
 
 describe("RfqForm — initial markup", () => {
@@ -424,7 +429,10 @@ describe("the PRE-FILLED render — the SSR paint (Story 3.4, Task 0 #54)", () =
   }
 
   const renderWith = (prefill: RfqPrefill) =>
-    renderToStaticMarkup(<RfqForm industries={INDUSTRIES} uiLocale="en" prefill={prefill} />);
+    renderToStaticMarkup(
+      // `sla={null}` — see the note on `render()` above.
+      <RfqForm industries={INDUSTRIES} uiLocale="en" prefill={prefill} sla={null} />,
+    );
 
   it("paints the pre-selected industry into the SERVER markup", () => {
     // P5: delete `defaultValue={prefill?.industry?.slug ?? ""}` from the select

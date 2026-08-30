@@ -39,8 +39,9 @@ export function SlaStepper({
   /** Must match the surface: `onDark` for the ink rail, `light` for the white
    *  confirmation. Drives BOTH the kicker and the fallback marker. */
   tone: "light" | "onDark";
-  /** The rail draws "What happens next" above the steps; the confirmation does
-   *  not, and did not before this story either. */
+  /** The rail draws the model's kicker above the steps; the confirmation does
+   *  not, and did not before this story either. ⚠️ The kicker is NOT quoted here:
+   *  it is content, and the AC5 gate sweeps this file for exactly that. */
   showKicker?: boolean;
 }) {
   const onDark = tone === "onDark";

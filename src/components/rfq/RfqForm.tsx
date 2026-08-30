@@ -141,7 +141,7 @@ export function RfqForm({
   industries,
   uiLocale,
   prefill = null,
-  sla = null,
+  sla,
 }: {
   industries: readonly RfqIndustryOption[];
   uiLocale: AppLocale;
@@ -154,8 +154,15 @@ export function RfqForm({
    * async or touch a repository. The PAGE reads it once and hands it down —
    * which is also the shape Story 3.8 must satisfy when it mounts this island on
    * `/contact`.
+   *
+   * ⚠️ REQUIRED, NOT OPTIONAL-WITH-A-NULL-DEFAULT, and the difference is the
+   * whole guard. A defaulting prop is the shape that goes un-passed and
+   * un-noticed: the confirmation would simply render no stepper, on a surface
+   * only reachable after a real POST, with every test green. Required makes a
+   * mount that forgets to thread it a COMPILE error, and forces Story 3.8 to
+   * write `sla={null}` as a decision rather than inherit it as an oversight.
    */
-  sla?: SlaContent | null;
+  sla: SlaContent | null;
   /** The resolved doorway context, or null for a cold visit. The PAGE resolves
    *  it; this island never reads a URL (Story 3.8 mounts it on /contact too). */
   prefill?: RfqPrefill | null;
