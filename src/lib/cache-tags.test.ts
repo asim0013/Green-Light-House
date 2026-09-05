@@ -30,10 +30,20 @@ describe("collection tags", () => {
 
   it("names the extension Story 3.5 added for the site-wide response process", () => {
     expect(TAGS.sla).toBe("sla");
-    // Its own tag, not `catalog`: the SLA renders on every route, so folding it
-    // into a catalogue flush would make a one-line copy edit invalidate the whole
-    // catalogue — and a catalogue publish needlessly re-render the SLA.
-    expect(TAGS.sla).not.toBe(TAGS.catalog);
+    // Its own tag, not `catalog`: the SLA is read by SEVEN page types that cut
+    // across the catalogue and everything else, so folding it into a catalogue
+    // flush would make a one-line copy edit invalidate the whole catalogue — and
+    // a catalogue publish needlessly re-render the SLA. (It is NOT on "every
+    // route", as an earlier version of this comment claimed: /contact and the
+    // legal pages render no SLA.)
+    //
+    // ⚠️ `expect(TAGS.sla).not.toBe(TAGS.catalog)` USED TO SIT HERE AND COULD NOT
+    // FAIL — the line above already pins the value to "sla", so the inequality
+    // was arithmetic, not a test. What actually has to hold is that the
+    // revalidate endpoint ACCEPTS this tag: it refuses anything `isKnownTag`
+    // rejects with a 422, so a tag registered in the map but missing from the
+    // known set would make every SLA publish a silent no-op.
+    expect(isKnownTag(TAGS.sla)).toBe(true);
   });
 
   it("lists every collection tag in ALL_COLLECTION_TAGS", () => {

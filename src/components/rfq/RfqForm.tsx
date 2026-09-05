@@ -160,7 +160,13 @@ export function RfqForm({
    * un-noticed: the confirmation would simply render no stepper, on a surface
    * only reachable after a real POST, with every test green. Required makes a
    * mount that forgets to thread it a COMPILE error, and forces Story 3.8 to
-   * write `sla={null}` as a decision rather than inherit it as an oversight.
+   * write the value as a decision rather than inherit it as an oversight.
+   *
+   * ⚠️ BUT IT ONLY CATCHES OMISSION. `sla={null}` typechecks cleanly and renders
+   * a confirmation with no stepper — the compiler cannot tell a deliberate null
+   * from a lazy one. Story 3.8 must pass the REAL value from its own page read;
+   * `/contact` mounting this island with a hard-coded null would silently drop
+   * the SLA from that surface and no type, test or gate here would notice.
    */
   sla: SlaContent | null;
   /** The resolved doorway context, or null for a cold visit. The PAGE resolves

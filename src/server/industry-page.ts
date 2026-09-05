@@ -129,8 +129,17 @@ export function industriesIndexSignals(
  * manufacturing and nuclear `noindex` and absent from the sitemap.
  *
  * The FALLBACK signals DO include the industry's own name/description, because that
- * text is the page's `<h1>`: a page whose every rendered string fell back to EN
- * genuinely has nothing in the requested locale.
+ * text is the page's `<h1>`: a page whose every rendered BLOCK string fell back to
+ * EN genuinely has nothing of its own in the requested locale.
+ *
+ * ⚠️ "EVERY RENDERED STRING" IS NO LONGER LITERALLY TRUE, and that is the fourth
+ * docstring Story 3.5 falsifies — the story rewrote three and missed this one.
+ * This page mounts TWO SLA surfaces (`IndustryHero` and `IndustryCta`), and since
+ * 3.5 that copy is DB content with its own per-locale rows, so it can be fully
+ * Turkish while every block on the page fell back to EN. It is deliberately NOT
+ * counted here, for the reason `services-page.ts` and `sitemap.ts` give: the SLA
+ * is site-wide chrome, and a translated chrome element must never be the evidence
+ * that a thin page deserves indexing.
  */
 export function industrySignals(locale: Locale, data: IndustryPageData): ContentSignals {
   const blockRows = [

@@ -7,6 +7,7 @@ import { routing } from "@/i18n/routing";
 import { alternatesFor, robotsFor } from "@/lib/seo";
 import { getServicesPageData, servicesSignals } from "@/server/services-page";
 import { getSlaContent } from "@/server/repositories/sla";
+import { hasSlaSummary } from "@/lib/sla-content";
 import { SlaSummary } from "@/components/sla/SlaSummary";
 import { Link } from "@/i18n/navigation";
 import { Breadcrumb, DarkBand, Kicker, TwoColumn } from "@/components/ui";
@@ -144,7 +145,7 @@ export default async function ServicesPage(props: { params: Promise<{ locale: st
                     missed (2.6 review). Story 3.5 moved them out of `messages`
                     into the content model, so that revision now reaches all eight
                     surfaces at once and needs no deploy. */}
-                {sla && (
+                {hasSlaSummary(sla) && (
                   <p className="mt-6 font-mono text-[11px] uppercase leading-relaxed tracking-[0.15em] text-on-dark-text">
                     <SlaSummary sla={sla} tone="onDark" />
                   </p>

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { toSlaContent, type SlaProcessRow } from "./sla";
+import { toSlaContent, type SlaProcessRow, type SlaContent } from "./sla";
+import { hasSlaSummary } from "@/lib/sla-content";
 
 /**
  * The SLA mapper (Story 3.5) — pure, so it is testable without Postgres.
@@ -112,5 +113,44 @@ describe("toSlaContent — the degenerate branch (AC8)", () => {
     expect(sla).not.toBeNull();
     expect(sla?.summary).toBe("EN summary");
     expect(sla?.steps).toEqual([]);
+  });
+});
+
+describe("hasSlaSummary — the guard the six one-liner surfaces use", () => {
+  const withSummary = (summary: string) => ({
+    kicker: "k",
+    summary,
+    steps: [],
+    isFallback: false,
+  });
+
+  it("is false for null, so an unseeded model draws no chrome", () => {
+    expect(hasSlaSummary(null)).toBe(false);
+  });
+
+  it("is FALSE for an empty or whitespace summary — the defect it exists to close", () => {
+    // ⚠️ THE SIX SUMMARY SURFACES USED TO GUARD ON `sla &&` ALONE, and `HomeHero`
+    // carried the comment "border would otherwise draw above nothing" while
+    // testing only that the ROW exists. A row whose summary an admin blanked is
+    // non-null, so every one of the six drew its rule, padding and uppercase
+    // frame around an empty string.
+    //
+    // P5: change the implementation to `sla !== null` and both of these redden.
+    expect(hasSlaSummary(withSummary(""))).toBe(false);
+    expect(hasSlaSummary(withSummary("   "))).toBe(false);
+    expect(hasSlaSummary(withSummary("\n\t "))).toBe(false);
+  });
+
+  it("is true for real copy", () => {
+    expect(hasSlaSummary(withSummary("Technical review in 24 h"))).toBe(true);
+  });
+
+  it("narrows the type, so callers may pass it straight to SlaSummary", () => {
+    // The `sla is SlaContent` predicate is what lets the six call sites write
+    // `hasSlaSummary(sla) && <SlaSummary sla={sla} …/>` without a non-null
+    // assertion. If the signature loses the predicate this stops compiling.
+    const maybe: SlaContent | null = withSummary("x");
+    if (hasSlaSummary(maybe)) expect(maybe.summary).toBe("x");
+    else throw new Error("unreachable");
   });
 });

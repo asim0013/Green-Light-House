@@ -8,6 +8,7 @@ import { SITE } from "@/config/site";
 import { rfqIndustryHref } from "@/lib/rfq-href";
 import { SlaSummary } from "@/components/sla/SlaSummary";
 import type { SlaContent } from "@/server/repositories/sla";
+import { hasSlaSummary } from "@/lib/sla-content";
 
 /**
  * Closing CTA band (Story 2.1) — the last beat of EXPERIENCE.md's industry stack.
@@ -71,7 +72,7 @@ export function IndustryCta({
               {/* From the content model since Story 3.5 — one source, eight
                   surfaces, one revalidate. Conditional because an unseeded model
                   must leave no empty line in the band. */}
-              {sla && (
+              {hasSlaSummary(sla) && (
                 <p className="mt-6 font-mono text-[11px] uppercase leading-relaxed tracking-[0.15em] text-on-dark-text">
                   <SlaSummary sla={sla} tone="onDark" />
                 </p>

@@ -49,6 +49,12 @@ export function SlaStepper({
   const titleClasses = onDark ? "text-white" : "text-ink";
   const descriptionClasses = onDark ? "text-on-dark-text" : "text-ink-2";
 
+  // FR34a's VISIBLE marker covers the whole block, so it must be driven by
+  // whether ANYTHING here fell back — the process text OR any single step.
+  // Reading only `sla.isFallback` left an all-English stepper unannotated
+  // whenever the process row happened to exist in the requested locale.
+  const anyFallback = sla.isFallback || sla.steps.some((step) => step.isFallback);
+
   return (
     <div className="flex flex-col gap-[18px]">
       {showKicker && (
@@ -56,7 +62,7 @@ export function SlaStepper({
           <Kicker tone={onDark ? "accent" : "ink"}>
             {sla.isFallback ? <span lang="en">{sla.kicker}</span> : sla.kicker}
           </Kicker>
-          <FallbackNotice isFallback={sla.isFallback} tone={tone} />
+          <FallbackNotice isFallback={anyFallback} tone={tone} />
         </span>
       )}
 
@@ -73,16 +79,27 @@ export function SlaStepper({
               {step.badge}
             </span>
             <span className="flex flex-col gap-[3px]">
+              {/* `step.isFallback`, NOT `sla.isFallback`: steps resolve
+                  independently of the process text, so the process flag marks
+                  the wrong things in both directions. */}
               <span className={`text-[14px] font-semibold ${titleClasses}`}>
-                {sla.isFallback ? <span lang="en">{step.title}</span> : step.title}
+                {step.isFallback ? <span lang="en">{step.title}</span> : step.title}
               </span>
               <span className={`text-[13px] leading-[1.45] ${descriptionClasses}`}>
-                {sla.isFallback ? <span lang="en">{step.description}</span> : step.description}
+                {step.isFallback ? <span lang="en">{step.description}</span> : step.description}
               </span>
             </span>
           </li>
         ))}
       </ol>
+
+      {/* ⚠️ THE NOTICE USED TO LIVE INSIDE THE `showKicker` BLOCK, which meant
+          the confirmation surface — the one caller that does not ask for a
+          kicker — rendered `lang="en"` copy with NO visible "shown in English"
+          notice at all. FR34a's marker is not the kicker's decoration; it
+          qualifies the block. The rail keeps it beside the kicker above; every
+          other caller gets it here. */}
+      {!showKicker && <FallbackNotice isFallback={anyFallback} tone={tone} />}
     </div>
   );
 }

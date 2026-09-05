@@ -64,7 +64,10 @@ export function RfqConfirmation({
           ),
         })}
       </p>
-      {sla && (
+      {/* `steps.length`, not just `sla` — see the note in `RfqRail`. A
+          summary-only row is valid content for the six one-liner surfaces but
+          renders an empty container here. */}
+      {sla && sla.steps.length > 0 && (
         <div className="mt-6">
           <SlaStepper sla={sla} tone="light" />
         </div>

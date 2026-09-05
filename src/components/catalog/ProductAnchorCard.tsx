@@ -8,6 +8,7 @@ import { rfqProductHref } from "@/lib/rfq-href";
 import { SlaSummary } from "@/components/sla/SlaSummary";
 import type { ProductDetail } from "@/server/repositories/product";
 import type { SlaContent } from "@/server/repositories/sla";
+import { hasSlaSummary } from "@/lib/sla-content";
 
 /**
  * The quote / facts anchor card (Story 2.4 — UX-DR7).
@@ -20,8 +21,16 @@ import type { SlaContent } from "@/server/repositories/sla";
  *
  * NO PRICE, AND NOTHING THAT LOOKS LIKE ONE (FR2). The facts rows are identity —
  * model, manufacturer, category — and the copy reframes the absence of prices as
- * the offer rather than an apology, per EXPERIENCE.md § Voice ("No price shown —
- * project-specced quote within 24 h", never "Prices available on request").
+ * the offer rather than an apology, per EXPERIENCE.md § Voice: name what the
+ * buyer gets instead of a price, never "Prices available on request".
+ *
+ * ⚠️ THE DURATION THAT USED TO BE QUOTED HERE IS GONE, and its absence is the
+ * point (Story 3.5). This paragraph restated the response times verbatim, which
+ * made it a second source of a commitment an admin must be able to change
+ * without a deploy — the eighth entry in the story's §G list, and the one that
+ * was missed on the first pass because the AC5 gate sweeps sentences and this
+ * was a short label. The promise lives in the content model; this card renders
+ * it through `SlaSummary` and states no number of its own.
  *
  * THE MANUFACTURER IS TEXT, NOT A LINK. FR20 (a page per manufacturer) is PHASED
  * and no such route exists; linking it would violate DP-12 ("never link a page
@@ -107,7 +116,7 @@ export function ProductAnchorCard({
 
             ⚠️ The only non-uppercase SLA treatment on the site — kept, because
             this aside is denser than the hero bands. */}
-        {sla && (
+        {hasSlaSummary(sla) && (
           <p className="mt-4 font-mono text-[11px] leading-relaxed text-ink-2">
             <SlaSummary sla={sla} tone="light" />
           </p>

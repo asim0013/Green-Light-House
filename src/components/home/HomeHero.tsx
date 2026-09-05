@@ -10,6 +10,7 @@ import { projectHref } from "@/lib/project-href";
 import { SlaSummary } from "@/components/sla/SlaSummary";
 import type { ProjectListItem } from "@/server/repositories/project";
 import type { SlaContent } from "@/server/repositories/sla";
+import { hasSlaSummary } from "@/lib/sla-content";
 
 /**
  * Projects-first hero (Story 1.7, FR7/FR9).
@@ -82,7 +83,7 @@ export function HomeHero({
                   centralised it, so an admin edit now reaches all eight surfaces
                   with no deploy. The whole block is conditional because the ruled
                   border would otherwise draw above nothing. */}
-              {sla && (
+              {hasSlaSummary(sla) && (
                 <p className="mt-7 border-t border-border-subtle pt-5 font-mono text-[11px] uppercase leading-relaxed tracking-[0.15em] text-ink-2">
                   <SlaSummary sla={sla} tone="light" />
                 </p>

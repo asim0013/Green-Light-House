@@ -8,11 +8,20 @@ import { resolveTranslation } from "@/server/i18n/resolveTranslation";
 /**
  * The site-wide response process (Story 3.5 — FR30/FR34a/FR38).
  *
- * ⚠️ THE ONLY SOURCE OF SLA COPY. Until this story the same sentence was
- * byte-copied into four `messages/` namespaces plus a fifth key for the kicker —
- * fifteen strings across three locales, all deleted. Eight render sites read
- * this instead, so one edit plus one `revalidateTag` changes every one of them
- * with no rebuild (FR30's deploy-free half).
+ * ⚠️ THE ONLY SOURCE OF THE SLA's NUMBERS AND STEPS. Until this story the same
+ * sentence was byte-copied into four `messages/` namespaces plus a fifth key for
+ * the kicker — fifteen strings across three locales, all deleted. Eight render
+ * sites read this instead, so one edit plus one `revalidateTag` changes every
+ * one of them with no rebuild (FR30's deploy-free half).
+ *
+ * ⚠️ IT IS NOT THE ONLY PLACE THE OFFER IS DESCRIBED, and an earlier revision of
+ * this docstring overstated that. `Rfq.lead` and `Privacy.use` still name the
+ * two DELIVERABLES in prose ("a technical review and a specced proposal"). That
+ * is deliberate and safe: they carry no durations and no step structure, so an
+ * admin editing the model cannot leave them contradicting it. What FR30 requires
+ * to be editable without a deploy is the COMMITMENT — the numbers, the sequence,
+ * the badges — and that lives here and nowhere else. The AC5 gate enforces that
+ * boundary, not a ban on ever mentioning the service.
  *
  * ⚠️ A SINGLETON, WHICH IS NEW HERE. Every other read in this directory is a
  * collection or a slug-keyed entity; this one addresses ONE row by a stable key
@@ -27,27 +36,71 @@ import { resolveTranslation } from "@/server/i18n/resolveTranslation";
  * `messages/`, which is precisely what this story removes.
  */
 
-/** The singleton's key. The seed writes this exact value; if the two ever
- *  diverge the read returns null and every SLA surface silently empties, which
- *  is why `repository.integration.test.ts` asserts the seeded row is findable. */
-export const SLA_PROCESS_KEY = "default";
+/**
+ * The singleton's key, re-exported from the module the SEED also reads it from.
+ *
+ * ⚠️ NOT REDECLARED HERE. It used to be, with the seed hard-coding the same
+ * literal separately — two sources for the one string that joins them. If they
+ * diverged the read would return null and every SLA surface would silently
+ * empty, which is why `repository.integration.test.ts` asserts the seeded row is
+ * findable. Now they cannot diverge.
+ */
+export { SLA_PROCESS_KEY } from "../../../scripts/sla-fixtures";
+import { SLA_PROCESS_KEY } from "../../../scripts/sla-fixtures";
 
 export interface SlaStepItem {
   /** "24h" / "24 saat" / "24 ч" — or the arrow on step three. Translated. */
   badge: string;
   title: string;
   description: string;
+  /**
+   * True when THIS STEP's row fell back to EN (FR34a).
+   *
+   * ⚠️ PER-STEP, NOT PER-PROCESS, AND THE DISTINCTION IS THE WHOLE POINT. Steps
+   * resolve independently of the process text and of each other — `sla.test.ts`
+   * asserts exactly that — so the mixed state is reachable by design: a Turkish
+   * process row whose step 2 has no TR translation, or an EN-fallback process
+   * whose steps DO have Turkish rows. Marking step copy with the process-level
+   * flag is wrong in both directions: it leaves an English step unmarked on a
+   * Turkish page, and it stamps `lang="en"` on genuinely Turkish text. That is
+   * the same defect the 3.4 review found in `PrefillBanner`.
+   */
+  isFallback: boolean;
 }
 
 export interface SlaContent {
   kicker: string;
   /** The one-line sentence the six non-stepper surfaces render. */
   summary: string;
-  /** Exactly three, in `sort` order. */
+  /**
+   * The steps, in `sort` order.
+   *
+   * ⚠️ THREE BY CONVENTION, NOT BY CONSTRAINT — an earlier revision of this
+   * comment said "exactly three" and nothing enforced it. The seed writes three;
+   * the schema permits any number; the mapper DROPS a step whose text is missing
+   * in both the requested locale and EN, so even a three-row model can resolve
+   * to two or zero. Callers that draw a stepper must handle the empty case
+   * (`RfqRail` and `RfqConfirmation` guard on `steps.length`).
+   */
   steps: SlaStepItem[];
-  /** True when the process text fell back to EN (FR34a). */
+  /**
+   * True when the PROCESS text (kicker + summary) fell back to EN (FR34a).
+   *
+   * ⚠️ This says NOTHING about the steps. Each step carries its own
+   * `isFallback` because each resolves independently — read that one when
+   * marking step copy, never this one.
+   */
   isFallback: boolean;
 }
+
+/**
+ * ⚠️ `hasSlaSummary` DELIBERATELY DOES NOT LIVE HERE — it is in
+ * `src/lib/sla-content.ts`. It was defined in this file first, and importing it
+ * from the six summary components turned their type-only import of this module
+ * into a VALUE import, dragging `@/lib/db`'s `PrismaClient` and `next/cache`
+ * into component bundles: every public page answered 500. Presentational
+ * predicates go in the leaf module that imports only the TYPE.
+ */
 
 /**
  * The minimum structural shape the mapper consumes — narrower than Prisma's row
@@ -88,7 +141,12 @@ export function toSlaContent(process: SlaProcessRow, locale: Locale): SlaContent
   for (const step of [...process.steps].sort((a, b) => a.sort - b.sort)) {
     const s = resolveTranslation(step.translations, locale);
     if (!s) continue;
-    steps.push({ badge: s.value.badge, title: s.value.title, description: s.value.description });
+    steps.push({
+      badge: s.value.badge,
+      title: s.value.title,
+      description: s.value.description,
+      isFallback: s.isFallback,
+    });
   }
 
   return {

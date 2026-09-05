@@ -1497,6 +1497,29 @@ describe("Story 3.5 — the SLA singleton (integration)", () => {
     expect(content!.steps.map((s) => s.title)).toEqual(slaTextFor("en").steps.map((s) => s.title));
   });
 
+  it("THE MODEL, not just the fixture, promises no duration on the final step", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+
+    // ⚠️ THE COMMITMENT BOUNDARY, GUARDED WHERE IT NOW LIVES. `SlaStepper.test.tsx`
+    // asserts the arrow on step three, but it builds its fixture from
+    // `scripts/sla-fixtures.ts` — so it constrains the SEED FILE and nothing
+    // else. Since this story the authoritative copy is DATABASE CONTENT that
+    // Story 4.8's admin will edit without touching the repository, and an editor
+    // typing "5 days" into the final step would publish a commercial commitment
+    // nobody agreed to, with the whole unit suite green.
+    //
+    // Asserted per locale, because the badge is translated and an editor works
+    // in one locale at a time. P5: `UPDATE sla_step_translations SET badge='5
+    // days' WHERE locale='en' AND step_id=(the sort-3 step)` and this reddens.
+    for (const locale of ["en", "tr", "ru"] as const) {
+      const content = await querySlaContent(locale);
+      expect(content, `no SLA content for ${locale}`).not.toBeNull();
+      const final = content!.steps.at(-1);
+      expect(final, `${locale} has no final step`).toBeDefined();
+      expect(final!.badge, `${locale} final-step badge promises a duration`).not.toMatch(/\d/);
+    }
+  });
+
   describe("the degenerate branch, reached through the real query (AC8)", () => {
     /** The whole graph as seeded, captured before anything is deleted. */
     let snapshot: Awaited<ReturnType<typeof readGraph>> = null;
@@ -1536,14 +1559,29 @@ describe("Story 3.5 — the SLA singleton (integration)", () => {
       snapshot = await readGraph();
     });
 
-    afterAll(async () => {
-      if (!dbReachable || !snapshot) return;
-
+    /**
+     * Put the singleton back exactly as it was found.
+     *
+     * ⚠️ CALLED FROM A `finally` IN EVERY DESTRUCTIVE TEST, not only from
+     * `afterAll`, and that is the point. These deletes are COMMITTED and
+     * globally visible: for as long as they stand, a dev server or a parallel
+     * reader sees a site with no SLA and can cache that emptiness. Restoring only
+     * in `afterAll` held that window open across the whole describe and across
+     * any hook timeout; restoring per test closes it as soon as the assertion
+     * that needed it is done. `afterAll` still runs it as the backstop for a
+     * failure between the delete and the finally.
+     *
+     * Idempotent by construction — it deletes by key before recreating — so
+     * running it twice is harmless.
+     */
+    async function restoreGraph() {
+      if (!snapshot) return;
       // Rebuild from the snapshot, ids and timestamps included. `createdAt` and
       // `updatedAt` are written EXPLICITLY: `@updatedAt` only fills a value that
       // was not supplied, so a restore that omitted them would stamp "now" and
-      // the identity assertion below — the one thing proving this suite left no
-      // trace — would have to be weakened to ignore the columns it should check.
+      // the identity assertion in `afterAll` — the one thing proving this suite
+      // left no trace — would have to be weakened to ignore the columns it
+      // should check.
       await prisma.slaProcess.deleteMany({ where: { key: snapshot.key } });
       await prisma.slaProcess.create({
         data: {
@@ -1563,6 +1601,14 @@ describe("Story 3.5 — the SLA singleton (integration)", () => {
           },
         },
       });
+    }
+
+    afterAll(async () => {
+      if (!dbReachable || !snapshot) return;
+      // Backstop — the per-test `finally` blocks already restore. Running it
+      // again is harmless, and it covers a failure that struck between a delete
+      // and its own finally.
+      await restoreGraph();
 
       // Trust nothing: prove the restore is byte-identical, in `afterAll`, where
       // a mismatch still fails the run rather than silently poisoning the e2e
@@ -1573,35 +1619,51 @@ describe("Story 3.5 — the SLA singleton (integration)", () => {
     it("returns null when neither the requested locale NOR EN has a row — no throw", async (ctx) => {
       if (!dbReachable) return ctx.skip();
 
-      // Construct the state the schema deliberately permits: EN gone, and the
-      // REQUESTED locale gone with it. TR is left in place, so this also proves
-      // the null comes from the resolution rule and not from an empty table.
-      const { count } = await prisma.slaProcessTranslation.deleteMany({
-        where: { process: { key: SLA_PROCESS_KEY }, locale: { in: ["en", "ru"] } },
-      });
-      expect(count, "expected seeded en+ru process translations to delete").toBe(2);
+      try {
+        // Construct the state the schema deliberately permits: EN gone, and the
+        // REQUESTED locale gone with it. TR is left in place, so this also proves
+        // the null comes from the resolution rule and not from an empty table.
+        const { count } = await prisma.slaProcessTranslation.deleteMany({
+          where: { process: { key: SLA_PROCESS_KEY }, locale: { in: ["en", "ru"] } },
+        });
+        expect(count, "expected seeded en+ru process translations to delete").toBe(2);
 
-      await expect(querySlaContent("ru")).resolves.toBeNull();
-      // ...and TR, which still has its row, is unaffected: the branch is about
-      // the requested locale, not about the process being unreadable.
-      expect(await querySlaContent("tr")).not.toBeNull();
+        await expect(querySlaContent("ru")).resolves.toBeNull();
+        // ...and TR, which still has its row, is unaffected: the branch is about
+        // the requested locale, not about the process being unreadable.
+        expect(await querySlaContent("tr")).not.toBeNull();
+      } finally {
+        await restoreGraph();
+      }
     });
 
     it("returns null when the process row is gone entirely — no throw", async (ctx) => {
       if (!dbReachable) return ctx.skip();
 
-      const { count } = await prisma.slaProcess.deleteMany({ where: { key: SLA_PROCESS_KEY } });
-      expect(count).toBe(1);
+      try {
+        const { count } = await prisma.slaProcess.deleteMany({ where: { key: SLA_PROCESS_KEY } });
+        expect(count).toBe(1);
 
-      // The `if (!process) return null` line, reached for real. This is the state
-      // a production `migrate deploy` without a seed leaves behind.
-      await expect(querySlaContent("en")).resolves.toBeNull();
-      await expect(querySlaContent("tr")).resolves.toBeNull();
+        // The `if (!process) return null` line, reached for real. This is the
+        // state a production `migrate deploy` without a seed leaves behind.
+        await expect(querySlaContent("en")).resolves.toBeNull();
+        await expect(querySlaContent("tr")).resolves.toBeNull();
 
-      // Cascade check, free here: the translations went with it, so the restore
-      // in `afterAll` cannot collide with orphans.
-      expect(await prisma.slaProcessTranslation.count()).toBe(0);
-      expect(await prisma.slaStepTranslation.count()).toBe(0);
+        // Cascade check, scoped to THIS singleton rather than the whole table:
+        // a table-wide `count() === 0` would also pass if some other fixture had
+        // never existed, and would break the day a second process row is added.
+        const orphans = await prisma.slaProcessTranslation.count({
+          where: { process: { key: SLA_PROCESS_KEY } },
+        });
+        expect(orphans).toBe(0);
+        expect(
+          await prisma.slaStepTranslation.count({
+            where: { step: { process: { key: SLA_PROCESS_KEY } } },
+          }),
+        ).toBe(0);
+      } finally {
+        await restoreGraph();
+      }
     });
   });
 });

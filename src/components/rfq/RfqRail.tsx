@@ -30,8 +30,14 @@ export function RfqRail({ sla }: { sla: SlaContent | null }) {
   return (
     <div className="flex flex-col gap-5">
       {/* The whole card is conditional: an unseeded model must leave no empty
-          ink block floating above the talk card. */}
-      {sla && (
+          ink block floating above the talk card.
+          ⚠️ AND THE CONDITION IS `steps.length`, NOT JUST `sla`. The model
+          resolves summary-only by design — `toSlaContent` drops a step whose
+          text is missing in both the requested locale and EN, and `sla.test.ts`
+          asserts a process with zero steps still resolves so the six SUMMARY
+          surfaces keep their sentence. On a STEPPER surface that same row paints
+          a dark card containing a kicker and nothing else. */}
+      {sla && sla.steps.length > 0 && (
         <div className="bg-ink p-5">
           <SlaStepper sla={sla} tone="onDark" showKicker />
         </div>

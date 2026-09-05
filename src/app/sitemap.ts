@@ -102,6 +102,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         listPublishedProjects(locale),
       ]);
 
+      // ⚠️ THE SLA IS DELIBERATELY ABSENT FROM THIS ARRAY (Story 3.5), and the
+      // note belongs HERE as much as on the page. `[locale]/page.tsx` computes
+      // the same predicate for the homepage, and the robots side and the sitemap
+      // side have silently drifted THREE times in this project (1.9, the 2.1
+      // review, the 2.4 review). Since 3.5 the SLA is DB content with per-locale
+      // rows, so it COULD be counted here — it must not be. It is site-wide
+      // chrome rendered identically on eight surfaces, and a fully-translated
+      // chrome element must never be the evidence that a THIN page deserves
+      // indexing: with EN-only collections plus one translated SLA row the
+      // arithmetic would advertise `/tr` and `/ru` as indexable while they still
+      // render English.
       const translated = [...projects, ...industries, ...categories, ...manufacturers];
       const collectionsIndexable = isIndexable({
         locale,

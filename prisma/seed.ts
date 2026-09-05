@@ -3,6 +3,7 @@ import { fixtureSize } from "../scripts/doc-fixtures";
 import { MEDIA_FIXTURES } from "../scripts/media-fixtures";
 import {
   SLA_PROCESS_TEXT,
+  SLA_PROCESS_KEY,
   SLA_STEPS,
   type SlaProcessText,
   type SlaStepText,
@@ -687,13 +688,13 @@ async function main() {
   // Turkish description propagates on the next seed, and a locale dropped from
   // this fixture is DELETED rather than left orphaned.
   const slaProcess = await prisma.slaProcess.upsert({
-    // The key the repository read looks up — `SLA_PROCESS_KEY` in
-    // `src/server/repositories/sla.ts`. If these two ever diverge the read
-    // returns null and every SLA surface silently empties, which is why
-    // `repository.integration.test.ts` asserts the seeded row is findable.
-    where: { key: "default" },
+    // The key the repository read looks up. IMPORTED, not retyped: the two
+    // sides used to hard-code the same literal independently, and a divergence
+    // would make the read return null and silently empty every SLA surface.
+    // `repository.integration.test.ts` still asserts the seeded row is findable.
+    where: { key: SLA_PROCESS_KEY },
     update: {},
-    create: { key: "default" },
+    create: { key: SLA_PROCESS_KEY },
   });
 
   await upsertSlaProcessText(slaProcess.id, SLA_PROCESS_TEXT);

@@ -1,4 +1,4 @@
-import { test, expect, type APIRequestContext } from "@playwright/test";
+import { test, expect, request as apiRequest, type APIRequestContext } from "@playwright/test";
 import { slaTextFor } from "../scripts/sla-fixtures";
 
 /**
@@ -113,12 +113,41 @@ async function revalidate(request: APIRequestContext, tags: string[], secret = S
 
 test.afterAll(async () => {
   // Safety net: never leave the shared seed mutated, even if an assertion threw.
-  await renameIndustry(PROBE, ORIGINAL).catch(() => 0);
-  // ⚠️ The SLA rows are a SINGLETON — there is one process row site-wide, on
-  // eight surfaces. A probe left in place would not look like a stale test
-  // fixture, it would be the live copy on every public page.
-  await setSlaSummary(SLA_SUMMARY_PROBE, SLA_SUMMARY).catch(() => 0);
-  await setSlaStepTitle(SLA_STEP_PROBE, SLA_STEP_TITLE).catch(() => 0);
+  const restored = {
+    industry: await renameIndustry(PROBE, ORIGINAL).catch(() => -1),
+    // ⚠️ The SLA rows are a SINGLETON — there is one process row site-wide, on
+    // eight surfaces. A probe left in place would not look like a stale test
+    // fixture, it would be the live copy on every public page.
+    summary: await setSlaSummary(SLA_SUMMARY_PROBE, SLA_SUMMARY).catch(() => -1),
+    step: await setSlaStepTitle(SLA_STEP_PROBE, SLA_STEP_TITLE).catch(() => -1),
+  };
+
+  // ⚠️ RESTORING POSTGRES IS ONLY HALF OF IT, AND THE MISSING HALF WAS THE
+  // DANGEROUS ONE. Every read here is cached in Redis under `TAGS.sla`, so a run
+  // that aborted between the probe write and the restore left the PROBE STRING
+  // being served from cache to real page loads — on all eight SLA surfaces —
+  // until something else happened to invalidate the tag. Rolling the database
+  // back does not touch the cache. Purge it explicitly, from a request context of
+  // our own (the `request` fixture is test-scoped and unavailable in afterAll).
+  const port = 3101; // playwright.caching.config.ts — `next start -p 3101`
+  const api = await apiRequest.newContext({ baseURL: `http://localhost:${port}` });
+  try {
+    await api.post("/api/revalidate", {
+      headers: { "content-type": "application/json", "x-revalidate-secret": SECRET },
+      data: { tags: ["sla", "industries"] },
+    });
+  } catch {
+    // The server is already down on a normal clean exit; the database is what
+    // outlives the run, and it has been restored above.
+  } finally {
+    await api.dispose();
+  }
+
+  // Loud, not silent: a swallowed restore failure is how a singleton stays
+  // broken for every suite that runs after this one.
+  for (const [what, count] of Object.entries(restored)) {
+    if (count === -1) console.error(`[caching.spec] RESTORE FAILED for ${what} — check the seed`);
+  }
 });
 
 test("serves STALE data until the tag is revalidated, then serves fresh (FR5/FR40)", async ({

@@ -49,10 +49,13 @@ describe("SlaStepper — the three steps", () => {
   });
 
   it("renders the third badge as the ARROW and promises no duration", () => {
-    // ⚠️ THE COMMITMENT BOUNDARY. GLH promises a review in 24h and a proposal in
-    // 3 days; the formal quote that follows is deliberately UNPROMISED, and the
-    // canvas says so in capitals ("do not invent a number"). A duration appearing
-    // on step three would publish a commercial commitment nobody agreed to.
+    // ⚠️ THE COMMITMENT BOUNDARY. Steps one and two carry durations; the step
+    // that follows them is deliberately UNPROMISED, and the canvas says so in
+    // capitals ("do not invent a number"). A duration appearing on step three
+    // would publish a commercial commitment nobody agreed to. The numbers
+    // themselves are NOT restated here — they are content, they live in the
+    // model, and the render-layer gate in `sla-hygiene.test.ts` forbids exactly
+    // this kind of restatement.
     //
     // P5: seed a duration into step three's badge in `scripts/sla-fixtures.ts`
     // and this reddens.
@@ -86,13 +89,33 @@ describe("SlaStepper — tone and kicker", () => {
     // light token measures 2.96:1 on ink. One component, two grounds, so the
     // tone must travel with it.
     //
-    // P5: hard-code either branch and one of these two reddens.
-    const dark = renderToStaticMarkup(<SlaStepper sla={EN} tone="onDark" showKicker />);
-    const light = renderToStaticMarkup(<SlaStepper sla={EN} tone="light" showKicker />);
+    // ⚠️ ALL FOUR TONE-DRIVEN BRANCHES ARE PINNED, not two. The earlier version
+    // asserted only the kicker and the title, which left the BADGE border, the
+    // DESCRIPTION colour and the FallbackNotice tone free to be hard-coded with
+    // the suite green — three of the five places tone actually reaches, on a
+    // component whose whole reason for taking a `tone` prop is contrast.
+    //
+    // P5: hard-code any single branch in SlaStepper and exactly one line here
+    // reddens. Each pairs a positive with the negative of the opposite ground,
+    // so a branch collapsed to one constant fails on the other render.
+    const dark = renderToStaticMarkup(<SlaStepper sla={TR_FALLBACK} tone="onDark" showKicker />);
+    const light = renderToStaticMarkup(<SlaStepper sla={TR_FALLBACK} tone="light" showKicker />);
+
+    // 1. the kicker
     expect(dark).toContain("text-accent-soft");
-    expect(dark).toContain("text-white");
-    expect(light).toContain("text-ink-2");
     expect(light).not.toContain("text-accent-soft");
+    // 2. the step title
+    expect(dark).toContain("text-white");
+    expect(light).not.toContain("text-white");
+    // 3. the badge frame
+    expect(dark).toContain("border-accent-soft");
+    expect(light).toContain("border-muted");
+    // 4. the step description
+    expect(dark).toContain("text-on-dark-text");
+    // 5. the FallbackNotice — the one string UJ3's "fallback is honest" promise
+    //    rests on, and the token that measures 2.96:1 on the wrong ground.
+    expect(light).toContain("text-ink-2");
+    expect(light).not.toContain("text-on-dark-text");
   });
 
   it("omits the kicker unless asked — the confirmation surface has none", () => {

@@ -7,6 +7,7 @@ import { CONTAINER } from "@/components/layout/container";
 import { SITE } from "@/config/site";
 import { SlaSummary } from "@/components/sla/SlaSummary";
 import type { SlaContent } from "@/server/repositories/sla";
+import { hasSlaSummary } from "@/lib/sla-content";
 
 /**
  * The closing CTA band for the Projects surfaces (Story 3.1, AC15).
@@ -79,7 +80,7 @@ export function ProjectCta({
               {/* From the content model since Story 3.5. This surface BORROWED
                   `Industry.sla` to avoid minting a fifth copy — that key is gone
                   and the borrow is now a real shared source. */}
-              {sla && (
+              {hasSlaSummary(sla) && (
                 <p className="mt-6 font-mono text-[11px] uppercase leading-relaxed tracking-[0.15em] text-on-dark-text">
                   <SlaSummary sla={sla} tone="onDark" />
                 </p>

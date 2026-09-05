@@ -16,10 +16,17 @@ import type { SlaContent } from "@/server/repositories/sla";
  *
  * ⚠️ IT IS ALSO THE ONE §G PREDICTION THAT DID NOT COME TRUE, and the gap was
  * real. The story expected `RfqForm.test.tsx:54,427` to "gain the prop" and
- * invert; the implementation made `sla` OPTIONAL with a `null` default instead,
- * so those render tests compiled untouched and nothing anywhere asserted that
- * this surface renders the content model. A prop that defaults to null is
- * exactly the shape that goes un-passed and un-noticed.
+ * invert. They did not, because `sla` had first been written OPTIONAL with a
+ * `null` default: those render tests compiled untouched and nothing anywhere
+ * asserted that this surface renders the content model. A prop that defaults to
+ * null is exactly the shape that goes un-passed and un-noticed. `sla` is
+ * REQUIRED now and those two helpers do pass it — so the prediction holds in the
+ * shipped code, and this paragraph records why it needed a second pass.
+ *
+ * ⚠️ REQUIRED CATCHES OMISSION, NOT AN EXPLICIT NULL. `sla={null}` at a real
+ * threading site still typechecks and still renders a card with no stepper. The
+ * compiler closes the "forgot to pass it" class; nothing closes "passed the
+ * wrong thing", which is why the render assertions below exist.
  *
  * The fixture is built from `scripts/sla-fixtures.ts` — the module the seed
  * writes into the database — never retyped. A hand-copied fixture is a second
@@ -44,7 +51,21 @@ vi.mock("@/i18n/navigation", () => ({
 const { RfqConfirmation } = await import("./RfqConfirmation");
 
 const EN: SlaContent = { ...slaTextFor("en"), isFallback: false };
-const FELL_BACK: SlaContent = { ...slaTextFor("en"), isFallback: true };
+
+/** The PROCESS text fell back but every step resolved in the requested locale. */
+const PROCESS_FELL_BACK: SlaContent = { ...slaTextFor("en"), isFallback: true };
+
+/**
+ * The mixed state the old code could not express: the process text is in the
+ * requested locale and exactly ONE step (index 1) fell back to EN. Reachable
+ * whenever an editor translates the summary but not every step — and
+ * `sla.test.ts` asserts the mapper supports it.
+ */
+const ONE_STEP_FELL_BACK: SlaContent = {
+  ...slaTextFor("en"),
+  isFallback: false,
+  steps: slaTextFor("en").steps.map((step, i) => ({ ...step, isFallback: i === 1 })),
+};
 
 /** `renderToStaticMarkup` escapes `&`, and two of the three step descriptions
  *  contain one — comparing raw copy against the markup silently never matches. */
@@ -58,7 +79,7 @@ describe("RfqConfirmation — the eighth SLA surface", () => {
     // P5: pass `sla={null}` here and this reddens.
     //
     // ⚠️ WHAT THIS DOES *NOT* PROVE, stated rather than implied: it renders the
-    // component DIRECTLY, so deleting `sla={sla}` at `RfqForm.tsx:508` would
+    // component DIRECTLY, so deleting the `sla` prop where `RfqForm` mounts it would
     // leave it green. That threading is guarded by the TYPE instead — `sla` is a
     // required prop on both this component and `RfqForm`, so a mount that drops
     // it fails to compile. A test cannot cheaply reach this surface (it appears
@@ -89,14 +110,62 @@ describe("RfqConfirmation — the eighth SLA surface", () => {
     expect(html).not.toContain(html_(EN.kicker));
   });
 
-  it("marks a fallen-back row with lang=en and a LIGHT-tone notice (FR34a, F #43)", () => {
-    // The tone is not styling: this card is `bg-surface` (white), where
-    // FallbackNotice's dark-ground token measures 2.96:1. P5: change
-    // `tone="light"` to `tone="onDark"` in RfqConfirmation and the notice class
-    // asserted here changes.
-    const html = render(FELL_BACK);
-    expect(html).toContain('lang="en"');
-    expect(render(EN)).not.toContain('lang="en"');
+  it("renders the FR34a notice at the LIGHT tone when the process text fell back", () => {
+    // ⚠️ THIS TEST USED TO ASSERT THE BUG. It was written as "marks a fallen-back
+    // row with lang=en and a LIGHT-tone notice" and then asserted ONLY
+    // `lang="en"` — no notice, no tone class — so the P5 its own comment stated
+    // (flip `tone="light"` to `tone="onDark"`) could not redden it. Worse, the
+    // `lang="en"` it did assert came from the OLD defect: step copy was marked
+    // using the PROCESS-level flag, so English-only steps and Turkish steps were
+    // both stamped wrong. Both halves are fixed; this now asserts the real
+    // contract.
+    //
+    // A fallen-back PROCESS with in-locale STEPS means: the visible notice
+    // appears (something here is English), but no step copy is marked.
+    const html = render(PROCESS_FELL_BACK);
+    expect(html).toContain("shownInEnglish");
+    expect(html).not.toContain('lang="en"');
+
+    // TONE. The card is `bg-surface` (white); FallbackNotice's dark-ground token
+    // measures 2.96:1 on it. P5, and this one is real: change `tone="light"` to
+    // `tone="onDark"` in RfqConfirmation.tsx and this reddens on both lines.
+    expect(html).toContain("text-ink-2");
+    expect(html).not.toContain("text-on-dark-text");
+  });
+
+  it("marks the INDIVIDUAL step that fell back, not every step (FR34a)", () => {
+    // The defect this closes: steps resolve independently of the process text
+    // and of each other, so a Turkish process can carry one English step. The
+    // component used to mark step copy from `sla.isFallback`, which meant that
+    // English step rendered UNMARKED on a Turkish page — and, in the mirror
+    // case, genuinely Turkish steps were stamped `lang="en"`.
+    //
+    // P5: change `step.isFallback` back to `sla.isFallback` in SlaStepper and
+    // this reddens — the marked-count goes to 0 here.
+    const html = render(ONE_STEP_FELL_BACK);
+    expect(html).toContain("shownInEnglish");
+    // Exactly the one step is marked: title + description = two spans.
+    expect(html.match(/lang="en"/g) ?? []).toHaveLength(2);
+    expect(html).toContain(`<span lang="en">${html_(EN.steps[1].title)}</span>`);
+    expect(html).not.toContain(`<span lang="en">${html_(EN.steps[0].title)}</span>`);
+  });
+
+  it("renders NO stepper for a summary-only row — a valid row with zero steps", () => {
+    // The model resolves summary-only by design: a step whose text is missing in
+    // both the requested locale and EN is DROPPED, and a process with no steps
+    // still resolves so the six one-liner surfaces keep their sentence. On this
+    // surface that same row used to paint an empty container.
+    // P5: change the guard back to `sla &&` and this reddens.
+    const html = render({ ...EN, steps: [] });
+    expect(html).toContain("confirmTitle");
+    expect(html).not.toContain("<ol");
+    expect(html).not.toContain("mt-6");
+  });
+
+  it("shows NO notice and no marker when nothing fell back", () => {
+    const html = render(EN);
+    expect(html).not.toContain('lang="en"');
+    expect(html).not.toContain("shownInEnglish");
   });
 
   it("renders the card WITHOUT a stepper when the model is empty (AC8)", () => {

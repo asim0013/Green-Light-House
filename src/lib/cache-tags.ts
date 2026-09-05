@@ -34,10 +34,16 @@ export const COLLECTION_TAGS = {
   documents: "documents",
   /**
    * Extension (Story 3.5) — the site-wide response process shown in place of
-   * prices. Its own tag rather than `catalog`: the SLA appears on every route,
-   * so folding it into a catalogue-wide flush would make an admin's one-line
-   * copy edit invalidate the entire catalogue, and a catalogue publish would
-   * needlessly re-render the SLA. One tag, eight surfaces, one revalidate.
+   * prices. Its own tag rather than `catalog`: it is read by SEVEN page types
+   * (home, industry detail, product detail, projects index, project detail,
+   * services, rfq) which between them mount EIGHT render sites, cutting across
+   * the catalogue and everything else. Folding it into a catalogue-wide flush
+   * would make an admin's one-line copy edit invalidate the entire catalogue,
+   * and a catalogue publish would needlessly re-render the SLA. One tag, eight
+   * surfaces, one revalidate.
+   *
+   * ⚠️ NOT "every route" — an earlier revision of this comment said so and it
+   * was wrong. `/contact` (Story 3.8) and the legal pages render no SLA.
    */
   sla: "sla",
 } as const;

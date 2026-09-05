@@ -24,6 +24,18 @@ import { Locale } from "@prisma/client";
  * need a native eye before launch, not before merge.
  */
 
+/**
+ * The singleton's key — ONE definition, imported by both sides.
+ *
+ * ⚠️ IT USED TO BE WRITTEN TWICE: `prisma/seed.ts` hard-coded the literal while
+ * `src/server/repositories/sla.ts` declared its own constant, and the seed's own
+ * comment described exactly what a divergence would cost ("the read returns null
+ * and every SLA surface silently empties") without preventing it. It lives here
+ * because this is the one module the seed and the application can both import
+ * without dragging Prisma or `next/cache` into a script.
+ */
+export const SLA_PROCESS_KEY = "default";
+
 export interface SlaProcessText {
   locale: Locale;
   kicker: string;
@@ -158,27 +170,74 @@ export function slaTextFor(locale: Locale) {
   const steps = SLA_STEPS.map((step) => {
     const text = step.text.find((t) => t.locale === locale);
     if (!text) throw new Error(`no SLA step ${step.sort} text for ${locale}`);
-    return { badge: text.badge, title: text.title, description: text.description };
+    // `isFallback: false` — this helper builds the FULLY-TRANSLATED shape. A
+    // test that needs the mixed state (a step fallen back inside a process that
+    // did not) must set the flag on the individual step it cares about; that
+    // state is real and `SlaStepper` marks it per step.
+    return {
+      badge: text.badge,
+      title: text.title,
+      description: text.description,
+      isFallback: false,
+    };
   });
   return { kicker: process.kicker, summary: process.summary, steps };
+}
+
+/**
+ * The SHORT LABELS — every step title and every duration badge.
+ *
+ * ⚠️ DELIBERATELY SEPARATE FROM `slaCopyNeedles()`, because these two sets can
+ * only be swept over different scopes. Sweeping labels the way sentences are
+ * swept produces false positives immediately and provably: the Turkish title
+ * "Teknik değerlendirme" is simply how Turkish says "technical review", and it
+ * occurs innocently in `messages/tr.json` prose. A gate that flags that gets
+ * weakened until it means nothing.
+ *
+ * But the hole left by excluding them was real, and a reviewer demonstrated it:
+ * with sentences alone, a component could re-hardcode the entire NUMERIC
+ * PROMISE — "24h", "3 days", the step names — and the gate stayed green, which
+ * is exactly the commitment FR30 requires an admin to be able to edit. So these
+ * are swept too, over the RENDER LAYER ONLY and with comments stripped: a
+ * docstring explaining the copy is not a second source of it, a rendered string
+ * is.
+ *
+ * The arrow badge is excluded — it is a glyph, not a promise, and it occurs
+ * everywhere.
+ */
+export function slaLabelNeedles(): string[] {
+  const needles = new Set<string>();
+  for (const step of SLA_STEPS) {
+    for (const text of step.text) {
+      needles.add(text.title);
+      if (text.badge !== SLA_ARROW_BADGE) needles.add(text.badge);
+    }
+  }
+  return [...needles];
 }
 
 /**
  * Every SLA SENTENCE that must exist in the content model and nowhere else in
  * application source.
  *
- * ⚠️ SENTENCES ONLY — BADGES AND TITLES ARE EXCLUDED, and the exclusion is
- * reasoned, not a convenience. "24h", "3 days", "Technical review", "Formal
- * quote" are short labels that occur innocently in prose: the first run of this
- * gate flagged the Turkish `Rfq.lead` for containing "Teknik değerlendirme",
- * which is simply how Turkish says "technical review" and belongs in that
- * sentence. Sweeping for short labels produces false positives, and a gate that
- * cries wolf gets weakened until it means nothing.
+ * ⚠️ SENTENCES ONLY — BADGES AND TITLES ARE NOT HERE, and the split is reasoned
+ * rather than a convenience. "24h", "3 days", "Technical review" are short labels
+ * that occur innocently in prose: the first run of this gate flagged the Turkish
+ * `Rfq.lead` for containing "Teknik değerlendirme", which is simply how Turkish
+ * says "technical review" and belongs in that sentence. Sweeping short labels
+ * this broadly produces false positives, and a gate that cries wolf gets weakened
+ * until it means nothing.
  *
- * What actually gets duplicated by copy-paste is the SENTENCE — the summary, the
- * kicker and the step descriptions — and those are long enough to be
- * unambiguous. The call-site sweep in the gate covers the other half: a
- * component still reading a deleted key is caught by name, not by copy.
+ * ⚠️ BUT THEY ARE NOT UNGUARDED — see `slaLabelNeedles()` above, which sweeps
+ * exactly those labels over the RENDER LAYER with comments stripped. An earlier
+ * revision of this comment stopped at "excluded", and that left a hole a reviewer
+ * demonstrated: the whole numeric promise could be re-hardcoded in a component
+ * with this gate green.
+ *
+ * What gets duplicated by copy-paste is the SENTENCE — the summary, the kicker
+ * and the step descriptions — and those are long enough to be unambiguous
+ * anywhere. The call-site sweep in the gate covers the third case: a component
+ * still reading a deleted key is caught by name, not by copy.
  */
 export function slaCopyNeedles(): string[] {
   const needles = new Set<string>();

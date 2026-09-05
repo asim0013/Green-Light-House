@@ -10,6 +10,7 @@ import { rfqIndustryHref } from "@/lib/rfq-href";
 import { SlaSummary } from "@/components/sla/SlaSummary";
 import type { IndustryDetail } from "@/server/repositories/industry";
 import type { SlaContent } from "@/server/repositories/sla";
+import { hasSlaSummary } from "@/lib/sla-content";
 
 /**
  * Sector hero (Story 2.1) — EXPERIENCE.md § IA names it as the first beat of the
@@ -81,7 +82,7 @@ export function IndustryHero({
 
               {/* From the content model since Story 3.5 — one source, eight
                   surfaces. Conditional so the rule does not draw above nothing. */}
-              {sla && (
+              {hasSlaSummary(sla) && (
                 <p className="mt-8 border-t border-on-dark-border pt-6 font-mono text-[11px] uppercase leading-relaxed tracking-[0.15em] text-on-dark-text">
                   <SlaSummary sla={sla} tone="onDark" />
                 </p>
