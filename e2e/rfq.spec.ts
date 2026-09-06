@@ -282,7 +282,7 @@ test.describe("persist-first submission (AC7, AC12c)", () => {
     expect(row!.locale).toBe("en");
     expect(row!.consent).toBe(true);
     expect(row!.consentAt).not.toBeNull();
-    expect(row!.consentVersion).toBe("privacy-2026-08-stub-r3:en");
+    expect(row!.consentVersion).toBe("privacy-2026-08-stub-r4:en");
     // Task 0 #7: no pre-fill exists yet, so source is the DB default.
     expect(row!.source).toBe("direct");
   });
@@ -641,8 +641,8 @@ test.describe("the /privacy stub (AC9)", () => {
       await expect(robots).toHaveAttribute("content", /noindex/);
       // The version line carries the EXACT token the endpoint writes into
       // Lead.consentVersion — anchored, not substring (3.2 review): a page
-      // rendering privacy-2026-08-stub-r3-WRONG must fail here.
-      await expect(page.locator('p[translate="no"]')).toHaveText(/privacy-2026-08-stub-r3$/);
+      // rendering privacy-2026-08-stub-r4-WRONG must fail here.
+      await expect(page.locator('p[translate="no"]')).toHaveText(/privacy-2026-08-stub-r4$/);
     }
   });
 });

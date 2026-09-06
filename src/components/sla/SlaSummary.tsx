@@ -4,7 +4,7 @@ import type { SlaContent } from "@/server/repositories/sla";
 /**
  * The one-line SLA trust sentence (Story 3.5 — FR30/FR34a).
  *
- * ⚠️ RENDERS NO WRAPPER, DELIBERATELY. Six surfaces draw this sentence and each
+ * ⚠️ RENDERS NO WRAPPER, DELIBERATELY. Seven surfaces draw this sentence and each
  * one owns its own typography — the homepage rules a border above it, the
  * product aside is the only non-uppercase variant, four sit on dark bands. So
  * this returns the TEXT and its fallback marker, and each caller keeps the `<p>`

@@ -6,7 +6,7 @@ import { hasSlaSummary } from "@/lib/sla-content";
  * The SLA mapper (Story 3.5) — pure, so it is testable without Postgres.
  *
  * ⚠️ THE DEGENERATE BRANCH IS THE POINT OF THIS FILE. `toSlaContent` returning
- * `null` is what every one of the eight surfaces keys its "render nothing" path
+ * `null` is what every one of the nine render sites keys its "render nothing" path
  * off, and that branch is REACHABLE in production: a fresh clone before
  * `db:seed`, a `migrate deploy` with no seed, or a Story 4.8 admin deleting a
  * row. Story 3.4's review found an entire acceptance criterion (AC13) shipped on
@@ -107,7 +107,7 @@ describe("toSlaContent — the degenerate branch (AC8)", () => {
   });
 
   it("a process with translations but ZERO steps still resolves (summary-only)", () => {
-    // The six one-liner surfaces need only the summary, so an empty step list is
+    // The seven one-liner surfaces need only the summary, so an empty step list is
     // a usable state — not the degenerate one.
     const sla = toSlaContent(row({ steps: [] }), "en");
     expect(sla).not.toBeNull();
@@ -116,7 +116,7 @@ describe("toSlaContent — the degenerate branch (AC8)", () => {
   });
 });
 
-describe("hasSlaSummary — the guard the six one-liner surfaces use", () => {
+describe("hasSlaSummary — the guard the seven one-liner surfaces use", () => {
   const withSummary = (summary: string) => ({
     kicker: "k",
     summary,
@@ -129,7 +129,7 @@ describe("hasSlaSummary — the guard the six one-liner surfaces use", () => {
   });
 
   it("is FALSE for an empty or whitespace summary — the defect it exists to close", () => {
-    // ⚠️ THE SIX SUMMARY SURFACES USED TO GUARD ON `sla &&` ALONE, and `HomeHero`
+    // ⚠️ THE SEVEN SUMMARY SURFACES USED TO GUARD ON `sla &&` ALONE, and `HomeHero`
     // carried the comment "border would otherwise draw above nothing" while
     // testing only that the ROW exists. A row whose summary an admin blanked is
     // non-null, so every one of the six drew its rule, padding and uppercase
@@ -146,7 +146,7 @@ describe("hasSlaSummary — the guard the six one-liner surfaces use", () => {
   });
 
   it("narrows the type, so callers may pass it straight to SlaSummary", () => {
-    // The `sla is SlaContent` predicate is what lets the six call sites write
+    // The `sla is SlaContent` predicate is what lets the seven call sites write
     // `hasSlaSummary(sla) && <SlaSummary sla={sla} …/>` without a non-null
     // assertion. If the signature loses the predicate this stops compiling.
     const maybe: SlaContent | null = withSummary("x");

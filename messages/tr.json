@@ -239,7 +239,7 @@
     "intro": "Bu sayfa, tam hukuki metinler yayımlanana kadar geçerli olan, GREENLIGHTHOUSE'un gönderdiğiniz bilgileri nasıl kullandığına dair geçici bir özettir.",
     "collect": "Bir proje talebi gönderdiğinizde formda girdiklerinizi saklarız: adınız, şirketiniz, iş e-postanız ve paylaştığınız sektör, zaman planı, proje açıklaması, ekipman, miktarlar, telefon, ülke ve tercih ettiğiniz yanıt dili ve eklediğiniz dosya (içeriği ve dosya adı) — onay verdiğiniz zaman ve size gösterilen bu metnin sürümüyle birlikte.",
     "use": "Bu bilgileri tek bir amaçla kullanırız: projenizi incelemek ve teknik değerlendirme ile şartnameli bir teklifle yanıt vermek. Belgeleri forma bağlamayız, verilerinizi satmayız.",
-    "retention": "Talepler, projenin takibi makul olarak gerektirdiği sürece ticari kayıt olarak saklanır. Bilgileriniz hakkında soru sormak, düzeltmek veya sildirmek için bizi arayın — numara her sayfanın alt bölümündedir."
+    "retention": "Talepler, projenin makul ölçüde takip gerektirebileceği süre boyunca ticari kayıt olarak saklanır. Bilgilerinizi sormak, düzeltmek veya sildirmek için iletişim sayfasını kullanın — her sayfanın altbilgisinde bağlantısı vardır."
   },
   "NotFound": {
     "title": "Sayfa bulunamadı",
@@ -275,11 +275,14 @@
   "Contact": {
     "title": "GLH ile iletişim",
     "lead": "İşe en uygun yoldan ulaşın — telefonla, e-postayla ya da projeyi doğrudan göndererek.",
+    "leadMinimal": "Telefonla ulaşın ya da projeyi doğrudan gönderin.",
     "metaDescription": "GREENLIGHTHOUSE için telefon, e-posta ve posta adresi ile doğrudan teklif formu.",
+    "metaDescriptionMinimal": "GREENLIGHTHOUSE’u telefonla arayın ya da projenizi doğrudan teklif formuyla gönderin.",
     "channelsKicker": "Bize ulaşma yolları",
     "emailLabel": "Talepler",
     "addressLabel": "Ofis",
     "mapsCta": "Haritada aç",
+    "opensInNewTab": "yeni sekmede açılır",
     "legalKicker": "Şirket bilgileri",
     "legalName": "Ticaret unvanı",
     "tradeRegistryNo": "Ticaret sicil no",

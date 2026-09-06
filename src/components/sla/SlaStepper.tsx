@@ -7,7 +7,7 @@ import type { SlaContent } from "@/server/repositories/sla";
  *
  * Mounted on exactly TWO surfaces — the `/rfq` side rail and the submitted
  * confirmation — which is what `epics:876` requires ("both mount the same
- * component"). The other six SLA surfaces draw the one-line sentence instead;
+ * component"). The other seven SLA render sites draw the one-line sentence instead;
  * that is `SlaSummary`.
  *
  * ⚠️ PRESENTATIONAL AND PROP-DRIVEN, AND THAT IS FORCED. `RfqConfirmation` is a

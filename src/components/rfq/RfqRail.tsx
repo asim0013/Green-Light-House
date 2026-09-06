@@ -15,10 +15,18 @@ import type { SlaContent } from "@/server/repositories/sla";
  *   reach both surfaces at once. `tone="onDark"` because this card is `bg-ink`:
  *   it drives the kicker (`accent-soft`, 4.68:1 here) and the fallback marker,
  *   neither of which has a tone that passes on both grounds.
- * - The talk card follows the shipped `tel:` anatomy (ProjectCta): the button's
- *   visible label is the canvas's "Call an engineer", its accessible name
- *   contains that label plus the number (2.5.3), and the NUMBER renders in the
- *   data mono beneath — phone numbers are machine data (DESIGN.md § typography).
+ * - The talk card is NO LONGER HERE: Story 3.8 extracted it to `TalkCard`, which
+ *   this file mounts and `/contact` mounts too. Its anatomy, its three known
+ *   deviations and the reason they are deliberately unfixed live in that file's
+ *   docstring — this one used to describe the card's markup as if it were still
+ *   inline, which the 3.8 review flagged.
+ * - ⚠️ AND IT DOES NOT "follow ProjectCta", WHICH THIS LINE USED TO CLAIM. It
+ *   diverges from `ProjectCta` on exactly the thing that matters: `ProjectCta`
+ *   builds its accessible name from `Nav.phoneLabel` ("Call us"), as do all
+ *   THIRTEEN other `tel:` render sites; `TalkCard` is the one exception, using
+ *   `Rfq.talkCta` ("Call an engineer"). Fourteen of the fifteen follow one
+ *   convention and this card follows the other — that is deviation #3 in
+ *   `TalkCard`, and Story 3.6 owns reconciling it.
  * - The cert marks are locale-invariant and deliberately NOT in messages
  *   (they are marks, not copy) — bare mono text, no chips, per the canvas.
  */

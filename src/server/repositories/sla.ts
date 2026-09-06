@@ -27,7 +27,7 @@ import { resolveTranslation } from "@/server/i18n/resolveTranslation";
  * collection or a slug-keyed entity; this one addresses ONE row by a stable key
  * so the read is deterministic and Story 4.8's editor has something to target.
  *
- * TWO REPRESENTATIONS, ONE SOURCE. `summary` backs the six surfaces that draw a
+ * TWO REPRESENTATIONS, ONE SOURCE. `summary` backs the seven surfaces that draw a
  * one-line trust sentence; `steps` backs the two that draw the stepper. The
  * summary is stored rather than composed because it is NOT derivable from the
  * step data — the EN steps say "Spec + proposal" where the sentence says
@@ -70,7 +70,7 @@ export interface SlaStepItem {
 
 export interface SlaContent {
   kicker: string;
-  /** The one-line sentence the six non-stepper surfaces render. */
+  /** The one-line sentence the seven non-stepper surfaces render. */
   summary: string;
   /**
    * The steps, in `sort` order.

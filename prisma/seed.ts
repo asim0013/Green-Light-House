@@ -676,9 +676,9 @@ async function main() {
   // ⚠️ THIS IS NOW THE ONLY SOURCE OF SLA COPY ON THE SITE. Until this story the
   // same sentence was byte-copied into FOUR `messages/` namespaces × three
   // locales, plus a fifth key for the kicker — fifteen strings, all deleted. Every
-  // one of the eight render sites reads these rows instead.
+  // one of the nine render sites reads these rows instead.
   //
-  // The SUMMARY is not a convenience: six of those eight surfaces draw a
+  // The SUMMARY is not a convenience: seven of those nine render sites draw a
   // one-line sentence rather than the stepper, and that sentence is NOT
   // composable from the step data (EN steps say "Spec + proposal" where the
   // sentence says "specced proposal"; TR inverts the order entirely). It is

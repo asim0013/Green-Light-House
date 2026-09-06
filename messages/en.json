@@ -239,7 +239,7 @@
     "intro": "This is a provisional summary of how GREENLIGHTHOUSE handles the details you submit, in place until the full legal pages are published.",
     "collect": "When you send a project inquiry, we store what you enter in the form: your name, company, work email, and any industry, timeline, project description, equipment, quantities, phone number, country and preferred reply language you provide, plus any file you attach (its contents and its filename) — together with the time of your consent and the version of this text you were shown.",
     "use": "We use these details for one purpose: to review your project and reply with a technical review and a specced proposal. We never gate documents behind forms and we never sell your data.",
-    "retention": "Inquiries are kept as business records for as long as the project may reasonably need follow-up. To ask about, correct or remove your details, call us — the number is in the footer of every page."
+    "retention": "Inquiries are kept as business records for as long as the project may reasonably need follow-up. To ask about, correct or remove your details, use the contact page — it is linked in the footer of every page."
   },
   "NotFound": {
     "title": "Page not found",
@@ -275,11 +275,14 @@
   "Contact": {
     "title": "Contact GLH",
     "lead": "Reach us however suits the job — by phone, by email, or by sending the project straight through.",
+    "leadMinimal": "Reach us by phone, or send the project straight through.",
     "metaDescription": "Phone, email and postal address for GREENLIGHTHOUSE, plus a direct inquiry form.",
+    "metaDescriptionMinimal": "Call GREENLIGHTHOUSE, or send your project through a direct inquiry form.",
     "channelsKicker": "Ways to reach us",
     "emailLabel": "Inquiries",
     "addressLabel": "Office",
     "mapsCta": "Open in maps",
+    "opensInNewTab": "opens in a new tab",
     "legalKicker": "Company details",
     "legalName": "Registered name",
     "tradeRegistryNo": "Trade registry no.",

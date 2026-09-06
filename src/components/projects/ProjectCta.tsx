@@ -22,7 +22,7 @@ import { hasSlaSummary } from "@/lib/sla-content";
  * the page. It used to BORROW the `Industry.sla` message key — the 2.6 review had
  * found four uncentralised copies, with TR and RU inventing a commitment EN never
  * made, so this surface refused to mint a fifth. Those keys are now deleted and
- * the sharing is structural rather than a convention: one row, eight surfaces,
+ * the sharing is structural rather than a convention: one row, nine render sites,
  * and an admin edit reaches all of them without a deploy.
  *
  * ✅ THE PROMISE NOW SHIPS (Story 3.4, Task 0 #20 — an Asim decision). Story 3.1

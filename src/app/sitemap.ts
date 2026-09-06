@@ -117,7 +117,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       // side have silently drifted THREE times in this project (1.9, the 2.1
       // review, the 2.4 review). Since 3.5 the SLA is DB content with per-locale
       // rows, so it COULD be counted here — it must not be. It is site-wide
-      // chrome rendered identically on eight surfaces, and a fully-translated
+      // chrome rendered identically across nine render sites, and a fully-translated
       // chrome element must never be the evidence that a THIN page deserves
       // indexing: with EN-only collections plus one translated SLA row the
       // arithmetic would advertise `/tr` and `/ru` as indexable while they still

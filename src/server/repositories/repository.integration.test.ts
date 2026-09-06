@@ -1433,7 +1433,7 @@ describe("Story 3.0 — Lead foundations (integration)", () => {
  *
  *   1. AC2's convention half — EN presence is enforced by the SEED, not by a
  *      constraint. Nothing in the schema stops an EN row going missing, so the
- *      only thing standing between a fresh environment and eight empty surfaces
+ *      only thing standing between a fresh environment and nine empty surfaces
  *      is that `db:seed` writes it. That is a claim about the seed, so it is
  *      asserted against seeded data.
  *   2. AC8's degenerate branch reached through `querySlaContent` itself —

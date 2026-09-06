@@ -6,7 +6,7 @@ import type { SlaContent } from "@/server/repositories/sla";
 /**
  * The one-line SLA trust sentence (Story 3.5 — AC4, FR30/FR34a).
  *
- * ⚠️ THIS COMPONENT RENDERS ON SIX OF THE EIGHT SLA SURFACES — the home hero,
+ * ⚠️ THIS COMPONENT RENDERS ON SEVEN OF THE NINE SLA RENDER SITES — the home hero,
  * both industry surfaces, the product anchor card, the services band and the
  * project CTA — which makes it the widest-reach component in the story, and it
  * had NO test file at all. §H #7 asks for the fallback marker to be proven on
@@ -36,7 +36,7 @@ const FELL_BACK: SlaContent = { ...slaTextFor("en"), isFallback: true };
  *  but the copy is editable content and the escape is invisible when it bites. */
 const html_ = (text: string) => text.replace(/&/g, "&amp;");
 
-describe("SlaSummary — the sentence six surfaces draw", () => {
+describe("SlaSummary — the sentence seven surfaces draw", () => {
   it("renders the model's summary, not a composed one", () => {
     // The summary is STORED rather than composed from the step data, because it
     // is not derivable from it — the EN steps say "Spec + proposal" where the
@@ -49,7 +49,7 @@ describe("SlaSummary — the sentence six surfaces draw", () => {
   it("introduces NO heading and NO wrapper — each caller keeps its own <p> (AC4)", () => {
     // P5: wrap the output in an <h2>, or in any element at all, and this reddens.
     // Both halves matter: a heading breaks the two homepage e2e assertions above,
-    // and a wrapper breaks "visually unchanged" on six surfaces that each own
+    // and a wrapper breaks "visually unchanged" on seven surfaces that each own
     // their typography (the product aside is the only non-uppercase variant).
     const html = renderToStaticMarkup(<SlaSummary sla={EN} tone="light" />);
     expect(html).not.toMatch(/<h[1-6]\b/);
@@ -74,7 +74,7 @@ describe("SlaSummary — the sentence six surfaces draw", () => {
     expect(html).not.toContain("shownInEnglish");
   });
 
-  it("passes the tone through to the marker — four of the six surfaces are dark", () => {
+  it("passes the tone through to the marker — four of the seven surfaces are dark", () => {
     // ⚠️ AN AA REQUIREMENT, NOT STYLING. `FallbackNotice`'s default light token
     // measures 2.96:1 on the ink band, on the one string the "fallback is honest"
     // promise rests on. P5: hard-code either branch and one of these reddens.

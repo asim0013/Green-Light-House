@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { SITE } from "@/config/site";
 import { buttonClasses } from "@/components/ui/buttonClasses";
@@ -16,8 +17,14 @@ import { buttonClasses } from "@/components/ui/buttonClasses";
  * can perceive, the first test fails and names the difference.
  */
 
+// ⚠️ THE MOCK IS NAMESPACE-AWARE, AND THE PREVIOUS ONE WAS NOT. It was
+// `useTranslations: () => (key) => key`, which DISCARDS the namespace — so
+// changing `useTranslations("Rfq")` to any other namespace produced byte-identical
+// output and every assertion below stayed green. `TalkCard`'s own docstring calls
+// repointing the keys "the copy change AC8 forbids", and this was the test meant
+// to catch it. Rendering `namespace.key` makes the namespace part of the baseline.
 vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string) => key,
+  useTranslations: (namespace: string) => (key: string) => `${namespace}.${key}`,
 }));
 
 const { TalkCard } = await import("./TalkCard");
@@ -39,12 +46,12 @@ const BUTTON_CLASS = buttonClasses("secondary", "mt-4 w-full gap-2");
 
 const OPENS_AT_2fd608c =
   '<div class="border border-border-subtle bg-surface p-5">' +
-  '<h2 class="font-heading text-[17px] font-bold tracking-tight text-ink">talkTitle</h2>' +
-  '<p class="mt-2 text-[13px] text-ink-2">talkHours</p>' +
-  `<a href="tel:${SITE.phone}" aria-label="talkCta: ${SITE.phoneDisplay}" class="${BUTTON_CLASS}">`;
+  '<h2 class="font-heading text-[17px] font-bold tracking-tight text-ink">Rfq.talkTitle</h2>' +
+  '<p class="mt-2 text-[13px] text-ink-2">Rfq.talkHours</p>' +
+  `<a href="tel:${SITE.phone}" aria-label="Rfq.talkCta: ${SITE.phoneDisplay}" class="${BUTTON_CLASS}">`;
 
 const CLOSES_AT_2fd608c =
-  "talkCta</a>" +
+  "Rfq.talkCta</a>" +
   `<p class="mt-2 text-center font-data text-[13px] text-ink-2" translate="no">${SITE.phoneDisplay}</p>` +
   "</div>";
 
@@ -53,8 +60,17 @@ describe("TalkCard — the extraction changed nothing", () => {
     // P5: change any class, the label, or the aria-label in `TalkCard` and this
     // reddens with a diff naming exactly what moved.
     const html = renderToStaticMarkup(<TalkCard />);
-    expect(html.startsWith(OPENS_AT_2fd608c), "the card opening changed").toBe(true);
-    expect(html.endsWith(CLOSES_AT_2fd608c), "the card closing changed").toBe(true);
+    // ⚠️ COMPARED AS STRINGS, NOT AS BOOLEANS. This used to be
+    // `expect(html.startsWith(OPENS), "the card opening changed").toBe(true)`,
+    // which fails with "expected false to be true" and shows NOTHING about what
+    // moved — while the file docstring promised the test "names the difference".
+    // Slicing to the baseline's length and comparing gives a real character diff.
+    expect(html.slice(0, OPENS_AT_2fd608c.length), "the card opening changed").toBe(
+      OPENS_AT_2fd608c,
+    );
+    expect(html.slice(-CLOSES_AT_2fd608c.length), "the card closing changed").toBe(
+      CLOSES_AT_2fd608c,
+    );
     // The only thing between them is lucide s <svg>, which this story did not touch.
     const between = html.slice(OPENS_AT_2fd608c.length, -CLOSES_AT_2fd608c.length);
     expect(between.startsWith("<svg")).toBe(true);
@@ -68,7 +84,7 @@ describe("TalkCard — the extraction changed nothing", () => {
     // future intentional restyle cannot quietly drop it while someone updates
     // the baseline string above.
     const html = renderToStaticMarkup(<TalkCard />);
-    expect(html).toContain(`aria-label="talkCta: ${SITE.phoneDisplay}"`);
+    expect(html).toContain(`aria-label="Rfq.talkCta: ${SITE.phoneDisplay}"`);
   });
 
   it("renders the phone as CHROME — the placeholder included (AC1's exemption)", () => {
@@ -84,5 +100,18 @@ describe("TalkCard — the extraction changed nothing", () => {
 
   it("marks the number `translate=no` — it is machine data, not prose", () => {
     expect(renderToStaticMarkup(<TalkCard />)).toContain('translate="no"');
+  });
+
+  it("is MOUNTED by both surfaces AC8 names — /rfq and /contact", () => {
+    // ⚠️ NOTHING ANYWHERE FAILED IF `<TalkCard />` WAS DELETED FROM A MOUNT SITE.
+    // Every test above renders the component in isolation, so all of them stay
+    // green on a page that no longer uses it — /rfq's half of AC8 had no guard at
+    // all, and /contact's e2e could not distinguish this card from the header's
+    // phone link until this review. Structural rather than rendered because both
+    // mount sites are server components a unit test cannot mount.
+    // P5: delete either mount and this reddens, naming the file.
+    const MOUNTS = ["src/components/rfq/RfqRail.tsx", "src/app/[locale]/(public)/contact/page.tsx"];
+    const missing = MOUNTS.filter((file) => !/<TalkCard\b/.test(readFileSync(file, "utf8")));
+    expect(missing, "a surface AC8 names no longer mounts TalkCard").toEqual([]);
   });
 });

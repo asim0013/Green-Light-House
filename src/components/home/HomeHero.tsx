@@ -80,7 +80,7 @@ export function HomeHero({
 
                   IT COMES FROM THE CONTENT MODEL, not from `messages` (Story 3.5):
                   the sentence was byte-copied into four namespaces until that story
-                  centralised it, so an admin edit now reaches all eight surfaces
+                  centralised it, so an admin edit now reaches all nine render sites
                   with no deploy. The whole block is conditional because the ruled
                   border would otherwise draw above nothing. */}
               {hasSlaSummary(sla) && (

@@ -11,7 +11,7 @@ import type { SlaContent } from "@/server/repositories/sla";
  * state after a successful POST, and `playwright.caching.config.ts` declares no
  * `globalTeardown`, so a lead submitted to reach it would escape the pollution
  * gate the main suite relies on. AC6 sanctions proving this surface separately —
- * this is that proof, and the seven navigable surfaces are proven warm-cache in
+ * this is that proof, and the eight navigable surfaces are proven warm-cache in
  * `e2e/caching.spec.ts`.
  *
  * ⚠️ IT IS ALSO THE ONE §G PREDICTION THAT DID NOT COME TRUE, and the gap was
@@ -153,7 +153,7 @@ describe("RfqConfirmation — the eighth SLA surface", () => {
   it("renders NO stepper for a summary-only row — a valid row with zero steps", () => {
     // The model resolves summary-only by design: a step whose text is missing in
     // both the requested locale and EN is DROPPED, and a process with no steps
-    // still resolves so the six one-liner surfaces keep their sentence. On this
+    // still resolves so the seven one-liner surfaces keep their sentence. On this
     // surface that same row used to paint an empty container.
     // P5: change the guard back to `sla &&` and this reddens.
     const html = render({ ...EN, steps: [] });

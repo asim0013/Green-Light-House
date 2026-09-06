@@ -23,7 +23,12 @@ vi.mock("@/i18n/navigation", () => ({
 
 import { contactSignals } from "./contact-page";
 import { isIndexable, thinContentReason } from "@/lib/seo";
-import { CONTACT, type ContactDetails } from "@/config/contact";
+import {
+  CONTACT,
+  configuredChannels,
+  isFullyConfigured,
+  type ContactDetails,
+} from "@/config/contact";
 
 /**
  * The thin-content signals for `/contact` (Story 3.8, AC5 / FR42a).
@@ -47,22 +52,67 @@ function supplied(over: Partial<ContactDetails> = {}): ContactDetails {
       taxNo: "1234567890",
       mersisNo: "0123456789012345",
     },
+    approvals: { legalReviewed: true, translationsReviewed: true },
     ...over,
   };
 }
 
-describe("contactSignals — the shipped, unconfigured state", () => {
-  it("is a PLACEHOLDER in every locale while GLH has supplied nothing", () => {
+describe("contactSignals — the unconfigured state", () => {
+  it("is a PLACEHOLDER in every locale while nothing is supplied", () => {
     // The day-one contract: /contact is reachable and useful (it carries the
     // phone and the inquiry form) but must not advertise itself as a contact
     // page whose details it does not have.
+    //
+    // ⚠️ ASSERTED ON A FIXTURE, NOT ON `CONTACT`. This block used to read the
+    // shipped constant and pin `itemCount === 0`, so the day GLH supplied the
+    // values it went RED for no defect — while the story and the commit message
+    // both promised supplying them was a values-only change. The property under
+    // test is "nothing supplied ⇒ placeholder", which is a property of the
+    // function, not of today's config.
+    const empty = supplied({
+      email: null,
+      address: null,
+      legal: {
+        legalName: null,
+        tradeRegistryNo: null,
+        taxOffice: null,
+        taxNo: null,
+        mersisNo: null,
+      },
+      approvals: { legalReviewed: false, translationsReviewed: false },
+    });
     for (const locale of ["en", "tr", "ru"] as const) {
-      const signals = contactSignals(locale, CONTACT);
+      const signals = contactSignals(locale, empty);
       expect(signals.itemCount).toBe(0);
       expect(signals.isPlaceholder).toBe(true);
       expect(thinContentReason(signals)).toBe("placeholder");
       expect(isIndexable(signals)).toBe(false);
     }
+  });
+
+  it("the SHIPPED config agrees with its own channel list, in whatever state it is in", () => {
+    // Derived, not pinned — holds on day one and after GLH delivers.
+    for (const locale of ["en", "tr", "ru"] as const) {
+      const signals = contactSignals(locale, CONTACT);
+      expect(signals.itemCount).toBe(configuredChannels(CONTACT).length);
+      expect(signals.isPlaceholder).toBe(!isFullyConfigured(CONTACT));
+      expect(isIndexable(signals)).toBe(isFullyConfigured(CONTACT));
+    }
+  });
+
+  it("⛔ values WITHOUT the two human gates are still a placeholder", () => {
+    // The critical Story 3.8 review finding, at the signals layer: filling the
+    // config used to flip all three locales to `index, follow` and into
+    // sitemap.xml with nothing to stop it, over two written pre-launch reviews.
+    // P5: drop the `translationsReviewed` term from `isFullyConfigured` and
+    // this reddens.
+    const unapproved = supplied({
+      approvals: { legalReviewed: false, translationsReviewed: false },
+    });
+    const signals = contactSignals("en", unapproved);
+    expect(signals.itemCount).toBe(2); // legal withheld pending legal review
+    expect(signals.isPlaceholder).toBe(true);
+    expect(isIndexable(signals)).toBe(false);
   });
 });
 

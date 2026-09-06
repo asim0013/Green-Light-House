@@ -21,7 +21,7 @@ import type { SlaContent } from "@/server/repositories/sla";
 /**
  * Is there a one-line sentence worth drawing chrome around?
  *
- * ⚠️ THE SIX SUMMARY SURFACES MUST GUARD ON THIS, NOT ON `sla` ALONE. Each wraps
+ * ⚠️ THE SEVEN SUMMARY SURFACES MUST GUARD ON THIS, NOT ON `sla` ALONE. Each wraps
  * the sentence in its own typography — the homepage rules a border above it, four
  * sit on dark bands — and `HomeHero`'s guard even carried the comment "border
  * would otherwise draw above nothing" while testing only that the ROW exists. An

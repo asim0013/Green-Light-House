@@ -289,20 +289,24 @@ describe("the SLA numeric promise is not hard-coded in the render layer (AC5)", 
  *
  * ⚠️ TONE IS A CONTRAST REQUIREMENT, NOT STYLING, AND NOTHING PINNED IT. The
  * components' own tests prove that `tone="onDark"` and `tone="light"` produce
- * different classes — but no test anywhere asserted which one each of the EIGHT
+ * different classes — but no test anywhere asserted which one each of the NINE
  * call sites actually passes. Flipping any single site was therefore invisible:
  * `FallbackNotice`'s light token measures 2.96:1 on the ink band, and the dark
  * token is white-on-white on the confirmation card. Both are AA failures on the
  * one string UJ3's "fallback is honest" promise rests on, and both would ship
  * with the entire suite green.
  *
- * Structural rather than rendered on purpose: three of these eight sites sit
- * inside async server components that a unit test cannot mount, so a
- * render-based check could only ever cover five of them and would silently
- * report success for the rest.
+ * Structural rather than rendered on purpose, and the reason is stronger than
+ * the one this docstring used to give. It claimed "three of these sites sit
+ * inside async server components"; the true figure is TWO (`services/page.tsx`
+ * and `contact/page.tsx` — the only `async function` exports among the nine),
+ * so the arithmetic that followed it was wrong as well. The real constraint is
+ * coverage: only TWO of the nine sites have a unit test at all (`HomeHero` and
+ * `RfqConfirmation`), so a render-based check would today assert the tone of two
+ * sites and silently report success for the other seven.
  */
 describe("every SLA render site passes the tone its ground requires", () => {
-  /** file → the tone that file's ground demands. Eight sites, named individually. */
+  /** file → the tone that file's ground demands. Nine sites, discovered and named. */
   const EXPECTED_TONE: Record<string, "light" | "onDark"> = {
     // Light grounds: white or surface cards.
     "src/components/home/HomeHero.tsx": "light",
@@ -319,16 +323,40 @@ describe("every SLA render site passes the tone its ground requires", () => {
     "src/app/[locale]/(public)/contact/page.tsx": "light",
   };
 
-  it("SELF-CHECK: all nine sites exist and each mounts an SLA component", () => {
-    // Guards the whole describe against becoming vacuous through a rename: if a
-    // path here stops existing, this fails loudly instead of the sweep below
-    // quietly checking nothing.
-    const sites = Object.keys(EXPECTED_TONE);
-    expect(sites).toHaveLength(9);
-    for (const site of sites) {
-      const text = readFileSync(site, "utf8");
-      expect(text, `${site} no longer mounts an SLA component`).toMatch(/<Sla(Summary|Stepper)\b/);
-    }
+  it("SELF-CHECK: the map lists EVERY SLA render site in the tree, and no others", () => {
+    // ⚠️ THIS USED TO BE A TAUTOLOGY, AND IT WAS THE ONE GATE AC9 EXISTS FOR.
+    // The old version read `Object.keys(EXPECTED_TONE)` and asserted
+    // `toHaveLength(9)` — the length of a literal declared a dozen lines
+    // above it, which cannot fail. It then checked that each LISTED path still
+    // mounts an SLA component, so it caught a RENAME but was structurally blind
+    // to the failure it was written to prevent: a TENTH render site that omits
+    // itself from the map. AC9's own wording is that a gate left green because a
+    // new surface omitted itself is a FAILURE of that AC, not a pass — and this
+    // was exactly that. Story 3.8 added the ninth site and the sweep could only
+    // see it because the author hand-edited the literal.
+    //
+    // It now DISCOVERS the sites: every tracked source file that mounts an SLA
+    // component must appear in the map, and every path in the map must still
+    // mount one. P5: add an `<SlaSummary tone="light" />` to any component not
+    // listed here, or delete an entry from the map, and this reddens.
+    const discovered = trackedFiles()
+      .filter((file) => /^src\//.test(file) && /\.tsx$/.test(file))
+      .filter((file) => !/\.test\.tsx$/.test(file))
+      .filter((file) => /<Sla(?:Summary|Stepper)\b/.test(readFileSync(file, "utf8")))
+      .sort();
+    const listed = Object.keys(EXPECTED_TONE).sort();
+
+    // Non-vacuous: if discovery ever finds nothing, the two set comparisons
+    // below would both pass over an empty set and report a clean repo forever.
+    expect(discovered.length, "SLA render-site discovery found nothing").toBeGreaterThan(0);
+    expect(
+      discovered.filter((file) => !listed.includes(file)),
+      "an SLA render site is missing from EXPECTED_TONE — nothing checks its tone",
+    ).toEqual([]);
+    expect(
+      listed.filter((file) => !discovered.includes(file)),
+      "EXPECTED_TONE names a path that no longer mounts an SLA component",
+    ).toEqual([]);
   });
 
   it("passes the correct tone at each site", () => {

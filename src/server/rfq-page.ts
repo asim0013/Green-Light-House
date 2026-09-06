@@ -19,7 +19,7 @@ import type { ContentSignals } from "@/lib/seo";
  * the process card is DB content that can fall back like any other row. It is
  * DELIBERATELY EXCLUDED from these signals anyway: the SLA is chrome that
  * appears on every route, not this page's own content, and it renders
- * identically on eight surfaces. Counting it would make a site-wide element
+ * identically across nine render sites. Counting it would make a site-wide element
  * decide a per-page question — and because it is fully translated it would push
  * thin pages TOWARD indexing, which is the exact mixed signal FR42a exists to
  * prevent. Same reasoning in `services-page.ts` and the homepage.

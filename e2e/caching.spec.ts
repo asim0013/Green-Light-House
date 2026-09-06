@@ -295,7 +295,7 @@ test("revalidation endpoint rejects unauthenticated and malformed calls", async 
 });
 
 /**
- * Story 3.5 — the SLA copy, and the seven NAVIGABLE surfaces it publishes to.
+ * Story 3.5 — the SLA copy, and the eight NAVIGABLE surfaces it publishes to.
  *
  * ⚠️ THE SEEDED COPY IS IMPORTED, NEVER RETYPED. `e2e/` is inside the AC5
  * hygiene gate sweep, so a literal sentence here would be a second source of the

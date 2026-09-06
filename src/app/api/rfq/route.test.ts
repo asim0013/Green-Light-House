@@ -432,7 +432,7 @@ describe("POST /api/rfq — the create-args centrepiece (AC4)", () => {
       locale: "ru",
       consent: true,
       consentAt: expect.any(Date),
-      consentVersion: "privacy-2026-08-stub-r3:en",
+      consentVersion: "privacy-2026-08-stub-r4:en",
     });
     // Server-stamped, never client time.
     expect((args.consentAt as Date).getTime()).toBeGreaterThanOrEqual(before);
@@ -460,7 +460,7 @@ describe("POST /api/rfq — the create-args centrepiece (AC4)", () => {
       locale: "ru",
       consent: true,
       consentAt: expect.any(Date),
-      consentVersion: "privacy-2026-08-stub-r3:en",
+      consentVersion: "privacy-2026-08-stub-r4:en",
     });
   });
 
@@ -492,14 +492,14 @@ describe("POST /api/rfq — the create-args centrepiece (AC4)", () => {
     expect(args).not.toHaveProperty("status");
     expect(args).not.toHaveProperty("attachmentKey");
     expect(args).not.toHaveProperty("website");
-    expect(args.consentVersion).toBe("privacy-2026-08-stub-r3:en");
+    expect(args.consentVersion).toBe("privacy-2026-08-stub-r4:en");
     expect((args.consentAt as Date).getFullYear()).toBeGreaterThan(2000);
   });
 
   it("consentVersion carries the ACTUAL uiLocale — a hard-coded ':en' cannot pass (3.2 review)", async () => {
     const res = await post({ ...VALID, uiLocale: "ru" });
     expect(res.status).toBe(201);
-    expect(createLead.mock.calls[0][0].consentVersion).toBe("privacy-2026-08-stub-r3:ru");
+    expect(createLead.mock.calls[0][0].consentVersion).toBe("privacy-2026-08-stub-r4:ru");
   });
 
   it("keeps the client label when a catalog slug no longer resolves", async () => {

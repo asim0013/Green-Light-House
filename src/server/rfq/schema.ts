@@ -64,8 +64,14 @@ export type TimelineKey = (typeof TIMELINE_KEYS)[number];
  * ATTACHMENT — its contents and its filename — for exactly the same reason,
  * surfaced by that story's guard audit rather than by the greps before it
  * (`Legal.collect` contains none of the words an attachment audit searches for).
+ * `-r4`: the 3.8 review found `Legal.retention` routing data-subject requests to
+ * "the number in the footer of every page" — the footer has NO phone number and
+ * never had one, and the number it would have carried is `SITE.phone`'s
+ * placeholder. It now points at /contact, which Story 3.8 made footer-linked on
+ * every page. A wrong instruction on how to exercise a data right is a defect in
+ * the disclosure itself, so it bumps the version like any other `Legal` change.
  */
-export const PRIVACY_POLICY_VERSION = "privacy-2026-08-stub-r3";
+export const PRIVACY_POLICY_VERSION = "privacy-2026-08-stub-r4";
 
 /**
  * Code points no legitimate buyer input contains, and which this stack cannot

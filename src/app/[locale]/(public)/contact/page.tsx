@@ -13,7 +13,13 @@ import { RfqForm } from "@/components/rfq/RfqForm";
 import { TalkCard } from "@/components/rfq/TalkCard";
 import { Breadcrumb, Kicker, TwoColumn } from "@/components/ui";
 import { CONTAINER } from "@/components/layout/container";
-import { CONTACT, configuredChannels, isSupplied, mapsUrl } from "@/config/contact";
+import {
+  CONTACT,
+  configuredChannels,
+  reachChannels,
+  suppliedValue,
+  mapsUrl,
+} from "@/config/contact";
 
 /**
  * SSR per request — reads live DB content (the industry list and the SLA), so it
@@ -35,9 +41,18 @@ export async function generateMetadata(props: {
 
   const t = await getTranslations({ locale, namespace: "Contact" });
 
+  // ⚠️ THE DESCRIPTION MUST NOT ADVERTISE A CHANNEL THE PAGE DOES NOT HAVE.
+  // `metaDescription` names an email AND a postal address; it shipped
+  // unconditionally, so every request in all three locales promised a search
+  // engine two channels the page could not show — the exact thing the page
+  // docstring says it never does. The condition is the claim: this key renders
+  // only when both of the channels it names are configured.
+  const channels = configuredChannels();
+  const describesEmailAndAddress = channels.includes("email") && channels.includes("address");
+
   return {
     title: t("title"),
-    description: t("metaDescription"),
+    description: t(describesEmailAndAddress ? "metaDescription" : "metaDescriptionMinimal"),
     alternates: alternatesFor(locale, "/contact"),
     // Shared with sitemap.ts so the page's robots tag and the sitemap's
     // inclusion rule can never disagree about this URL (FR42a).
@@ -59,8 +74,18 @@ export async function generateMetadata(props: {
  * inquiry email and no registration details. Rather than block the route, the
  * page renders ONLY the channels that are configured and declares itself a
  * placeholder until the required set is complete — so it is `noindex` and absent
- * from the sitemap, and never advertises an address it does not have. Supplying
- * the values in `src/config/contact.ts` publishes it with no code change.
+ * from the sitemap, and never advertises an address it does not have.
+ *
+ * ⛔ AND PUBLISHING IT IS NOT A VALUES-ONLY EDIT, THOUGH THIS DOCSTRING USED TO
+ * SAY IT WAS. The 3.8 review measured the old behaviour live: filling five
+ * fields in `src/config/contact.ts` flipped all three locales to `index, follow`
+ * and into `sitemap.xml` on the next deploy, silently routing past two written
+ * pre-launch obligations — qualified legal review of the реквизиты
+ * (`prd.md:186`, DP-10/OQ7) and native review of the machine-drafted TR/RU copy
+ * (`owner-actions.md` §3(b)). Both are now `CONTACT.approvals` booleans:
+ * `legalReviewed` gates the legal block's RENDER (a `noindex` page is still
+ * public, so `noindex` withholds a disclosure from nobody) and
+ * `translationsReviewed` gates INDEXING, which is where its own source puts it.
  *
  * NO CLOSING `DarkBand` CTA, which departs from the `/services` skeleton on
  * purpose: every other surface terminates at the RFQ or the phone because those
@@ -86,8 +111,24 @@ export default async function ContactPage(props: { params: Promise<{ locale: str
   const t = await getTranslations({ locale, namespace: "Contact" });
   const tNav = await getTranslations({ locale, namespace: "Nav" });
 
+  // ⚠️ ONE PREDICATE, NARROWED ONCE. Each row used to re-derive its own
+  // `isSupplied(CONTACT.…)` beside this call, so `configuredChannels` described
+  // what renders while the JSX independently decided it — two implementations of
+  // one rule, free to drift. They now cannot: `configuredChannels` decides, and
+  // the `isSupplied` half of each line below exists only to narrow
+  // `string | null` to `string` for TypeScript. The difference is load-bearing
+  // for the legal block, which `configuredChannels` withholds until
+  // `approvals.legalReviewed` regardless of how complete its values are.
   const channels = configuredChannels();
   const hasChannels = channels.length > 0;
+  const email = channels.includes("email") ? suppliedValue(CONTACT.email) : null;
+  const address = channels.includes("address") ? suppliedValue(CONTACT.address) : null;
+  const legal = channels.includes("legal") ? CONTACT.legal : null;
+  // ⚠️ THE SECTION KICKER FOLLOWS THE REACH CHANNELS, NOT THE ZONE. With only
+  // the registered name supplied, "Ways to reach us" would head a block that
+  // offers no way to reach anyone. The block still renders — it is a disclosure
+  // GLH supplied — and its own "Company details" label describes it correctly.
+  const hasReachChannels = reachChannels().length > 0;
 
   return (
     <>
@@ -105,7 +146,14 @@ export default async function ContactPage(props: { params: Promise<{ locale: str
           <h1 className="font-heading text-[28px] font-bold leading-tight tracking-tight text-ink md:text-[34px]">
             {t("title")}
           </h1>
-          <p className="mt-3 max-w-[62ch] text-[17px] leading-relaxed text-ink-2">{t("lead")}</p>
+          {/* ⚠️ SAME RULE AS THE META DESCRIPTION. `lead` offers the reader an
+              email ("by phone, by email, or by sending the project straight
+              through") and shipped unconditionally, so the page invited buyers
+              in three languages to use a mailbox it does not publish. The
+              minimal variant names only what is actually on the page. */}
+          <p className="mt-3 max-w-[62ch] text-[17px] leading-relaxed text-ink-2">
+            {t(channels.includes("email") ? "lead" : "leadMinimal")}
+          </p>
         </div>
       </section>
 
@@ -121,25 +169,32 @@ export default async function ContactPage(props: { params: Promise<{ locale: str
                     found on six surfaces. */}
                 {hasChannels && (
                   <div className="border-b border-border-subtle pb-8">
-                    <Kicker tone="ink">{t("channelsKicker")}</Kicker>
+                    {hasReachChannels && <Kicker tone="ink">{t("channelsKicker")}</Kicker>}
                     <dl className="mt-4 flex flex-col gap-5">
-                      {isSupplied(CONTACT.email) && (
+                      {email && (
                         <div>
                           <dt className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2">
                             {t("emailLabel")}
                           </dt>
                           <dd className="mt-1.5">
+                            {/* `translate="no"` for the same reason the address
+                              and the phone number carry it: a mailbox is machine
+                              data, and a browser that "helpfully" translates the
+                              local part produces an address that does not
+                              deliver. This was the ONE machine value shipped
+                              without it. */}
                             <a
-                              href={`mailto:${CONTACT.email}`}
+                              href={`mailto:${email}`}
+                              translate="no"
                               className="font-data text-[15px] text-accent hover:underline underline-offset-4 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
                             >
-                              {CONTACT.email}
+                              {email}
                             </a>
                           </dd>
                         </div>
                       )}
 
-                      {isSupplied(CONTACT.address) && (
+                      {address && (
                         <div>
                           <dt className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2">
                             {t("addressLabel")}
@@ -150,7 +205,7 @@ export default async function ContactPage(props: { params: Promise<{ locale: str
                             className="mt-1.5 whitespace-pre-line text-[15px] leading-relaxed text-ink"
                             translate="no"
                           >
-                            {CONTACT.address}
+                            {address}
                           </dd>
                           <dd className="mt-2">
                             {/* ⚠️ AN ORDINARY OUTBOUND LINK, NOT AN EMBED (FR46).
@@ -159,19 +214,28 @@ export default async function ContactPage(props: { params: Promise<{ locale: str
                               territory. Nothing loads from Google unless the
                               reader clicks and leaves. The URL is DERIVED from
                               the address so the two cannot drift. */}
+                            {/* ⚠️ THE ONE `target="_blank"` IN THE CODEBASE, SO
+                              IT CARRIES THE AFFORDANCE THE REST OF THE SITE
+                              NEVER HAD TO. Opening a new tab with no warning is
+                              a WCAG 3.2.5 surprise; the visually-hidden suffix
+                              is what a screen reader announces, and the `title`
+                              is what a sighted mouse user gets. Both say the
+                              same thing, from one key. */}
                             <a
-                              href={mapsUrl(CONTACT.address)}
+                              href={mapsUrl(address)}
                               target="_blank"
                               rel="noopener noreferrer"
+                              title={t("opensInNewTab")}
                               className="font-mono text-[12px] uppercase tracking-[0.12em] text-accent hover:underline underline-offset-4 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
                             >
                               {t("mapsCta")}
+                              <span className="sr-only"> ({t("opensInNewTab")})</span>
                             </a>
                           </dd>
                         </div>
                       )}
 
-                      {isSupplied(CONTACT.legal.legalName) && (
+                      {legal && (
                         <div>
                           <dt className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2">
                             {t("legalKicker")}
@@ -180,14 +244,11 @@ export default async function ContactPage(props: { params: Promise<{ locale: str
                             {/* Each number renders only if supplied — a partially
                               filled legal block shows what it has, never a
                               label with nothing beside it. */}
-                            <LegalRow label={t("legalName")} value={CONTACT.legal.legalName} />
-                            <LegalRow
-                              label={t("tradeRegistryNo")}
-                              value={CONTACT.legal.tradeRegistryNo}
-                            />
-                            <LegalRow label={t("taxOffice")} value={CONTACT.legal.taxOffice} />
-                            <LegalRow label={t("taxNo")} value={CONTACT.legal.taxNo} />
-                            <LegalRow label={t("mersisNo")} value={CONTACT.legal.mersisNo} />
+                            <LegalRow label={t("legalName")} value={legal.legalName} />
+                            <LegalRow label={t("tradeRegistryNo")} value={legal.tradeRegistryNo} />
+                            <LegalRow label={t("taxOffice")} value={legal.taxOffice} />
+                            <LegalRow label={t("taxNo")} value={legal.taxNo} />
+                            <LegalRow label={t("mersisNo")} value={legal.mersisNo} />
                           </dd>
                         </div>
                       )}
@@ -250,12 +311,16 @@ export default async function ContactPage(props: { params: Promise<{ locale: str
 
 /** One legal row, rendered only when its value is supplied. */
 function LegalRow({ label, value }: { label: string; value: string | null }) {
-  if (!isSupplied(value)) return null;
+  // Same accessor as the channels above: this decided on the TRIMMED value and
+  // rendered the RAW one, so a pasted registration number with a trailing space
+  // shipped that space into a `font-data` span.
+  const supplied = suppliedValue(value);
+  if (supplied === null) return null;
   return (
     <span className="flex flex-wrap gap-x-2">
       <span className="text-ink-2">{label}:</span>
       <span className="font-data text-ink" translate="no">
-        {value}
+        {supplied}
       </span>
     </span>
   );

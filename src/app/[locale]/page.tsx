@@ -71,7 +71,7 @@ export async function generateMetadata(props: {
   //
   // ⚠️ THE SLA IS EXCLUDED, DELIBERATELY (Story 3.5). It became DB content with
   // per-locale rows, so it could be listed here — but it is site-wide chrome
-  // rendered identically on eight surfaces, and a fully-translated chrome
+  // rendered identically across nine render sites, and a fully-translated chrome
   // element must never be the evidence that a THIN page deserves indexing. Same
   // exclusion, same reason, in `rfq-page.ts` and `services-page.ts`.
   const translated = [...projects, ...industries, ...categories, ...manufacturers];

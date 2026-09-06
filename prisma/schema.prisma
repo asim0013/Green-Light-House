@@ -316,11 +316,11 @@ model ServiceTranslation {
 /// address. One process carries a per-locale kicker + summary and exactly three
 /// ordered steps.
 ///
-/// ⚠️ THE SUMMARY IS NOT DECORATION. Six of the eight consuming surfaces render
+/// ⚠️ THE SUMMARY IS NOT DECORATION. Seven of the nine consuming render sites draw
 /// a one-line sentence, not the stepper, and that sentence is NOT composable
 /// from the step data — the EN steps say "Spec + proposal" where the shipped
 /// sentence says "specced proposal", and TR inverts the order entirely. Without
-/// a stored summary those six surfaces cannot be served from this model at all.
+/// a stored summary those seven surfaces cannot be served from this model at all.
 model SlaProcess {
   id           String                 @id @default(cuid())
   key          String                 @unique
@@ -353,6 +353,45 @@ model SlaProcessTranslation {
 /// inside a JSON blob. Slug-ordering cannot express 24h -> 3 days -> arrow, so an
 /// explicit integer is the only option consistent with these conventions. Story
 /// 3.1b's BOM ordering should follow this shape.
+/// ⚠️ `@@unique([processId, sort])` IS DEFERRABLE IN THE DATABASE AND PRISMA
+/// CANNOT SEE IT. Migration `20260906120000_sla_steps_deferrable_sort` dropped
+/// the plain unique index and added `UNIQUE (process_id, sort) DEFERRABLE
+/// INITIALLY IMMEDIATE`, so an in-place reorder can opt in with
+/// `SET CONSTRAINTS sla_steps_process_id_sort_key DEFERRED` for one transaction.
+/// There is no Prisma attribute for deferrability, so the line below is
+/// deliberately unchanged and `migrate diff` correctly reports no drift.
+///
+/// ⛔ TWO CONSEQUENCES THE MIGRATION'S OWN DOCSTRING GETS WRONG — READ THESE
+/// BEFORE COPYING THIS SHAPE (Story 3.1b is told by that file to copy it for
+/// project BOM lines). Both re-measured on a throwaway during the 3.8 review:
+///
+///  1. IT IS NOT BEHAVIOUR-PRESERVING. The migration says "every existing write
+///     keeps its current fail-fast behaviour". False: a deferrable constraint is
+///     checked at END OF STATEMENT rather than per row even in IMMEDIATE mode.
+///     `UPDATE sla_steps SET sort = sort + 1 WHERE process_id = 'p'` ERRORED
+///     under the old index and now SUCCEEDS with no `SET CONSTRAINTS` at all.
+///     Uniqueness is still enforced — a statement that ENDS duplicated still
+///     fails — so the loosening is in the safe direction, but it is a change.
+///     The two-STATEMENT swap does still fail without deferral, so the
+///     `SET CONSTRAINTS` opt-in is genuinely required for the ORM path.
+///
+///  2. ⛔ IT CANNOT BE AN `ON CONFLICT` ARBITER. Postgres refuses a deferrable
+///     constraint there: `ON CONFLICT does not support deferrable unique
+///     constraints/exclusion constraints as arbiters` (SQLSTATE 55000). So
+///     `slaStep.upsert({ where: { processId_sort }, update: { <non-empty> } })`
+///     and `createMany({ skipDuplicates: true })` both THROW on this table.
+///     `prisma/seed.ts` survives only because its `update: {}` is EMPTY, which
+///     takes Prisma off the native-upsert path onto SELECT-then-INSERT — add one
+///     field to that `update` and the seed breaks. `upsert({ where: { id } })`
+///     is unaffected.
+///
+///  3. Minor, but it misleads anyone following the worked example: the migration's
+///     illustrative transcript puts its `-- ERROR: duplicate key` annotation on
+///     the SECOND `UPDATE`. Measured: the FIRST one collides
+///     (`SET sort=2 WHERE id='s1'` hits the row already holding sort=2), so the
+///     comment implies statement 1 survives when it does not. Commit `2a7a35a`'s
+///     message paraphrases the same pair with `WHERE sort=` predicates, which
+///     makes its "MEASURED ... not argued" transcript unreproducible as written.
 model SlaStep {
   id           String               @id @default(cuid())
   processId    String               @map("process_id")
