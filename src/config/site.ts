@@ -24,6 +24,21 @@ export const NAV_ITEMS = [
   { key: "about", href: "/about" },
 ] as const;
 
+/**
+ * Footer-only destinations (Story 3.8).
+ *
+ * ⚠️ A THIRD ARRAY, AND BOTH OBVIOUS ALTERNATIVES ARE WRONG. `NAV_ITEMS` is
+ * consumed by `SiteHeader` TWICE as well as by the footer, so adding `/contact`
+ * there would change the primary nav on every page — a chrome change smuggled
+ * inside a page story, and one the "five nav links" assertions would NOT catch
+ * because they check by name rather than by count. `FOOTER_LEGAL` is the legal
+ * landmark; filing a contact page under it is wrong semantically and visually.
+ *
+ * Labels resolve from `Nav`, not `Footer`: this is a DESTINATION, like the
+ * entries beside it in the footer's Explore column, and those all read `Nav`.
+ */
+export const FOOTER_CONTACT = [{ key: "contact", href: "/contact" }] as const;
+
 /** Footer legal slots. `/privacy` is live since 3.2 (a noindex stub 5.1
  * replaces); `/terms` and `/cookies` 404 until 5.1. Labels from `Footer`. */
 export const FOOTER_LEGAL = [

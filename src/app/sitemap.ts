@@ -18,6 +18,7 @@ import { signalsFromRow, productHref } from "@/server/product-page";
 import { listServices } from "@/server/repositories/service";
 import { servicesSignals } from "@/server/services-page";
 import { rfqSignals } from "@/server/rfq-page";
+import { contactSignals } from "@/server/contact-page";
 import { projectsIndexSignals, projectSignals, projectHref } from "@/server/project-page";
 import { isValidSlug } from "@/lib/slug";
 
@@ -42,6 +43,14 @@ export const dynamic = "force-dynamic";
  * indexable `/projects/<slug>` (Story 3.1), and `/rfq` in ALL THREE locales
  * (Story 3.2 — its content is messages-complete by construction, the first
  * surface whose tr/ru index from day one).
+ *
+ * ⚠️ `/contact` (Story 3.8) IS WIRED BUT DELIBERATELY ABSENT TODAY. It is a
+ * SELF-LIFTING omission, not a permanent one: `contactSignals` reports
+ * `isPlaceholder` while GLH has supplied no address, email or registration
+ * details, so the page is `noindex` AND unlisted from the same single fact —
+ * the `/privacy` pattern. Supplying the values in `src/config/contact.ts`
+ * publishes it here with no code change, which is why the emitter is gated
+ * rather than commented out.
  *
  * The nav and footer in `src/config/site.ts` still point at About and the legal
  * pages, which do not exist until Epic 5 — listing them would publish a sitemap
@@ -152,6 +161,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         // `rfqSignals` for why /rfq cannot be thin — but routed through the
         // SAME predicate the page's robots metadata calls, never hard-coded.
         rfqIndexable: isIndexable(rfqSignals(locale)),
+        // Story 3.8. ⚠️ SELF-LIFTING: /contact is `isPlaceholder` while GLH has
+        // supplied no contact details, so it is absent here AND noindex — the
+        // same single fact driving both, exactly as /privacy does. The day the
+        // values land in `src/config/contact.ts` this flips with no code change.
+        contactIndexable: isIndexable(contactSignals(locale)),
         // One predicate per surface (Story 3.1): `projectsIndexSignals` is what
         // /projects' robots metadata uses. On today's seed this is TRUE for en/tr
         // and FALSE for ru — zero `ru` project translations means every row falls
@@ -196,6 +210,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       indexableProductSlugs,
       servicesIndexable,
       rfqIndexable,
+      contactIndexable,
       projectsIndexable,
       indexableProjectSlugs,
     }) => [
@@ -204,6 +219,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       ...(catalogIndexable ? [entry(locale, "/products")] : []),
       ...(servicesIndexable ? [entry(locale, "/services")] : []),
       ...(rfqIndexable ? [entry(locale, "/rfq")] : []),
+      ...(contactIndexable ? [entry(locale, "/contact")] : []),
       ...(projectsIndexable ? [entry(locale, "/projects")] : []),
       // `industryHref`, not a template literal: Next does NOT escape sitemap URLs,
       // so an unencoded `&` or `<` in a slug makes the WHOLE FILE malformed XML.

@@ -30,12 +30,13 @@ describe("collection tags", () => {
 
   it("names the extension Story 3.5 added for the site-wide response process", () => {
     expect(TAGS.sla).toBe("sla");
-    // Its own tag, not `catalog`: the SLA is read by SEVEN page types that cut
+    // Its own tag, not `catalog`: the SLA is read by EIGHT page types that cut
     // across the catalogue and everything else, so folding it into a catalogue
     // flush would make a one-line copy edit invalidate the whole catalogue — and
-    // a catalogue publish needlessly re-render the SLA. (It is NOT on "every
-    // route", as an earlier version of this comment claimed: /contact and the
-    // legal pages render no SLA.)
+    // a catalogue publish needlessly re-render the SLA. (Still NOT "every route":
+    // the legal pages render none. ⚠️ But /contact DOES since Story 3.8 — an
+    // earlier version of this comment named it as an example of a page that does
+    // not, which stopped being true the moment that page mounted `RfqForm`.)
     //
     // ⚠️ `expect(TAGS.sla).not.toBe(TAGS.catalog)` USED TO SIT HERE AND COULD NOT
     // FAIL — the line above already pins the value to "sla", so the inequality

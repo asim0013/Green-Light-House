@@ -2,7 +2,7 @@ import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 import { DarkBand, Kicker } from "@/components/ui";
-import { NAV_ITEMS, FOOTER_LEGAL } from "@/config/site";
+import { NAV_ITEMS, FOOTER_CONTACT, FOOTER_LEGAL } from "@/config/site";
 import { CONTAINER } from "./container";
 import { BrandMark } from "./BrandMark";
 
@@ -39,7 +39,7 @@ export function SiteFooter() {
             <nav aria-label={tFooter("explore")}>
               <Kicker>{tFooter("explore")}</Kicker>
               <ul className="mt-3 flex flex-col gap-2 text-sm">
-                {NAV_ITEMS.map((item) => (
+                {[...NAV_ITEMS, ...FOOTER_CONTACT].map((item) => (
                   <li key={item.key}>
                     <Link href={item.href} className="text-on-dark-text hover:text-white">
                       {tNav(item.key)}

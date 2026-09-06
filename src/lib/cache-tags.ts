@@ -34,16 +34,23 @@ export const COLLECTION_TAGS = {
   documents: "documents",
   /**
    * Extension (Story 3.5) — the site-wide response process shown in place of
-   * prices. Its own tag rather than `catalog`: it is read by SEVEN page types
+   * prices. Its own tag rather than `catalog`: it is read by EIGHT page types
    * (home, industry detail, product detail, projects index, project detail,
-   * services, rfq) which between them mount EIGHT render sites, cutting across
-   * the catalogue and everything else. Folding it into a catalogue-wide flush
-   * would make an admin's one-line copy edit invalidate the entire catalogue,
-   * and a catalogue publish would needlessly re-render the SLA. One tag, eight
-   * surfaces, one revalidate.
+   * services, rfq, contact) which between them mount NINE render sites, cutting
+   * across the catalogue and everything else. Folding it into a catalogue-wide
+   * flush would make an admin's one-line copy edit invalidate the entire
+   * catalogue, and a catalogue publish would needlessly re-render the SLA. One
+   * tag, nine surfaces, one revalidate.
    *
-   * ⚠️ NOT "every route" — an earlier revision of this comment said so and it
-   * was wrong. `/contact` (Story 3.8) and the legal pages render no SLA.
+   * ⚠️ STILL NOT "every route" — the legal pages render no SLA.
+   *
+   * ⚠️ AND `/contact` IS NOW ONE OF THEM (Story 3.8), which an earlier revision
+   * of this comment explicitly denied. That denial was written by the 3.5 review
+   * and was false either way: /contact mounts `RfqForm`, and `RfqConfirmation`
+   * renders the stepper POST-SUBMIT regardless of what the idle page shows — so
+   * /contact was always going to be an SLA-reading page type. It now also draws
+   * `SlaSummary` while idle, making it the ninth site. Nine findings in 3.8's
+   * research converged on this one stale sentence.
    */
   sla: "sla",
 } as const;

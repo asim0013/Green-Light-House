@@ -259,7 +259,8 @@
     "phoneLabel": "Call us",
     "menu": "Menu",
     "close": "Close",
-    "skipToContent": "Skip to content"
+    "skipToContent": "Skip to content",
+    "contact": "Contact"
   },
   "Footer": {
     "tagline": "Industrial and fire-safety equipment for project supply.",
@@ -270,5 +271,21 @@
     "cookies": "Cookies",
     "city": "İstanbul",
     "rights": "All rights reserved"
+  },
+  "Contact": {
+    "title": "Contact GLH",
+    "lead": "Reach us however suits the job — by phone, by email, or by sending the project straight through.",
+    "metaDescription": "Phone, email and postal address for GREENLIGHTHOUSE, plus a direct inquiry form.",
+    "channelsKicker": "Ways to reach us",
+    "emailLabel": "Inquiries",
+    "addressLabel": "Office",
+    "mapsCta": "Open in maps",
+    "legalKicker": "Company details",
+    "legalName": "Registered name",
+    "tradeRegistryNo": "Trade registry no.",
+    "taxOffice": "Tax office",
+    "taxNo": "Tax no.",
+    "mersisNo": "MERSIS no.",
+    "formKicker": "Send the project"
   }
 }

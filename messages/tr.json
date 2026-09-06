@@ -259,7 +259,8 @@
     "phoneLabel": "Bizi arayın",
     "menu": "Menü",
     "close": "Kapat",
-    "skipToContent": "İçeriğe geç"
+    "skipToContent": "İçeriğe geç",
+    "contact": "İletişim"
   },
   "Footer": {
     "tagline": "Proje tedariki için endüstriyel ve yangın güvenliği ekipmanları.",
@@ -270,5 +271,21 @@
     "cookies": "Çerezler",
     "city": "İstanbul",
     "rights": "Tüm hakları saklıdır"
+  },
+  "Contact": {
+    "title": "GLH ile iletişim",
+    "lead": "İşe en uygun yoldan ulaşın — telefonla, e-postayla ya da projeyi doğrudan göndererek.",
+    "metaDescription": "GREENLIGHTHOUSE için telefon, e-posta ve posta adresi ile doğrudan teklif formu.",
+    "channelsKicker": "Bize ulaşma yolları",
+    "emailLabel": "Talepler",
+    "addressLabel": "Ofis",
+    "mapsCta": "Haritada aç",
+    "legalKicker": "Şirket bilgileri",
+    "legalName": "Ticaret unvanı",
+    "tradeRegistryNo": "Ticaret sicil no",
+    "taxOffice": "Vergi dairesi",
+    "taxNo": "Vergi kimlik no",
+    "mersisNo": "MERSIS no",
+    "formKicker": "Projeyi gönderin"
   }
 }

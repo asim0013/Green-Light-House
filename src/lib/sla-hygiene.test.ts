@@ -314,14 +314,17 @@ describe("every SLA render site passes the tone its ground requires", () => {
     "src/components/projects/ProjectCta.tsx": "onDark",
     "src/components/rfq/RfqRail.tsx": "onDark",
     "src/app/[locale]/(public)/services/page.tsx": "onDark",
+    // Story 3.8 — the NINTH site. The summary sits in the body column on
+    // `surface`, a light ground, beside the shared TalkCard.
+    "src/app/[locale]/(public)/contact/page.tsx": "light",
   };
 
-  it("SELF-CHECK: all eight sites exist and each mounts an SLA component", () => {
+  it("SELF-CHECK: all nine sites exist and each mounts an SLA component", () => {
     // Guards the whole describe against becoming vacuous through a rename: if a
     // path here stops existing, this fails loudly instead of the sweep below
     // quietly checking nothing.
     const sites = Object.keys(EXPECTED_TONE);
-    expect(sites).toHaveLength(8);
+    expect(sites).toHaveLength(9);
     for (const site of sites) {
       const text = readFileSync(site, "utf8");
       expect(text, `${site} no longer mounts an SLA component`).toMatch(/<Sla(Summary|Stepper)\b/);

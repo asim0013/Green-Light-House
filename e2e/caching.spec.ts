@@ -116,7 +116,7 @@ test.afterAll(async () => {
   const restored = {
     industry: await renameIndustry(PROBE, ORIGINAL).catch(() => -1),
     // ⚠️ The SLA rows are a SINGLETON — there is one process row site-wide, on
-    // eight surfaces. A probe left in place would not look like a stale test
+    // NINE surfaces since Story 3.8. A probe left in place would not look like a stale test
     // fixture, it would be the live copy on every public page.
     summary: await setSlaSummary(SLA_SUMMARY_PROBE, SLA_SUMMARY).catch(() => -1),
     step: await setSlaStepTitle(SLA_STEP_PROBE, SLA_STEP_TITLE).catch(() => -1),
@@ -125,7 +125,7 @@ test.afterAll(async () => {
   // ⚠️ RESTORING POSTGRES IS ONLY HALF OF IT, AND THE MISSING HALF WAS THE
   // DANGEROUS ONE. Every read here is cached in Redis under `TAGS.sla`, so a run
   // that aborted between the probe write and the restore left the PROBE STRING
-  // being served from cache to real page loads — on all eight SLA surfaces —
+  // being served from cache to real page loads — on all NINE SLA surfaces —
   // until something else happened to invalidate the tag. Rolling the database
   // back does not touch the cache. Purge it explicitly, from a request context of
   // our own (the `request` fixture is test-scoped and unavailable in afterAll).
@@ -308,13 +308,18 @@ const SLA_SUMMARY_PROBE = "ZZZ-SLA-SUMMARY-PROBE";
 const SLA_STEP_PROBE = "ZZZ-SLA-STEP-PROBE";
 
 /**
- * The six surfaces that draw the one-line SUMMARY, one per mounting page type.
+ * The SEVEN surfaces that draw the one-line SUMMARY, one per mounting page type.
+ *
+ * `/en/contact` joined them in Story 3.8. ⚠️ Adding it here is not optional: the
+ * test would have stayed GREEN while never checking the new surface, which is
+ * the silent hole this list exists to prevent.
  *
  * `/industries/[slug]` appears once but mounts TWO consumers (the hero and the
  * closing band) — the reason the read is wrapped in React `cache()`.
  */
 const SLA_SUMMARY_PAGES = [
   "/en",
+  "/en/contact",
   "/en/industries/fire-safety",
   "/en/products/fd-9500",
   "/en/services",
@@ -322,7 +327,7 @@ const SLA_SUMMARY_PAGES = [
   "/en/projects/hospital-fire-suppression",
 ];
 
-/** The seventh: the only navigable surface that draws the STEPPER. */
+/** The eighth: the only navigable surface that draws the STEPPER. */
 const SLA_STEPPER_PAGE = "/en/rfq";
 
 async function setSlaSummary(from: string, to: string): Promise<number> {
@@ -345,7 +350,7 @@ async function setSlaStepTitle(from: string, to: string): Promise<number> {
   });
 }
 
-test("one SLA edit publishes to all seven navigable surfaces, warm cache, no redeploy (Story 3.5 AC6)", async ({
+test("one SLA edit publishes to all eight navigable surfaces, warm cache, no redeploy (Story 3.5 AC6)", async ({
   page,
   request,
 }) => {
@@ -353,7 +358,7 @@ test("one SLA edit publishes to all seven navigable surfaces, warm cache, no red
   // renders on EVERY public route, so this is also the widest blast radius any
   // single `revalidateTag` has in the app.
   //
-  // ⚠️ THE EIGHTH SURFACE IS DELIBERATELY ABSENT. The submitted confirmation
+  // ⚠️ THE NINTH SURFACE IS DELIBERATELY ABSENT. The submitted confirmation
   // mounts only after a successful POST, and this config declares NO
   // `globalTeardown` — a lead created here would escape the pollution gate the
   // main suite relies on. It is proven separately, by unit render, in

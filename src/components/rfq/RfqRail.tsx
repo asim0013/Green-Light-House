@@ -1,9 +1,7 @@
-import { Phone } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Kicker } from "@/components/ui";
-import { buttonClasses } from "@/components/ui/buttonClasses";
-import { SITE } from "@/config/site";
 import { SlaStepper } from "@/components/sla/SlaStepper";
+import { TalkCard } from "./TalkCard";
 import type { SlaContent } from "@/server/repositories/sla";
 
 /**
@@ -43,23 +41,9 @@ export function RfqRail({ sla }: { sla: SlaContent | null }) {
         </div>
       )}
 
-      <div className="border border-border-subtle bg-surface p-5">
-        <h2 className="font-heading text-[17px] font-bold tracking-tight text-ink">
-          {t("talkTitle")}
-        </h2>
-        <p className="mt-2 text-[13px] text-ink-2">{t("talkHours")}</p>
-        <a
-          href={`tel:${SITE.phone}`}
-          aria-label={`${t("talkCta")}: ${SITE.phoneDisplay}`}
-          className={buttonClasses("secondary", "mt-4 w-full gap-2")}
-        >
-          <Phone size={16} aria-hidden />
-          {t("talkCta")}
-        </a>
-        <p className="mt-2 text-center font-data text-[13px] text-ink-2" translate="no">
-          {SITE.phoneDisplay}
-        </p>
-      </div>
+      {/* Story 3.8: the SAME component /contact mounts. Extracted verbatim —
+          see `TalkCard` for the three deviations it carries, all owned by 3.6. */}
+      <TalkCard />
 
       <div className="px-1">
         <Kicker tone="ink">{t("whyKicker")}</Kicker>
