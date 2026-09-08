@@ -17,6 +17,8 @@ const EN = {
   title: "LNG terminal upgrade",
   description: null,
   outcome: null,
+  scope: null,
+  location: null,
 };
 
 function row(overrides: Partial<ProjectRow> = {}): ProjectRow {
@@ -24,6 +26,7 @@ function row(overrides: Partial<ProjectRow> = {}): ProjectRow {
     id: "p1",
     slug: "lng-terminal-upgrade",
     deliveredAt: null,
+    leadTimeWeeks: null,
     media: [],
     translations: [EN],
     industry: null,
@@ -37,7 +40,14 @@ describe("toProjectListItem", () => {
       row({
         translations: [
           EN,
-          { locale: "tr", title: "LNG terminali yükseltmesi", description: null, outcome: null },
+          {
+            locale: "tr",
+            title: "LNG terminali yükseltmesi",
+            description: null,
+            outcome: null,
+            scope: null,
+            location: null,
+          },
         ],
       }),
       "tr",
@@ -67,6 +77,8 @@ describe("toProjectListItem", () => {
             title: "T",
             description: "D",
             outcome: "142 field devices, ATEX Zone 1.",
+            scope: null,
+            location: null,
           },
         ],
       }),
@@ -108,7 +120,17 @@ describe("toProjectListItem", () => {
     // A project can be translated while its industry is not, and vice versa.
     const item = toProjectListItem(
       row({
-        translations: [EN, { locale: "tr", title: "TR başlık", description: null, outcome: null }],
+        translations: [
+          EN,
+          {
+            locale: "tr",
+            title: "TR başlık",
+            description: null,
+            outcome: null,
+            scope: null,
+            location: null,
+          },
+        ],
         industry: { slug: "energy", translations: [{ locale: "en", name: "Energy" }] },
       }),
       "tr",
@@ -152,6 +174,8 @@ describe("toProjectListItem — per-field fallback (Story 3.1)", () => {
     title: "LNG terminal fire & gas upgrade",
     description: "A full fire-and-gas package.",
     outcome: "142 field devices, ATEX Zone 1.",
+    scope: null,
+    location: null,
   };
   // The real seeded shape: a translated title, but the body fields left NULL.
   const TR_TITLE_ONLY = {
@@ -159,6 +183,8 @@ describe("toProjectListItem — per-field fallback (Story 3.1)", () => {
     title: "LNG terminali yangın ve gaz yükseltmesi",
     description: null,
     outcome: null,
+    scope: null,
+    location: null,
   };
 
   it("falls back a NULL field to EN even when the requested locale HAS a row", () => {
@@ -177,7 +203,14 @@ describe("toProjectListItem — per-field fallback (Story 3.1)", () => {
       row({
         translations: [
           EN_FULL,
-          { locale: "tr", title: "T", description: "TR açıklama", outcome: "TR sonuç" },
+          {
+            locale: "tr",
+            title: "T",
+            description: "TR açıklama",
+            outcome: "TR sonuç",
+            scope: null,
+            location: null,
+          },
         ],
       }),
       "tr",
@@ -195,7 +228,18 @@ describe("toProjectListItem — per-field fallback (Story 3.1)", () => {
   it("reports null, not a flag, when NO locale has the field", () => {
     // The seeded `refinery-gas-detection-retrofit`: EN-only and outcome-less.
     const item = toProjectListItem(
-      row({ translations: [{ locale: "en", title: "T", description: null, outcome: null }] }),
+      row({
+        translations: [
+          {
+            locale: "en",
+            title: "T",
+            description: null,
+            outcome: null,
+            scope: null,
+            location: null,
+          },
+        ],
+      }),
       "tr",
     );
     expect(item.outcome).toBeNull();

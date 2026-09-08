@@ -24,8 +24,15 @@ import type { ProjectListItem } from "@/server/repositories/project";
  *
  * ONE PHOTO, DELIBERATELY. The canvas draws a single band and `Project.media` has
  * no gallery affordance designed anywhere. `parseProjectMedia` already sorts
- * totally and stably, so "first" is deterministic. A multi-image gallery is
- * unspecified work and belongs with the case-study depth in Story 3.1b.
+ * totally and stably, so "first" is deterministic.
+ *
+ * ⚠️ A MULTI-IMAGE GALLERY IS NOT IN STORY 3.1b, THOUGH THIS LINE USED TO SAY IT
+ * WAS. 3.1b shipped the case-study depth and deliberately did not take the
+ * gallery: it appears in no acceptance criterion, no ledger entry and no epic
+ * line, and `ProjectMediaEntry` carries no width/height, so a gallery reopens the
+ * CLS question Story 3.1 closed with a fixed-height `fill` band. Logged to
+ * `deferred-work.md` with no owner rather than pointed at a story that never
+ * received it.
  *
  * NO INTRINSIC DIMENSIONS EXIST. The frozen `ProjectMediaEntry` carries no width,
  * height or byte size, so `next/image` cannot size the box from the file. The band

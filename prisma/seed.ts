@@ -389,14 +389,26 @@ async function main() {
      *  project below. */
     industryId: string | null;
     deliveredAt?: Date;
+    /** Facts-card LEAD TIME (Story 3.1b). Integer weeks; rendered via ICU plural. */
+    leadTimeWeeks?: number;
     media?: unknown;
-    translations: { locale: Locale; title: string; description?: string; outcome?: string }[];
+    translations: {
+      locale: Locale;
+      title: string;
+      description?: string;
+      outcome?: string;
+      /** Facts-card SCOPE — the capability phrase, not the narrative body. */
+      scope?: string;
+      /** Facts-card LOCATION — translated; place names differ per locale. */
+      location?: string;
+    }[];
   };
 
   async function upsertProject({
     slug,
     industryId,
     deliveredAt,
+    leadTimeWeeks,
     media,
     translations,
   }: ProjectSeed) {
@@ -407,6 +419,9 @@ async function main() {
         status: PublishStatus.published,
         industryId,
         deliveredAt: deliveredAt ?? null,
+        // In BOTH branches, like every other repairable field: omitted means
+        // NULL and a fixture edit that clears it must propagate.
+        leadTimeWeeks: leadTimeWeeks ?? null,
         // `ProjectMediaEntry[]` is not assignable to Prisma's `Json` input type,
         // so the cast lives HERE, at the write boundary, and nowhere else. The
         // shape is validated on the way OUT by `parseProjectMedia`.
@@ -422,20 +437,29 @@ async function main() {
         status: PublishStatus.published,
         industryId,
         deliveredAt: deliveredAt ?? null,
+        leadTimeWeeks: leadTimeWeeks ?? null,
         media: (media ?? []) as Prisma.InputJsonValue,
       },
     });
 
-    for (const { locale, title, description, outcome } of translations) {
+    for (const { locale, title, description, outcome, scope, location } of translations) {
       await prisma.projectTranslation.upsert({
         where: { projectId_locale: { projectId: project.id, locale } },
-        update: { title, description: description ?? null, outcome: outcome ?? null },
+        update: {
+          title,
+          description: description ?? null,
+          outcome: outcome ?? null,
+          scope: scope ?? null,
+          location: location ?? null,
+        },
         create: {
           projectId: project.id,
           locale,
           title,
           description: description ?? null,
           outcome: outcome ?? null,
+          scope: scope ?? null,
+          location: location ?? null,
         },
       });
     }
@@ -451,7 +475,21 @@ async function main() {
       {
         locale: Locale.en,
         title: "LNG terminal fire & gas upgrade",
+        // ⛔ `outcome` IS BYTE-IDENTICAL AND MUST STAY SO. It is asserted in three
+        // spec files, and it is also the ONLY thing keeping this project's
+        // `itemCount` above zero: `projectSignals` counts
+        // description + outcome + media.length, and this project had neither of
+        // the other two. Moving this string into a facts row would flip the
+        // site's flagship project to `noindex` and drop it from the sitemap.
         outcome: "142 field devices, ATEX Zone 1, delivered in six weeks.",
+        // ADDED by Story 3.1b: takes `itemCount` from 1 to 2, so the project no
+        // longer sits one edit away from being unindexable.
+        description:
+          "A live LNG import terminal upgraded its fire and gas detection across the jetty, " +
+          "process area and control room without a shutdown. Every device was specified for " +
+          "ATEX Zone 1 and commissioned against the operator's existing safety case.",
+        scope: "Fire & gas detection + suppression",
+        location: "Marmara, Türkiye",
       },
       {
         locale: Locale.tr,
@@ -461,8 +499,13 @@ async function main() {
         // leaves a body field NULL, which used to make the outcome vanish on /tr
         // with no marker at all. Do not "complete" this translation — the gap is
         // the test subject.
+        //
+        // ⚠️ Story 3.1b leaves `scope` and `location` out for the SAME reason,
+        // and they are the better fixture: unlike `outcome` they are FACTS-CARD
+        // rows, so /tr exercises a fallen-back label inside the new card.
       },
     ],
+    leadTimeWeeks: 6,
   });
 
   await upsertProject({
@@ -556,12 +599,108 @@ async function main() {
     ],
   });
 
-  for (const slug of ["fd-9500", "gd-410"]) {
-    const prod = await prisma.product.findUniqueOrThrow({ where: { slug } });
-    await prisma.projectProduct.upsert({
-      where: { projectId_productId: { projectId: lng.id, productId: prod.id } },
-      update: {},
-      create: { projectId: lng.id, productId: prod.id },
+  // --- The scope-of-supply BOM (Story 3.1b, AC2) ---
+  //
+  // The canvas's five lines, verbatim in quantity and order. 142+88+60+24+3 = 317,
+  // which is what the derived footer must render alongside "5 line items".
+  //
+  // ⚠️ THE FIFTH LINE HAS NO PRODUCT, AND THAT IS THE POINT. "Clean-agent
+  // suppression skid" is not in the catalog and never will be; AC2 exists to
+  // prove the table renders it. It is also what makes the carried-over
+  // `where: { product: { status: "published" } }` guard dangerous — that
+  // shorthand still typechecks against a nullable relation and would INNER JOIN
+  // this row away, leaving a footer that reads 4 / 314 with nothing failing.
+  //
+  // ⚠️ THE LABELS ARE NOT CATEGORY NAMES. Counted: zero of these five match the
+  // seeded `Category` name of the product on the same row. They are authored
+  // editorial text, which is why they are translated per line.
+  //
+  // ⚠️ TR AND RU ARE MACHINE-DRAFTED and are recorded as such in the story's Dev
+  // Agent Record. They need a native review before launch.
+  const BOM: {
+    productSlug: string | null;
+    model: string;
+    quantity: number;
+    labels: { en: string; tr: string; ru: string };
+  }[] = [
+    {
+      productSlug: "fd-9500",
+      model: "FD-9500",
+      quantity: 142,
+      labels: {
+        en: "Triple-IR flame detection",
+        tr: "Üç bantlı kızılötesi alev algılama",
+        ru: "Трёхспектральное ИК-обнаружение пламени",
+      },
+    },
+    {
+      productSlug: "gd-410",
+      model: "GD-410",
+      quantity: 88,
+      labels: {
+        en: "Fixed gas detection",
+        tr: "Sabit gaz algılama",
+        ru: "Стационарное газовое обнаружение",
+      },
+    },
+    {
+      productSlug: "xb-200",
+      model: "XB-200",
+      quantity: 60,
+      labels: {
+        en: "Ex-proof alarm beacons",
+        tr: "Ex-proof alarm flaşörleri",
+        ru: "Взрывозащищённые светозвуковые оповещатели",
+      },
+    },
+    {
+      productSlug: "as-60",
+      model: "AS-60",
+      quantity: 24,
+      labels: {
+        en: "SCBA rescue sets",
+        tr: "SCBA kurtarma setleri",
+        ru: "Дыхательные аппараты для спасательных работ",
+      },
+    },
+    {
+      productSlug: null,
+      model: "FM-200 skid",
+      quantity: 3,
+      labels: {
+        en: "Clean-agent suppression skid",
+        tr: "Temiz gazlı söndürme ünitesi",
+        ru: "Модуль газового пожаротушения",
+      },
+    },
+  ];
+
+  // ⚠️ DELETE-THEN-CREATE, NOT UPSERT, AND THE SCHEMA FORCES IT. The ordering
+  // index is deliberately NON-unique (see `model ProjectBomLine`), so there is no
+  // compound key to address a line by — `upsert({ where: { projectId_sortOrder } })`
+  // does not exist. Deleting first is also the retraction the `sla_steps` seeder
+  // needs a `deleteMany({ notIn })` for: a fixture edit from five lines to four
+  // must not leave a phantom line behind, because the footer's line count and
+  // units total are DERIVED and would silently disagree with the table.
+  await prisma.projectBomLine.deleteMany({ where: { projectId: lng.id } });
+  for (const [index, line] of BOM.entries()) {
+    const product = line.productSlug
+      ? await prisma.product.findUniqueOrThrow({ where: { slug: line.productSlug } })
+      : null;
+    await prisma.projectBomLine.create({
+      data: {
+        projectId: lng.id,
+        productId: product?.id ?? null,
+        model: line.model,
+        quantity: line.quantity,
+        sortOrder: index,
+        translations: {
+          create: (["en", "tr", "ru"] as const).map((locale) => ({
+            locale: Locale[locale],
+            label: line.labels[locale],
+          })),
+        },
+      },
     });
   }
 

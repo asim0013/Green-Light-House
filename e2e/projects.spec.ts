@@ -6,16 +6,19 @@ import { probeDbReady, warmUp } from "./dbReady";
  *
  * FIXTURES (the seed after 3.4, re-measured live against Postgres):
  *
- *   slug                              industry     delivered    media  LINKS  locales
- *   lng-terminal-fire-gas-upgrade     oil-gas      2024-06-01   0      2      en,tr
- *   hospital-fire-suppression         fire-safety  2023-09-01   2      0      en,tr
- *   refinery-gas-detection-retrofit   oil-gas      (null)       0      0      en
- *   standalone-workshop-fitout        (NONE)       2024-02-01   0      0      en,tr
+ *   slug                              industry     delivered    media  BOM  locales
+ *   lng-terminal-fire-gas-upgrade     oil-gas      2024-06-01   0      5    en,tr
+ *   hospital-fire-suppression         fire-safety  2023-09-01   2      0    en,tr
+ *   refinery-gas-detection-retrofit   oil-gas      (null)       0      0    en
+ *   standalone-workshop-fitout        (NONE)       2024-02-01   0      0    en,tr
  *
- * ⚠️ THE `LINKS` COLUMN WAS ADDED BY STORY 3.4, and it is the one this table was
- * previously misleading about. The numeric column used to be MEDIA alone, which
- * inverts the truth for the doorway: hospital has 2 media and 0 product links;
- * LNG has 0 media and 2 links. Only LNG produces equipment chips.
+ * ⚠️ THE NUMERIC COLUMN WAS `LINKS` (2) UNTIL STORY 3.1b AND IS NOW `BOM` (5).
+ * `ProjectProduct` is gone; LNG carries five `ProjectBomLine` rows — the canvas's
+ * bill of materials — of which FOUR are backed by a published catalog product and
+ * one ("FM-200 skid") is deliberately not a catalog product at all. That
+ * distinction drives three counts on this fixture and they are NOT the same
+ * number: 5 BOM rows, 4 doorway chips (the four products sit in four distinct
+ * categories), and 3 equipment cards (capped at render). Only LNG has a BOM.
  *
  * `standalone-workshop-fitout` is Story 3.4's DEGENERATE fixture: published, but
  * with NO industry and NO linked products, so a doorway opened from it resolves
@@ -126,9 +129,19 @@ test.describe("the project detail page (AC2, AC11, AC15)", () => {
       "LNG terminal fire & gas upgrade",
     );
     await expect(page.getByText("142 field devices, ATEX Zone 1")).toBeVisible();
-    // The two linked catalog products render as real ProductCards — the include no
-    // read carried before this story.
-    await expect(page.locator("main article")).toHaveCount(2);
+    // ⚠️ 2 → 3, A DELIBERATE STORY 3.1b INVERSION, NOT A DISCOVERY. The seed's
+    // BOM now links FOUR published products where `ProjectProduct` linked two, and
+    // the equipment row is capped at `PROJECT_LIMIT` (3) AT RENDER — four cards on
+    // a `sm:grid-cols-2 lg:grid-cols-3` ladder is the 3+1 orphan wrap that set
+    // that limit in the first place.
+    //
+    // ⚠️ THE CAP IS NOT A `take:` IN THE READ, and this count is what would catch
+    // that mistake from the other side: the equipment cards and the BOM table share
+    // one read, so a `take: 3` would truncate the table to three lines and its
+    // DERIVED footer would read "3 line items / 290 units" against a five-line
+    // delivery. `ProductCard` is the site's only `<article>`; `ProjectCard` is an
+    // `<li>`, so the new related row does not touch this census.
+    await expect(page.locator("main article")).toHaveCount(3);
   });
 
   test("omits optional rows rather than rendering empty shells", async ({ page }, testInfo) => {

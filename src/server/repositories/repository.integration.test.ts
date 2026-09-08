@@ -1101,8 +1101,14 @@ describe("all services (integration)", () => {
  * The mapping half (locale resolution, media parsing, null tolerance) is covered
  * by the pure unit tests in `project.test.ts`, and the cache CONTRACT by
  * `project-cache.test.ts`. What only a real round-trip can prove is the
- * `status: "published"` filter and the `products` include — the first read in
- * this repository ever to fetch `ProjectProduct`.
+ * `status: "published"` filter and the `bomLines` include.
+ *
+ * ⚠️ THE FILTER MOVED IN STORY 3.1b AND THESE PROBES MOVED WITH IT. It used to be
+ * a `where` on the join rows, which was the only place it could live while
+ * `productId` was NOT NULL. `ProjectBomLine.productId` is nullable now, and that
+ * same `where` would silently INNER JOIN away every non-catalog line — so the
+ * guard lives in the MAPPER, with three different rules for its three consumers.
+ * A round trip is still the only thing that can prove it.
  */
 describe("Story 3.1 — project detail read (integration)", () => {
   const PROJECT_SLUG = "lng-terminal-fire-gas-upgrade";
@@ -1151,10 +1157,17 @@ describe("Story 3.1 — project detail read (integration)", () => {
 
   it("NEVER renders a DRAFT product on the equipment grid (3.1 review — proven leaking live)", async (ctx) => {
     if (!dbReachable) return ctx.skip();
-    // The review's probe: a draft product linked via ProjectProduct rendered its
+    // The review's probe: a draft product linked to the project rendered its
     // name and model on the published LNG project. `CARD_INCLUDE` cannot filter
     // the product (it is a ProductInclude) and `ProductCardRow` discards `status`
-    // at the type boundary — the `where` on the join rows is the ONLY guard.
+    // at the type boundary.
+    //
+    // ⚠️ REWRITTEN FOR STORY 3.1b, AND THE GUARD MOVED. It used to live in a
+    // `where` on the join rows, which WAS the only place it worked while
+    // `productId` was NOT NULL. `ProjectBomLine.productId` is nullable now, and
+    // that same `where` would silently INNER JOIN away the BOM's non-catalog
+    // line — so the guard moved to the MAPPER, and this probe proves it did not
+    // weaken on the way. A draft product must still produce NO CARD.
     const manufacturer = await prisma.manufacturer.findFirstOrThrow();
     const category = await prisma.category.findFirstOrThrow();
     const lng = await prisma.project.findUniqueOrThrow({
@@ -1172,21 +1185,81 @@ describe("Story 3.1 — project detail read (integration)", () => {
       },
     });
     try {
-      await prisma.projectProduct.create({
-        data: { projectId: lng.id, productId: draft.id },
+      const line = await prisma.projectBomLine.create({
+        data: {
+          projectId: lng.id,
+          productId: draft.id,
+          model: "ZZZ-DRAFT-1",
+          quantity: 7,
+          sortOrder: 900,
+          translations: { create: [{ locale: "en", label: "ZZZ draft line" }] },
+        },
       });
+      try {
+        const detail = await queryProjectBySlug(PROJECT_SLUG, "en");
+        expect(detail?.products.map((p) => p.slug)).not.toContain("zzz-int-test-draft-equipment");
 
-      const detail = await queryProjectBySlug(PROJECT_SLUG, "en");
-      expect(detail?.products.map((p) => p.slug)).not.toContain("zzz-int-test-draft-equipment");
+        // ⚠️ THE BOM LINE ITSELF STILL RENDERS — the two rules differ, and that
+        // difference is the design. A draft product yields no CARD but its line
+        // stays in the bill of materials, showing the line's OWN model with an
+        // em-dash manufacturer, so the derived footer keeps counting it and no
+        // unpublished product's identity reaches the page.
+        expect(detail?.bomLines.map((l) => l.model)).toContain("ZZZ-DRAFT-1");
+        expect(detail?.bomLines.find((l) => l.model === "ZZZ-DRAFT-1")?.manufacturer).toBeNull();
 
-      // ...and the same link IS rendered once published, so the absence above is
-      // the status filter talking, not a broken join.
-      await prisma.product.update({ where: { id: draft.id }, data: { status: "published" } });
-      const republished = await queryProjectBySlug(PROJECT_SLUG, "en");
-      expect(republished?.products.map((p) => p.slug)).toContain("zzz-int-test-draft-equipment");
+        // ...and the same link IS rendered as a card once published, so the
+        // absence above is the guard talking, not a broken join.
+        await prisma.product.update({ where: { id: draft.id }, data: { status: "published" } });
+        const republished = await queryProjectBySlug(PROJECT_SLUG, "en");
+        expect(republished?.products.map((p) => p.slug)).toContain("zzz-int-test-draft-equipment");
+        expect(
+          republished?.bomLines.find((l) => l.model === "ZZZ-DRAFT-1")?.manufacturer,
+        ).not.toBeNull();
+      } finally {
+        await prisma.projectBomLine.delete({ where: { id: line.id } });
+      }
     } finally {
-      await prisma.projectProduct.deleteMany({ where: { productId: draft.id } });
       await prisma.product.delete({ where: { id: draft.id } });
+    }
+  });
+
+  it("⛔ a NULL-product BOM line SURVIVES the read — the guard that would drop it typechecks", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    /**
+     * §H #2. THE PROBE NEITHER EXISTING ONE COULD BE: both test a DRAFT product
+     * and neither tests a NULL one, so the whole class was invisible.
+     *
+     * `where: { product: { status: "published" } }` on a NULLABLE relation still
+     * TYPECHECKS — Prisma binds the bare shorthand to the `ProductWhereInput` arm
+     * of the XOR and treats it as `is:`, an INNER JOIN — so a `product_id IS NULL`
+     * row is silently excluded. Nothing else in the suite would notice: the page
+     * renders, the types are satisfied, and only the DERIVED footer changes, from
+     * "5 line items / 317 units" to "4 / 314".
+     *
+     * P5: restore that `where` on the `bomLines` include in `queryProjectBySlug`
+     * and this reddens.
+     */
+    const lng = await prisma.project.findUniqueOrThrow({ where: { slug: PROJECT_SLUG } });
+    const line = await prisma.projectBomLine.create({
+      data: {
+        projectId: lng.id,
+        productId: null,
+        model: "ZZZ-NO-CATALOG",
+        quantity: 5,
+        sortOrder: 901,
+        translations: { create: [{ locale: "en", label: "ZZZ non-catalog line" }] },
+      },
+    });
+    try {
+      const detail = await queryProjectBySlug(PROJECT_SLUG, "en");
+      const found = detail?.bomLines.find((l) => l.model === "ZZZ-NO-CATALOG");
+      expect(found, "a non-catalog BOM line was dropped by the read").toBeDefined();
+      expect(found?.manufacturer).toBeNull();
+      expect(found?.label).toBe("ZZZ non-catalog line");
+      // It produces NO equipment card — there is no product to card.
+      expect(detail?.products.map((p) => p.model)).not.toContain("ZZZ-NO-CATALOG");
+    } finally {
+      await prisma.projectBomLine.delete({ where: { id: line.id } });
     }
   });
 
@@ -1196,9 +1269,10 @@ describe("Story 3.1 — project detail read (integration)", () => {
      * ⚠️ THE DOORWAY'S OWN COPY OF THE GUARD, WHICH HAD NO TEST. Story 3.4
      * ticked Task 0 #45 — "extend the fixture; assert the draft product's
      * CATEGORY is absent from the chip set" — without writing it; its review
-     * found the gap. The guard sits in a `where` on the JOIN ROWS, the only
-     * place it works: Story 3.1 proved live that a `ProductInclude` cannot
-     * filter the product.
+     * found the gap. ⚠️ REWRITTEN FOR STORY 3.1b. The guard used to sit in a `where` on the
+     * join rows; with a nullable `productId` that same `where` would INNER JOIN
+     * away every non-catalog line, so it moved to the mapper. This probe proves
+     * the move did not weaken it.
      *
      * What leaks if it regresses is worse here than on the equipment grid: the
      * category of an unpublished product would be pre-loaded as a chip and ride
@@ -1207,8 +1281,10 @@ describe("Story 3.1 — project detail read (integration)", () => {
      * The category is created FRESH rather than reused — it has to be one that
      * NO published product links to, or its absence would prove nothing.
      *
-     * P5: move the `status` filter off the join-row `where` (e.g. into the
-     * product include) and this reddens.
+     * P5: drop the `link.product?.status === "published"` filter from the
+     * prefill mapper and this reddens. (Note the `?.` is load-bearing on its own:
+     * a non-catalog line has no product at all, and `link.product.category` would
+     * be a hard TypeError on a public route reachable from every project page.)
      */
     const manufacturer = await prisma.manufacturer.findFirstOrThrow();
     const lng = await prisma.project.findUniqueOrThrow({ where: { slug: PROJECT_SLUG } });
@@ -1229,9 +1305,18 @@ describe("Story 3.1 — project detail read (integration)", () => {
         translations: { create: [{ locale: "en", name: "ZZZ Draft Chip" }] },
       },
     });
+    // Created OUTSIDE the try so the finally can delete it by id.
+    const line = await prisma.projectBomLine.create({
+      data: {
+        projectId: lng.id,
+        productId: draft.id,
+        model: "ZZZ-DRAFT-2",
+        quantity: 1,
+        sortOrder: 902,
+        translations: { create: [{ locale: "en", label: "ZZZ draft chip line" }] },
+      },
+    });
     try {
-      await prisma.projectProduct.create({ data: { projectId: lng.id, productId: draft.id } });
-
       const prefill = await queryProjectPrefill(PROJECT_SLUG, "en");
       expect(prefill?.categories.map((c) => c.slug)).not.toContain(
         "zzz-int-test-unreleased-category",
@@ -1245,7 +1330,7 @@ describe("Story 3.1 — project detail read (integration)", () => {
         "zzz-int-test-unreleased-category",
       );
     } finally {
-      await prisma.projectProduct.deleteMany({ where: { productId: draft.id } });
+      await prisma.projectBomLine.delete({ where: { id: line.id } });
       await prisma.product.delete({ where: { id: draft.id } });
       await prisma.category.delete({ where: { id: unreleased.id } });
     }

@@ -11,7 +11,13 @@ vi.mock("@/i18n/navigation", () => ({
     href === "/" ? `/${locale}` : `/${locale}${href}`,
 }));
 
-import { projectHref, projectsIndexSignals, projectSignals, groupByIndustry } from "./project-page";
+import {
+  projectHref,
+  projectsIndexSignals,
+  projectSignals,
+  groupByIndustry,
+  selectRelatedProjects,
+} from "./project-page";
 import type { ProjectListItem } from "@/server/repositories/project";
 import { isIndexable } from "@/lib/seo";
 
@@ -36,6 +42,11 @@ function project(over: Partial<ProjectListItem> = {}): ProjectListItem {
     isFallback: false,
     descriptionIsFallback: false,
     outcomeIsFallback: false,
+    scope: null,
+    scopeIsFallback: false,
+    location: null,
+    locationIsFallback: false,
+    leadTimeWeeks: null,
     industry: { slug: "oil-gas", name: "Oil & Gas", isFallback: false },
     deliveredAt: new Date("2024-06-01T00:00:00.000Z"),
     media: [],
@@ -182,5 +193,53 @@ describe("groupByIndustry", () => {
 
   it("returns [] for zero projects — the page renders its defined empty state", () => {
     expect(groupByIndustry([])).toEqual([]);
+  });
+});
+
+/**
+ * Story 3.1b, AC5 — the related row's selection.
+ *
+ * ⚠️ THIS TEST EXISTS BECAUSE NO FIXTURE CAN PROVE IT. `listProjectsByIndustry`
+ * has no self-exclusion, so the current project comes back in its own related
+ * list. Take `PROJECT_LIMIT` rows and then filter and you get at most
+ * `PROJECT_LIMIT - 1` cards — the row silently shows two where three were asked
+ * for. Oil & gas has exactly TWO published projects, so on the real seed the
+ * bug and the correct behaviour are indistinguishable. A synthetic set is the
+ * only way to see it, which is why the selection is a pure exported function
+ * rather than inline in the page.
+ */
+describe("selectRelatedProjects — the off-by-one no fixture can expose", () => {
+  const set = [
+    project({ id: "a", slug: "alpha" }),
+    project({ id: "b", slug: "bravo" }),
+    project({ id: "c", slug: "charlie" }),
+    project({ id: "d", slug: "delta" }),
+  ];
+
+  it("excludes the current project and still fills the limit", () => {
+    // Four candidates, current excluded, three wanted -> three delivered.
+    // P5: call the read with PROJECT_LIMIT instead of PROJECT_LIMIT + 1 and the
+    // page delivers two; here, drop the slice and it delivers three regardless.
+    const related = selectRelatedProjects(set, "alpha", 3);
+    expect(related.map((p) => p.slug)).toEqual(["bravo", "charlie", "delta"]);
+  });
+
+  it("never includes the current project", () => {
+    // P5: remove the filter and this reddens.
+    expect(selectRelatedProjects(set, "bravo", 3).map((p) => p.slug)).not.toContain("bravo");
+  });
+
+  it("respects the limit when there are more candidates than slots", () => {
+    expect(selectRelatedProjects(set, "alpha", 2)).toHaveLength(2);
+  });
+
+  it("degrades to a 1-card and a 0-card state rather than throwing", () => {
+    // AC5's requirement: never a blank region. One sibling yields one card; no
+    // sibling yields none, and the caller omits the whole section.
+    expect(selectRelatedProjects(set.slice(0, 2), "alpha", 3).map((p) => p.slug)).toEqual([
+      "bravo",
+    ]);
+    expect(selectRelatedProjects(set.slice(0, 1), "alpha", 3)).toEqual([]);
+    expect(selectRelatedProjects([], "alpha", 3)).toEqual([]);
   });
 });

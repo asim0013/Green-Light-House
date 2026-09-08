@@ -1062,8 +1062,15 @@ test.describe("doorway pre-fill (Story 3.4)", () => {
     await openDoorway(page, "?project=lng-terminal-fire-gas-upgrade");
 
     await expect(page.getByLabel("Industry")).toHaveValue("oil-gas");
-    // LNG links two products in two categories — a PARENT and its own child.
-    // Both appear; rolling up to the parent would drop the specific one.
+    // ⚠️ FOUR CHIPS SINCE STORY 3.1b, WAS TWO. LNG's BOM links four published
+    // products — fd-9500, gd-410, xb-200, as-60 — and they sit in FOUR DISTINCT
+    // categories (`flame-detectors`, `fire-gas-detection`, `ex-proof`, `ppe`), so
+    // the doorway offers four. The parent/child pair below is still the point of
+    // the two assertions that follow: both appear, and rolling up to the parent
+    // would drop the specific one.
+    //
+    // ⚠️ The fifth BOM line contributes NO chip, deliberately: it has no product,
+    // so it has no category. That is the mapper's third rule.
     const banner = page.getByTestId("rfq-prefill-banner");
     await expect(banner).toBeVisible();
     await expect(banner).toContainText("Fire & gas detection");
@@ -1075,7 +1082,7 @@ test.describe("doorway pre-fill (Story 3.4)", () => {
     // literal multi-byte character enters this file.
     await expect(banner).toContainText(String.fromCharCode(0x00b7));
     // Each chip is individually removable — the 44px floor, not the chip idiom.
-    await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(2);
+    await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(4);
   });
 
   test("?project= with NO industry and NO links renders like a cold visit — no empty banner", async ({
@@ -1144,7 +1151,8 @@ test.describe("doorway pre-fill (Story 3.4)", () => {
     // The banner is still here, and so is everything the doorway seeded.
     await expect(page.getByTestId("rfq-prefill-banner")).toBeVisible();
     await expect(page.getByLabel("Industry")).toHaveValue("oil-gas");
-    await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(2);
+    // 2 → 4 with the Story 3.1b BOM — see the note at the first chip assertion.
+    await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(4);
     await expect(page.getByLabel("Quantities")).toHaveValue("12 detectors");
   });
 

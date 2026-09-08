@@ -30,9 +30,15 @@ import { hasSlaSummary } from "@/lib/sla-content";
  * project's scope — swap models, adjust quantities and send" because `/rfq` read
  * no query params and the site must not promise behaviour it does not have.
  * Story 3.4 made it true, so the sentence lands — on the DETAIL page only, since
- * the index has no project in view. The canvas's other withheld string, the
- * facts-card trust line, stays held: the facts card is Story 3.1b and does not
- * exist yet.
+ * the index has no project in view.
+ *
+ * ⚠️ THE FACTS CARD NOW EXISTS (Story 3.1b) AND ITS TRUST LINE IS STILL HELD, for
+ * a new reason. `ProjectFactsCard` deliberately ships label/value rows and NO CTA
+ * footer — a UX-DR7 departure recorded in its own docstring — precisely because
+ * THIS component already carries the RFQ CTA and a ≥44px `tel:` action on the
+ * same page. Shipping the canvas's trust line there would also mount
+ * `SlaSummary`, making the card a TENTH SLA render site and hard-failing the
+ * discovery self-check in `sla-hygiene.test.ts`.
  *
  * THE HREF has carried `?project=<slug>` since Story 3.1 (Task 0 #7) — a
  * different thing from the copy, and the reason 3.4's amendment list names only

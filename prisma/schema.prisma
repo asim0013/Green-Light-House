@@ -200,7 +200,7 @@ model Product {
   translations    ProductTranslation[]
   industries      ProductIndustry[]
   documents       Document[]
-  projects        ProjectProduct[]
+  bomLines        ProjectBomLine[]
   accessories     AccessoryCompatibility[] @relation("ProductAccessories")
   accessoryOf     AccessoryCompatibility[] @relation("AccessoryProduct")
   crossReferences CrossReference[]
@@ -256,18 +256,23 @@ model DocumentTranslation {
 }
 
 model Project {
-  id          String        @id @default(cuid())
-  slug        String        @unique
-  industryId  String?       @map("industry_id")
-  status      PublishStatus @default(draft)
-  media       Json          @default("[]")
-  deliveredAt DateTime?     @map("delivered_at")
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
+  id            String        @id @default(cuid())
+  slug          String        @unique
+  industryId    String?       @map("industry_id")
+  status        PublishStatus @default(draft)
+  media         Json          @default("[]")
+  deliveredAt   DateTime?     @map("delivered_at")
+  /// Facts-card LEAD TIME. Stored as an integer and rendered through an ICU
+  /// plural, never as prose: the canvas spells it "six weeks" in one place and
+  /// "6 wk" in another, and no locale can derive a spelled-out numeral from an
+  /// integer (Intl has no spell-out). One number, one formatter.
+  leadTimeWeeks Int?          @map("lead_time_weeks")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
 
   industry     Industry?            @relation(fields: [industryId], references: [id], onDelete: SetNull)
   translations ProjectTranslation[]
-  products     ProjectProduct[]
+  bomLines     ProjectBomLine[]
 
   @@map("projects")
 }
@@ -279,6 +284,12 @@ model ProjectTranslation {
   title       String
   description String?
   outcome     String?
+  /// Facts-card SCOPE — a short capability phrase ("Fire & gas detection +
+  /// suppression"), NOT the narrative. `description` remains the narrative body.
+  scope       String?
+  /// Facts-card LOCATION. Translated because place names are
+  /// ("Marmara, Türkiye" / "Мармара, Турция").
+  location    String?
   project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, locale])
@@ -322,10 +333,10 @@ model ServiceTranslation {
 /// sentence says "specced proposal", and TR inverts the order entirely. Without
 /// a stored summary those seven surfaces cannot be served from this model at all.
 model SlaProcess {
-  id           String                 @id @default(cuid())
-  key          String                 @unique
-  createdAt    DateTime               @default(now()) @map("created_at")
-  updatedAt    DateTime               @updatedAt @map("updated_at")
+  id           String                  @id @default(cuid())
+  key          String                  @unique
+  createdAt    DateTime                @default(now()) @map("created_at")
+  updatedAt    DateTime                @updatedAt @map("updated_at")
   translations SlaProcessTranslation[]
   steps        SlaStep[]
 
@@ -539,14 +550,72 @@ model ServiceIndustry {
   @@map("service_industries")
 }
 
-model ProjectProduct {
-  projectId String  @map("project_id")
-  productId String  @map("product_id")
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+/// Scope-of-supply BOM line (Story 3.1b, AC2) — REPLACES the bare
+/// `ProjectProduct` join, which carried no quantity and no ordering and had two
+/// rows and zero foreign-key dependants when this landed.
+///
+/// ⛔ THE LINE IS SELF-SUFFICIENT; THE PRODUCT JOIN ONLY ENRICHES IT. `model` is
+/// NOT NULL and is the display value for every line. `productId` is OPTIONAL
+/// because one designed row is not a catalog product at all ("Clean-agent
+/// suppression skid / FM-200 skid / — / 3"), and the AC exists to prove that row
+/// renders. When a PUBLISHED product is linked it supplies the MANUFACTURER and
+/// the equipment-card subset; a draft or absent product is treated identically —
+/// the line shows its own `model` and an em-dash manufacturer, leaking nothing.
+///
+/// ⛔ DO NOT FILTER THESE LINES IN THE QUERY. `where: { product: { status:
+/// "published" } }` still TYPECHECKS against a nullable relation — Prisma binds
+/// the bare shorthand to `is:`, an INNER JOIN — so a `product_id IS NULL` row is
+/// silently excluded and the derived footer renders "4 line items / 314 units"
+/// instead of 5 / 317, with no error and no failing test. Filter at the MAPPER,
+/// which has three different rules for its three consumers (see
+/// `repositories/project.ts`).
+///
+/// ⛔ `onDelete: SetNull` ON THE PRODUCT, NOT `Cascade`. `ProjectProduct` carried
+/// `Cascade`, which was right for a join row and is wrong here: with a nullable
+/// `productId`, cascading would let deleting a catalog product silently DELETE a
+/// delivered project's BOM line and move the footer's totals.
+///
+/// The ordering index is deliberately NON-unique. A compound unique on an
+/// ordering column is the shape `sla_steps` had to make DEFERRABLE, and a
+/// deferrable unique cannot serve as an `ON CONFLICT` arbiter (SQLSTATE 55000) —
+/// see the doc block on `model SlaStep`. The cost is that there is no addressable
+/// key for `upsert`, so the seed writes these delete-then-create per project.
+model ProjectBomLine {
+  id        String   @id @default(cuid())
+  projectId String   @map("project_id")
+  productId String?  @map("product_id")
+  /// The display MODEL for every line — free text for a non-catalog line, and
+  /// the stored value even when a product is linked, so the line never depends
+  /// on the join to render.
+  model     String
+  quantity  Int
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  @@id([projectId, productId])
-  @@map("project_products")
+  project      Project                     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  product      Product?                    @relation(fields: [productId], references: [id], onDelete: SetNull)
+  translations ProjectBomLineTranslation[]
+
+  @@index([projectId, sortOrder])
+  @@map("project_bom_lines")
+}
+
+/// The BOM's CATEGORY column — authored editorial text, per line, translated.
+///
+/// ⚠️ IT IS NOT THE PRODUCT'S CATEGORY NAME, and that was counted rather than
+/// assumed: ZERO of the canvas's five CATEGORY cells match the seeded category
+/// name of the product on that row ("Triple-IR flame detection" vs "Flame
+/// detectors", and so on). Wiring this column to `product.category` yields a
+/// table that renders plausibly and matches no row of the design.
+model ProjectBomLineTranslation {
+  id     String         @id @default(cuid())
+  lineId String         @map("line_id")
+  locale Locale
+  label  String
+  line   ProjectBomLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+
+  @@unique([lineId, locale])
+  @@map("project_bom_line_translations")
 }
 
 // --- Phased relations: tables created now, populated later (FR18 / FR6.3) ---

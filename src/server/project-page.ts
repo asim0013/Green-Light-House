@@ -120,6 +120,32 @@ export function groupByIndustry(projects: readonly ProjectListItem[]): ProjectGr
  * `noindex` ⇒ absent from the sitemap. That is correct, not a bug: the page has
  * nothing in the requested language, and the visible FallbackNotice says so.
  */
+/**
+ * The "More in <industry>" row's selection (Story 3.1b — AC5).
+ *
+ * ⚠️ PURE, AND SEPARATE FROM THE READ, BECAUSE THE BUG IT PREVENTS IS INVISIBLE
+ * ON THE CURRENT SEED. The related read is `listProjectsByIndustry(slug, locale,
+ * limit)`, which has NO self-exclusion — the current project comes back in its
+ * own related list. Taking `PROJECT_LIMIT` rows and then filtering yields at most
+ * `PROJECT_LIMIT - 1` cards, so the row silently shows two where three were
+ * asked for. Oil & gas has exactly two published projects today, so no fixture
+ * can expose it; only a unit test over a synthetic set can. The caller therefore
+ * asks for `PROJECT_LIMIT + 1` and this function does the filtering and the
+ * final slice.
+ *
+ * ⚠️ The read's cache key includes `String(limit)`, so asking for `limit + 1`
+ * mints a SECOND cache entry beside the industry page's `PROJECT_LIMIT` one.
+ * That is correct — they are different queries — but it is worth knowing that a
+ * `projects` purge now invalidates two entries per industry, not one.
+ */
+export function selectRelatedProjects(
+  all: readonly ProjectListItem[],
+  currentSlug: string,
+  limit: number,
+): ProjectListItem[] {
+  return all.filter((project) => project.slug !== currentSlug).slice(0, limit);
+}
+
 export function projectsIndexSignals(
   locale: Locale,
   projects: readonly ProjectListItem[],

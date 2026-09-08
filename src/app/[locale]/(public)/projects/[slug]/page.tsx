@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { hasLocale } from "next-intl";
-import { setRequestLocale, getTranslations, getFormatter } from "next-intl/server";
+import { setRequestLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { getSlaContent } from "@/server/repositories/sla";
@@ -10,7 +10,14 @@ import { getProjectPageData, projectSignals, projectHref } from "@/server/projec
 import { ProjectMediaBand } from "@/components/projects/ProjectMediaBand";
 import { ProjectNotFound } from "@/components/projects/ProjectNotFound";
 import { ProjectCta } from "@/components/projects/ProjectCta";
+import { ProjectFactsCard, hasProjectFacts } from "@/components/projects/ProjectFactsCard";
+import { ProjectBomTable } from "@/components/projects/ProjectBomTable";
+import { ProjectCard } from "@/components/projects/ProjectCard";
 import { ProductCard } from "@/components/catalog/ProductCard";
+import { TwoColumn } from "@/components/ui";
+import { listProjectsByIndustry } from "@/server/repositories/project";
+import { selectRelatedProjects } from "@/server/project-page";
+import { PROJECT_LIMIT } from "@/server/industry-page";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { Breadcrumb, type Crumb, Kicker } from "@/components/ui";
 import { CONTAINER } from "@/components/layout/container";
@@ -90,8 +97,6 @@ export default async function ProjectDetailPage(props: {
   // Read from `Industry`: `deliveredOn` already exists there with reviewed TR/RU,
   // and a second copy in the Projects namespace is exactly the duplication the 2.6
   // review found four times over for the SLA line.
-  const tIndustry = await getTranslations({ locale, namespace: "Industry" });
-  const format = await getFormatter({ locale });
   const safeSlug = gateSlug(slug);
   const project = safeSlug ? await getProjectPageData(safeSlug, locale) : null;
 
@@ -132,6 +137,23 @@ export default async function ProjectDetailPage(props: {
       : []),
     { label: project.title, isFallback: project.isFallback },
   ];
+  /**
+   * The related row's read (Story 3.1b, AC5).
+   *
+   * ⚠️ `PROJECT_LIMIT + 1`, NOT `PROJECT_LIMIT`. `listProjectsByIndustry` has no
+   * self-exclusion, so the current project comes back in its own related list —
+   * taking three and then filtering yields TWO cards where three were asked for.
+   * Oil & gas has exactly two published projects today, so no fixture can expose
+   * that off-by-one; `selectRelatedProjects` is unit-tested over a synthetic set
+   * for exactly that reason.
+   */
+  const related = project.industry
+    ? selectRelatedProjects(
+        await listProjectsByIndustry(project.industry.slug, locale, PROJECT_LIMIT + 1),
+        project.slug,
+        PROJECT_LIMIT,
+      )
+    : [];
 
   return (
     <>
@@ -140,52 +162,78 @@ export default async function ProjectDetailPage(props: {
 
       <section className="bg-surface">
         <div className={`${CONTAINER} py-12 md:py-16`}>
-          <Kicker tone="ink">{t("kicker")}</Kicker>
-          <h1 className="mt-3 max-w-[24ch] font-heading text-[28px] font-bold leading-tight tracking-tight text-ink md:text-[34px]">
-            <span lang={project.isFallback ? "en" : undefined}>{project.title}</span>
-            <FallbackNotice isFallback={project.isFallback} />
-          </h1>
+          <TwoColumn
+            sideWidth={380}
+            side={hasProjectFacts(project) ? <ProjectFactsCard project={project} /> : null}
+            main={
+              <>
+                <Kicker tone="ink">{t("kicker")}</Kicker>
+                <h1 className="mt-3 max-w-[24ch] font-heading text-[28px] font-bold leading-tight tracking-tight text-ink md:text-[34px]">
+                  <span lang={project.isFallback ? "en" : undefined}>{project.title}</span>
+                  <FallbackNotice isFallback={project.isFallback} />
+                </h1>
 
-          {/* Every row below is optional in the schema — only `title` is NOT NULL —
+                {/* Every row below is optional in the schema — only `title` is NOT NULL —
               so each renders ONLY when it has content, never as an empty shell. */}
-          {project.description && (
-            <p className="mt-5 max-w-[68ch] text-[17px] leading-relaxed text-ink-2">
-              <span lang={project.descriptionIsFallback ? "en" : undefined}>
-                {project.description}
-              </span>
-              <FallbackNotice isFallback={project.descriptionIsFallback} />
-            </p>
-          )}
+                {project.description && (
+                  <p className="mt-5 max-w-[68ch] text-[17px] leading-relaxed text-ink-2">
+                    <span lang={project.descriptionIsFallback ? "en" : undefined}>
+                      {project.description}
+                    </span>
+                    <FallbackNotice isFallback={project.descriptionIsFallback} />
+                  </p>
+                )}
 
-          {project.outcome && (
-            <div className="mt-8 border-l-2 border-accent pl-5">
-              <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-ink-2">
-                {t("outcomeLabel")}
-              </p>
-              <p className="mt-2 max-w-[68ch] leading-relaxed text-ink">
-                {/* Its own flag: a `tr` row can exist while leaving `outcome` NULL,
+                {project.outcome && (
+                  <div className="mt-8 border-l-2 border-accent pl-5">
+                    <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-ink-2">
+                      {t("outcomeLabel")}
+                    </p>
+                    <p className="mt-2 max-w-[68ch] leading-relaxed text-ink">
+                      {/* Its own flag: a `tr` row can exist while leaving `outcome` NULL,
                     so the outcome falls back independently of the title (AC2b). */}
-                <span lang={project.outcomeIsFallback ? "en" : undefined}>{project.outcome}</span>
-                <FallbackNotice isFallback={project.outcomeIsFallback} />
-              </p>
-            </div>
-          )}
+                      <span lang={project.outcomeIsFallback ? "en" : undefined}>
+                        {project.outcome}
+                      </span>
+                      <FallbackNotice isFallback={project.outcomeIsFallback} />
+                    </p>
+                  </div>
+                )}
 
-          {project.deliveredAt && (
-            <p className="mt-8 font-data text-sm text-ink-2">
-              {/* One message with a {date} placeholder — order and punctuation
-                  differ per language. Reuses the reviewed `Industry.deliveredOn`. */}
-              {tIndustry("deliveredOn", {
-                date: format.dateTime(project.deliveredAt, { year: "numeric", month: "long" }),
-              })}
-            </p>
-          )}
+                {/* ⚠️ THE BODY'S DELIVERED PARAGRAPH IS GONE (Story 3.1b, AC7). The
+              facts card beside this column is now the single home for the
+              delivered date, and keeping both stated it twice in two formats.
+              Nothing in the e2e suite asserted this paragraph in either
+              direction, so the removal is invisible to every existing gate and is
+              asserted explicitly by this story's own test.
+
+              "Once ON THE PAGE" is deliberately NOT the target and is not
+              achievable: `ProjectMediaBand` renders a year-granularity chip on
+              its NO-PHOTO branch, and the breadcrumb renders the sector. Those
+              are different granularities in different regions, and they stay. */}
+              </>
+            }
+          />
         </div>
       </section>
 
-      {/* Equipment supplied. `ProjectProduct` is a bare join today, so this is the
-          equipment list, NOT a bill of materials — the per-line quantities and the
-          free-text rows the canvas draws belong to Story 3.1b. */}
+      {/* THE SCOPE OF SUPPLY — the bill of materials (Story 3.1b, AC2). The
+          authoritative record of what was delivered, including the line no
+          product card can represent. */}
+      {project.bomLines.length > 0 && (
+        <section className="bg-surface">
+          <div className={`${CONTAINER} pb-12 md:pb-16`}>
+            <Kicker tone="ink">{t("scopeKicker")}</Kicker>
+            <h2 className="mt-3 font-heading text-xl font-semibold tracking-tight text-ink">
+              {t("scopeHeading")}
+            </h2>
+            <ProjectBomTable lines={project.bomLines} />
+          </div>
+        </section>
+      )}
+
+      {/* Equipment supplied — the catalog-backed subset, as cards. The BOM table
+          above is the complete record; this row is the browsable teaser. */}
       {project.products.length > 0 && (
         <section className="bg-surface-2">
           <div className={`${CONTAINER} py-12 md:py-16`}>
@@ -195,14 +243,49 @@ export default async function ProjectDetailPage(props: {
             </h2>
             {/* 3 → 2 → 1, per EXPERIENCE.md § Responsive. The canvas draws four
                 across; the shipped ladder caps at three and wins (a recorded
-                reconciliation verdict, not a fresh decision). */}
+                reconciliation verdict, not a fresh decision).
+
+                ⛔ THE CAP IS APPLIED HERE, AT RENDER — NEVER AS A `take:` IN THE
+                READ. The equipment cards and the BOM table come from ONE read of
+                `bomLines`; a `take: 3` would truncate the table too and its
+                DERIVED footer would render "3 line items / 290 units" against a
+                five-line delivery. Four published products are linked, and four
+                cards on a 3-column ladder is the 3+1 orphan wrap that set
+                `PRODUCT_LIMIT` to 3 in the first place. */}
             <ul className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {project.products.map((product) => (
+              {project.products.slice(0, PROJECT_LIMIT).map((product) => (
                 <li key={product.id} className="flex">
                   <div className="flex w-full">
                     <ProductCard product={product} />
                   </div>
                 </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
+
+      {/* "More in <industry>" (Story 3.1b, AC5) — BUILT NEW; no related row
+          existed before this story.
+
+          ⚠️ OMITTED ENTIRELY when the project has no industry. `industry_id` is a
+          nullable FK and `standalone-workshop-fitout` is a live published fixture
+          with none, so there is no industry NAME to put in the heading — a
+          section headed "More in undefined" is worse than no section. Omitted
+          also when the filter leaves nothing, so the region is never blank. */}
+      {related.length > 0 && project.industry && (
+        <section className="bg-surface">
+          <div className={`${CONTAINER} py-12 md:py-16`}>
+            <Kicker tone="ink">{t("relatedKicker")}</Kicker>
+            <h2 className="mt-3 font-heading text-xl font-semibold tracking-tight text-ink">
+              <span lang={project.industry.isFallback ? "en" : undefined}>
+                {t("relatedHeading", { industry: project.industry.name })}
+              </span>
+              <FallbackNotice isFallback={project.industry.isFallback} />
+            </h2>
+            <ul className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {related.map((item) => (
+                <ProjectCard key={item.id} project={item} />
               ))}
             </ul>
           </div>

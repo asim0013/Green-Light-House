@@ -31,6 +31,23 @@ export interface ProjectListItem {
   /** True when `outcome` came from EN while the requested locale is not EN. */
   outcomeIsFallback: boolean;
   /**
+   * The facts card's SCOPE row (Story 3.1b) — a short capability phrase, NOT the
+   * narrative. `description` remains the body. Null ⇒ the row is omitted.
+   */
+  scope: string | null;
+  scopeIsFallback: boolean;
+  /** The facts card's LOCATION row. Translated: place names differ per locale. */
+  location: string | null;
+  locationIsFallback: boolean;
+  /**
+   * The facts card's LEAD TIME row, in weeks. An INTEGER rendered through an ICU
+   * plural — never prose. The canvas writes it "six weeks" in one place and
+   * "6 wk" in another, and no locale can derive a spelled-out numeral from an
+   * integer (`Intl` has no spell-out), so storing the rendered string would
+   * reintroduce exactly the number drift FR30 spent Story 3.5 eliminating.
+   */
+  leadTimeWeeks: number | null;
+  /**
    * Null when the project has no industry — `industry_id` is a nullable FK.
    *
    * `isFallback` covers the NAME (3.1 review): the industry resolves its own
@@ -66,12 +83,18 @@ export interface ProjectRow {
   id: string;
   slug: string;
   deliveredAt: Date | null;
+  /** Facts-card LEAD TIME (Story 3.1b). Scalar on the project, not translated. */
+  leadTimeWeeks: number | null;
   media: unknown;
   translations: readonly {
     locale: Locale;
     title: string;
     description: string | null;
     outcome: string | null;
+    /** Facts-card SCOPE (Story 3.1b) — the capability phrase, not the narrative. */
+    scope: string | null;
+    /** Facts-card LOCATION (Story 3.1b) — translated; place names differ. */
+    location: string | null;
   }[];
   industry: { slug: string; translations: readonly { locale: Locale; name: string }[] } | null;
 }
@@ -118,6 +141,12 @@ export function toProjectListItem(project: ProjectRow, locale: Locale): ProjectL
 
   const description = field((row) => row.description);
   const outcome = field((row) => row.outcome);
+  // Story 3.1b's facts rows. Same per-field treatment as the body text above:
+  // a locale row can exist and still leave these null, and an absent value must
+  // omit its row rather than render a bare label (the defect the 3.5 review
+  // found on six surfaces).
+  const scope = field((row) => row.scope);
+  const location = field((row) => row.location);
 
   return {
     id: project.id,
@@ -128,6 +157,11 @@ export function toProjectListItem(project: ProjectRow, locale: Locale): ProjectL
     isFallback: t?.isFallback ?? false,
     descriptionIsFallback: description.isFallback,
     outcomeIsFallback: outcome.isFallback,
+    scope: scope.value,
+    scopeIsFallback: scope.isFallback,
+    location: location.value,
+    locationIsFallback: location.isFallback,
+    leadTimeWeeks: project.leadTimeWeeks,
     industry: project.industry
       ? {
           slug: project.industry.slug,
@@ -201,20 +235,47 @@ function rehydrateDates(rows: readonly ProjectListItem[]): ProjectListItem[] {
   }));
 }
 
-/** One project as its detail page renders it: the list shape plus supplied equipment. */
+/**
+ * One line of the scope-of-supply BOM (Story 3.1b, AC2).
+ *
+ * ⚠️ EVERY FIELD BUT `manufacturer` IS SELF-SUFFICIENT. `model` is stored on the
+ * line and `label` comes from the line's own translation — NOT from the linked
+ * product's category, which was counted and matches zero of the five designed
+ * rows. `manufacturer` is the one value the join supplies, and it is `null`
+ * whenever there is no PUBLISHED product behind the line, which the table renders
+ * as an em-dash.
+ */
+export interface ProjectBomLineItem {
+  id: string;
+  /** The CATEGORY column — authored per line, translated. */
+  label: string;
+  labelIsFallback: boolean;
+  /** The MODEL column — always present, never derived from the join. */
+  model: string;
+  /** The MANUFACTURER column. `null` ⇒ no published product ⇒ em-dash. */
+  manufacturer: string | null;
+  quantity: number;
+}
+
+/** One project as its detail page renders it: the list shape plus its BOM. */
 export interface ProjectDetail extends ProjectListItem {
   /**
-   * The linked catalog products (`ProjectProduct`), as Product Cards.
+   * The equipment CARDS — the subset of `bomLines` backed by a PUBLISHED catalog
+   * product, mapped with the shared `toProductCardItem` so a card on a project
+   * page cannot drift from a card in the catalog.
    *
-   * NO EXISTING READ FETCHES THESE — `queryPublishedProjects` never included
-   * `products`, so this is the first. Mapped with the shared `toProductCardItem`
-   * so a card on a project page cannot drift from a card in the catalog.
+   * ⛔ THIS IS A STRICTER FILTER THAN THE BOM'S. A draft or absent product yields
+   * a BOM LINE (its own model, em-dash manufacturer) but NO CARD — an em-dash
+   * card is not a card, and `repository.integration.test.ts` proves live that a
+   * draft product must never render its name, model or card here.
    *
-   * ⚠️ Story 3.1b owns the per-line QUANTITIES and the free-text BOM rows the
-   * design calls for. `ProjectProduct` is a bare two-column join today, so this
-   * is "equipment supplied", not a bill of materials.
+   * ⚠️ NOT capped here. The equipment row's 3-card cap is applied at RENDER; a
+   * `take:` in the read would truncate the BOM table too and falsify its derived
+   * footer.
    */
   products: ProductCardItem[];
+  /** The full bill of materials, in `sortOrder`. Every line, unfiltered. */
+  bomLines: ProjectBomLineItem[];
 }
 
 /**
@@ -287,29 +348,70 @@ export async function queryProjectBySlug(
     include: {
       translations: true,
       industry: { include: { translations: true } },
-      products: {
-        // ⚠️ THE STATUS FILTER IS LOAD-BEARING (3.1 review, proven live with a
-        // probe row). Without it a DRAFT product linked via `ProjectProduct`
-        // rendered its name, model and card on a published project's page.
-        // `CARD_INCLUDE` cannot carry this filter — it is a `Prisma.ProductInclude`
-        // and filters the product's RELATIONS, never the product itself — and
-        // `ProductCardRow` discards `status` at the type boundary, so this `where`
-        // on the join rows is the only place the guard can live. Every other
-        // card-producing read filters `status: "published"` in its own where;
-        // `Product.status` defaults to `draft`, so an unpublish must remove the
-        // card here, not leave it leaking.
-        where: { product: { status: "published" } },
-        include: { product: { include: CARD_INCLUDE } },
-        orderBy: { productId: "asc" },
+      bomLines: {
+        // ⛔ NO `where` ON THIS RELATION, AND THAT IS THE WHOLE DESIGN.
+        //
+        // The 3.1 review's guard lived here as `where: { product: { status:
+        // "published" } }`, which was correct while `productId` was NOT NULL.
+        // It is now nullable, and that shorthand STILL TYPECHECKS: Prisma binds
+        // the bare object to the `ProductWhereInput` arm of the XOR and treats
+        // it as `is:`, an INNER JOIN — so a `product_id IS NULL` row is silently
+        // dropped. The BOM's designed non-catalog line ("Clean-agent suppression
+        // skid") would vanish and the derived footer would render "4 line items
+        // / 314 units" instead of 5 / 317, with no error and no failing test.
+        //
+        // The guard has NOT been weakened; it MOVED to the mapper, which needs
+        // three different rules for three consumers anyway (see below).
+        include: {
+          translations: true,
+          product: { include: CARD_INCLUDE },
+        },
+        orderBy: { sortOrder: "asc" },
       },
     },
   });
 
   if (!project) return null;
 
+  const en = DEFAULT_LOCALE;
+
   return {
     ...toProjectListItem(project, locale),
-    products: project.products.map((link) => toProductCardItem(link.product, locale)),
+    /**
+     * RULE 1 — the equipment CARDS exclude anything without a PUBLISHED product.
+     * This is the guard that used to live in the query's `where`, unchanged in
+     * effect: a draft or absent product produces no card.
+     */
+    products: project.bomLines
+      .filter((line) => line.product !== null && line.product.status === "published")
+      .map((line) => toProductCardItem(line.product!, locale)),
+    /**
+     * RULE 2 — every BOM line renders, whatever its product is doing. The line's
+     * own `model` and translated `label` carry it; only `manufacturer` depends on
+     * the join, and it is null (⇒ em-dash) for a draft or absent product, so no
+     * unpublished product's identity ever reaches the page.
+     */
+    bomLines: project.bomLines.map((line) => {
+      const own = line.translations.find((row) => row.locale === locale) ?? null;
+      const fallback = line.translations.find((row) => row.locale === en) ?? null;
+      const label = own?.label && own.label !== "" ? own : fallback;
+      const published = line.product !== null && line.product.status === "published";
+      return {
+        id: line.id,
+        label: label?.label ?? line.model,
+        labelIsFallback: label !== null && label === fallback && locale !== en,
+        model: line.model,
+        // Resolved through `resolveTranslation` like every other manufacturer
+        // name on the site — the name is translated, not a scalar — and falling
+        // back to the slug the way `toProductCardItem` does, so the column can
+        // never render empty for a published product.
+        manufacturer: published
+          ? (resolveTranslation(line.product!.manufacturer.translations, locale)?.value.name ??
+            line.product!.manufacturer.slug)
+          : null,
+        quantity: line.quantity,
+      };
+    }),
   };
 }
 
@@ -379,11 +481,15 @@ export async function queryProjectPrefill(
     select: {
       slug: true,
       industry: { select: { slug: true, translations: { select: { locale: true, name: true } } } },
-      products: {
-        where: { product: { status: "published" } },
+      bomLines: {
+        // ⛔ SAME TRAP AS THE DETAIL READ — the relation is nullable now, so the
+        // `where: { product: { … } }` shorthand would INNER JOIN and quietly drop
+        // the non-catalog lines. Filtered at the mapper instead (RULE 3), which
+        // also keeps the draft guard this read has a live probe for.
         select: {
           product: {
             select: {
+              status: true,
               category: {
                 select: {
                   id: true,
@@ -408,8 +514,16 @@ export async function queryProjectPrefill(
           ...pickName(project.industry.translations, project.industry.slug, locale),
         }
       : null,
+    /**
+     * RULE 3 — the RFQ doorway offers a chip only for a PUBLISHED product's
+     * category. `?.` is mandatory, not stylistic: a non-catalog BOM line has no
+     * product at all and `link.product.category` would be a hard TypeError on a
+     * public route reachable from every project page.
+     */
     categories: distinctCategories(
-      project.products.map((link) => link.product.category),
+      project.bomLines
+        .filter((line) => line.product?.status === "published")
+        .map((line) => line.product!.category),
       locale,
     ),
   };
