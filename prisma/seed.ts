@@ -8,6 +8,12 @@ import {
   type SlaProcessText,
   type SlaStepText,
 } from "../scripts/sla-fixtures";
+// Story 4.0: the SiteSettings singleton is seeded FROM these config sources —
+// the same values the public surfaces still read directly. Nothing reads the
+// seeded row yet; Story 4.8 repoints the readers. Both are standalone consts
+// (zero imports), so pulling them into the seed drags nothing in.
+import { CONTACT } from "../src/config/contact";
+import { SITE } from "../src/config/site";
 
 const prisma = new PrismaClient();
 
@@ -120,6 +126,35 @@ async function upsertSlaStepText(stepId: string, translations: SlaStepText[]) {
     (locale) => prisma.slaStepTranslation.deleteMany({ where: { stepId, locale } }),
     translations,
   );
+}
+
+/**
+ * The single-row site-settings singleton (Story 4.0). Populated from the config
+ * sources that are still the live source of truth — `contact.ts` (all `null`
+ * today), `SITE.phone`/`phoneDisplay` (the `TODO(GLH)` placeholders) and the
+ * `RFQ_NOTIFY_TO` env var. Idempotent: the `id` is the fixed `"singleton"`.
+ *
+ * ⚠️ The `approvals` gates are deliberately NOT seeded here — they live in
+ * `contact.ts` (code), audited by the commit that flips them.
+ */
+async function upsertSiteSettings() {
+  const values = {
+    contactEmail: CONTACT.email,
+    contactAddress: CONTACT.address,
+    legalName: CONTACT.legal.legalName,
+    tradeRegistryNo: CONTACT.legal.tradeRegistryNo,
+    taxOffice: CONTACT.legal.taxOffice,
+    taxNo: CONTACT.legal.taxNo,
+    mersisNo: CONTACT.legal.mersisNo,
+    phone: SITE.phone,
+    phoneDisplay: SITE.phoneDisplay,
+    rfqNotifyTo: process.env.RFQ_NOTIFY_TO ?? null,
+  };
+  await prisma.siteSettings.upsert({
+    where: { id: "singleton" },
+    update: values,
+    create: { id: "singleton", ...values },
+  });
 }
 
 async function main() {
@@ -853,6 +888,8 @@ async function main() {
     where: { processId: slaProcess.id, sort: { notIn: SLA_STEPS.map((s) => s.sort) } },
   });
 
+  await upsertSiteSettings();
+
   const counts = {
     industries: await prisma.industry.count(),
     manufacturers: await prisma.manufacturer.count(),
@@ -861,6 +898,7 @@ async function main() {
     documents: await prisma.document.count(),
     projects: await prisma.project.count(),
     services: await prisma.service.count(),
+    siteSettings: await prisma.siteSettings.count(),
   };
   console.log("[seed] done:", counts);
 }
