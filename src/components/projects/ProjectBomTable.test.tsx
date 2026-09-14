@@ -153,6 +153,14 @@ describe("ProjectBomTable — the accessibility contract nothing else enforces",
     expect(html).toContain('lang="en"');
   });
 
+  it("⚠️ carries the horizontal scroller — the whole reflow contract (WCAG 1.4.10) rests on it", () => {
+    // Removing `overflow-x-auto` is a clean 1.4.10 failure that renders
+    // identically at desktop width, so only an assertion catches it.
+    // P5: drop `overflow-x-auto` from the scroll container and this reddens.
+    const html = renderToStaticMarkup(<ProjectBomTable lines={FIVE} />);
+    expect(html).toContain("overflow-x-auto");
+  });
+
   it("carries a minimum width, or the scroller never engages", () => {
     // Without a floor the columns collapse to fit any viewport and the
     // horizontal scroll EXPERIENCE.md:159 requires never happens.

@@ -156,7 +156,7 @@
     "bomManufacturer": "Manufacturer",
     "bomQty": "Qty",
     "bomLineItems": "{count, plural, one {# line item} other {# line items}}",
-    "bomUnitsTotal": "{count} units total",
+    "bomUnitsTotal": "{count, plural, one {# unit total} other {# units total}}",
     "relatedKicker": "More proof",
     "relatedHeading": "More in {industry}",
     "relatedAll": "All projects"

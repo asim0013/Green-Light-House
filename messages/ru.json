@@ -156,7 +156,7 @@
     "bomManufacturer": "Производитель",
     "bomQty": "Кол-во",
     "bomLineItems": "{count, plural, one {# позиция} few {# позиции} many {# позиций} other {# позиции}}",
-    "bomUnitsTotal": "всего {count} шт.",
+    "bomUnitsTotal": "{count, plural, one {всего # шт.} few {всего # шт.} many {всего # шт.} other {всего # шт.}}",
     "relatedKicker": "Ещё примеры",
     "relatedHeading": "Ещё в отрасли «{industry}»",
     "relatedAll": "Все проекты"

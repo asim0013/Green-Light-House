@@ -156,7 +156,7 @@
     "bomManufacturer": "Üretici",
     "bomQty": "Adet",
     "bomLineItems": "{count, plural, one {# kalem} other {# kalem}}",
-    "bomUnitsTotal": "toplam {count} adet",
+    "bomUnitsTotal": "{count, plural, one {toplam # adet} other {toplam # adet}}",
     "relatedKicker": "Daha fazla referans",
     "relatedHeading": "{industry} sektöründen diğerleri",
     "relatedAll": "Tüm projeler"

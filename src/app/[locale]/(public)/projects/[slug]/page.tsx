@@ -17,7 +17,7 @@ import { ProductCard } from "@/components/catalog/ProductCard";
 import { TwoColumn } from "@/components/ui";
 import { listProjectsByIndustry } from "@/server/repositories/project";
 import { selectRelatedProjects } from "@/server/project-page";
-import { PROJECT_LIMIT } from "@/server/industry-page";
+import { PRODUCT_LIMIT, PROJECT_LIMIT } from "@/server/industry-page";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { Breadcrumb, type Crumb, Kicker } from "@/components/ui";
 import { CONTAINER } from "@/components/layout/container";
@@ -205,7 +205,10 @@ export default async function ProjectDetailPage(props: {
               delivered date, and keeping both stated it twice in two formats.
               Nothing in the e2e suite asserted this paragraph in either
               direction, so the removal is invisible to every existing gate and is
-              asserted explicitly by this story's own test.
+              recorded here rather than left implicit. (No page-level test
+              asserts the removal: `ProjectFactsCard`'s unit test proves the
+              card renders the date, but the project page has no e2e coverage,
+              so this is verified by reading, not by a gate.)
 
               "Once ON THE PAGE" is deliberately NOT the target and is not
               achievable: `ProjectMediaBand` renders a year-granularity chip on
@@ -253,7 +256,7 @@ export default async function ProjectDetailPage(props: {
                 cards on a 3-column ladder is the 3+1 orphan wrap that set
                 `PRODUCT_LIMIT` to 3 in the first place. */}
             <ul className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {project.products.slice(0, PROJECT_LIMIT).map((product) => (
+              {project.products.slice(0, PRODUCT_LIMIT).map((product) => (
                 <li key={product.id} className="flex">
                   <div className="flex w-full">
                     <ProductCard product={product} />

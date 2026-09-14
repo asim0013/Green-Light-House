@@ -366,7 +366,10 @@ export async function queryProjectBySlug(
           translations: true,
           product: { include: CARD_INCLUDE },
         },
-        orderBy: { sortOrder: "asc" },
+        // `id` tiebreaker: `sortOrder` is non-unique and defaults to 0, so a
+        // tie would otherwise leave BOM row order — and which products get
+        // capped out of the equipment row — nondeterministic across reads.
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
       },
     },
   });
@@ -382,9 +385,20 @@ export async function queryProjectBySlug(
      * This is the guard that used to live in the query's `where`, unchanged in
      * effect: a draft or absent product produces no card.
      */
-    products: project.bomLines
-      .filter((line) => line.product !== null && line.product.status === "published")
-      .map((line) => toProductCardItem(line.product!, locale)),
+    products: (() => {
+      // A product may legitimately appear on more than one BOM line; the card
+      // row shows each product ONCE (first line wins, preserving sortOrder). The
+      // BOM table below still lists every physical line.
+      const seen = new Set<string>();
+      return project.bomLines
+        .filter((line) => line.product !== null && line.product.status === "published")
+        .filter((line) => {
+          if (seen.has(line.product!.id)) return false;
+          seen.add(line.product!.id);
+          return true;
+        })
+        .map((line) => toProductCardItem(line.product!, locale));
+    })(),
     /**
      * RULE 2 — every BOM line renders, whatever its product is doing. The line's
      * own `model` and translated `label` carry it; only `manufacturer` depends on
