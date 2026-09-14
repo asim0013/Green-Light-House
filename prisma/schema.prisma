@@ -642,3 +642,74 @@ model CrossReference {
   @@unique([externalBrand, externalModel, productId])
   @@map("cross_references")
 }
+
+/// SITE-WIDE OPERATIONAL SETTINGS (Story 4.0 — the foundation for Stories 4.4/4.8).
+///
+/// ⚠️ THIS TABLE HAS NO READER YET, ON PURPOSE. Story 4.0 lands the model, the
+/// migration and the seed only; the public surfaces still read
+/// `src/config/contact.ts`, `src/config/site.ts` and the `RFQ_NOTIFY_TO` env var.
+/// Story 4.8 adds the editor and repoints those surfaces (a form + `revalidateTag`).
+/// Mirrors how Story 3.0 froze Epic 3's contracts before its feature stories.
+///
+/// ⚠️ VALUES ONLY, NEVER COPY — and therefore NO translation table. This mirrors
+/// `src/config/contact.ts`'s core rule ("values live here, labels live in
+/// `messages/`"): a phone number, an email, a postal address, a tax number and a
+/// notification recipient are the same in every language. The one translated
+/// place-name (İstanbul/Стамбул) deliberately stays in `messages/`, not here.
+///
+/// ⚠️ `null` IS THE ONLY "NOT SUPPLIED" MARKER — same contract as `contact.ts`.
+/// No sentinel strings, no placeholders. A field is configured iff non-null and
+/// non-blank; the trim/blank decision stays with `isSupplied`/`suppliedValue` when
+/// Story 4.8 repoints the readers.
+///
+/// ⛔ THE APPROVAL GATES ARE NOT HERE. `CONTACT.approvals.legalReviewed` /
+/// `translationsReviewed` stay in `src/config/contact.ts` (code), because their
+/// audit trail is the COMMIT that flips them (`contact.ts:57-60`). A togglable DB
+/// column would re-hide them and let an admin self-approve. This table carries the
+/// VALUES; the two human gates remain code-flipped.
+///
+/// SINGLETON: exactly one row, keyed by the fixed id `"singleton"`. The seed
+/// upserts it; Story 4.8's reader targets the same id. Do not create a second row.
+model SiteSettings {
+  id              String   @id @default("singleton")
+  contactEmail    String?  @map("contact_email")
+  contactAddress  String?  @map("contact_address")
+  legalName       String?  @map("legal_name")
+  tradeRegistryNo String?  @map("trade_registry_no")
+  taxOffice       String?  @map("tax_office")
+  taxNo           String?  @map("tax_no")
+  mersisNo        String?  @map("mersis_no")
+  phone           String?
+  phoneDisplay    String?  @map("phone_display")
+  rfqNotifyTo     String?  @map("rfq_notify_to")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("site_settings")
+}
+
+/// THE SINGLE ADMIN (Story 4.1 — FR39/FR39a). No role hierarchy at launch.
+///
+/// ⚠️ ONE ROW EXPECTED, but the invariant is enforced by the bootstrap/reset
+/// path, not by the schema (a fresh DB has ZERO admins until bootstrapped — the
+/// login cannot mint the first one). `email` is unique so a second account is at
+/// least deliberate, never accidental.
+///
+/// ⚠️ SECRETS ARE STORED HASHED, NEVER RAW. `passwordHash` is an argon2id encoded
+/// hash (hash-wasm). `resetTokenHash` is the argon2id hash of a single-use reset
+/// token — the raw token exists only in the email link and is never persisted;
+/// verifying a reset compares the presented token against this hash and, on
+/// success, clears both reset columns (single-use). `resetExpiresAt` bounds the
+/// window. The session itself is a stateless `jose`-signed JWT cookie, so there
+/// is deliberately NO session table.
+model AdminUser {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  passwordHash   String    @map("password_hash")
+  resetTokenHash String?   @map("reset_token_hash")
+  resetExpiresAt DateTime? @map("reset_expires_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@map("admin_users")
+}

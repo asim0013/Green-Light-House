@@ -6,8 +6,6 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import { routing } from "@/i18n/routing";
 import { siteOrigin } from "@/lib/seo";
 import { HTML_CLASS, BODY_CLASS } from "@/components/layout/fonts";
-import { SiteHeader } from "@/components/layout/SiteHeader";
-import { SiteFooter } from "@/components/layout/SiteFooter";
 import "../globals.css";
 
 // The four DESIGN.md families (Story 1.5) now live in `components/layout/fonts.ts`,
@@ -56,19 +54,14 @@ export default async function LocaleLayout(props: {
   return (
     <html lang={locale} className={HTML_CLASS}>
       <body className={BODY_CLASS}>
-        <NextIntlClientProvider>
-          <SiteHeader />
-          {/*
-            Single <main> for the whole locale segment — the skip-link target.
-            `tabIndex={-1}` makes it programmatically focusable so activating the
-            skip link actually MOVES focus (fragment navigation alone doesn't in
-            Safari/Firefox). Flex column so children can claim the free height.
-          */}
-          <main id="main-content" tabIndex={-1} className="flex flex-1 flex-col outline-none">
-            {props.children}
-          </main>
-          <SiteFooter />
-        </NextIntlClientProvider>
+        {/*
+          The document + i18n provider shell for the WHOLE locale segment. The
+          public chrome (SiteHeader / <main> skip-target / SiteFooter) lives in
+          `(public)/layout.tsx` so that `admin/` — which is NOT in that group —
+          renders its own frame without the public header, footer or RFQ CTA
+          (Story 4.1; the admin app shell is Story 4.2).
+        */}
+        <NextIntlClientProvider>{props.children}</NextIntlClientProvider>
       </body>
     </html>
   );
