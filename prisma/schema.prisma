@@ -687,3 +687,29 @@ model SiteSettings {
 
   @@map("site_settings")
 }
+
+/// THE SINGLE ADMIN (Story 4.1 — FR39/FR39a). No role hierarchy at launch.
+///
+/// ⚠️ ONE ROW EXPECTED, but the invariant is enforced by the bootstrap/reset
+/// path, not by the schema (a fresh DB has ZERO admins until bootstrapped — the
+/// login cannot mint the first one). `email` is unique so a second account is at
+/// least deliberate, never accidental.
+///
+/// ⚠️ SECRETS ARE STORED HASHED, NEVER RAW. `passwordHash` is an argon2id encoded
+/// hash (hash-wasm). `resetTokenHash` is the argon2id hash of a single-use reset
+/// token — the raw token exists only in the email link and is never persisted;
+/// verifying a reset compares the presented token against this hash and, on
+/// success, clears both reset columns (single-use). `resetExpiresAt` bounds the
+/// window. The session itself is a stateless `jose`-signed JWT cookie, so there
+/// is deliberately NO session table.
+model AdminUser {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  passwordHash   String    @map("password_hash")
+  resetTokenHash String?   @map("reset_token_hash")
+  resetExpiresAt DateTime? @map("reset_expires_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@map("admin_users")
+}
