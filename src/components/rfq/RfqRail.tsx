@@ -16,17 +16,15 @@ import type { SlaContent } from "@/server/repositories/sla";
  *   it drives the kicker (`accent-soft`, 4.68:1 here) and the fallback marker,
  *   neither of which has a tone that passes on both grounds.
  * - The talk card is NO LONGER HERE: Story 3.8 extracted it to `TalkCard`, which
- *   this file mounts and `/contact` mounts too. Its anatomy, its three known
- *   deviations and the reason they are deliberately unfixed live in that file's
+ *   this file mounts and `/contact` mounts too. Its anatomy lives in that file's
  *   docstring — this one used to describe the card's markup as if it were still
  *   inline, which the 3.8 review flagged.
- * - ⚠️ AND IT DOES NOT "follow ProjectCta", WHICH THIS LINE USED TO CLAIM. It
- *   diverges from `ProjectCta` on exactly the thing that matters: `ProjectCta`
- *   builds its accessible name from `Nav.phoneLabel` ("Call us"), as do all
- *   THIRTEEN other `tel:` render sites; `TalkCard` is the one exception, using
- *   `Rfq.talkCta` ("Call an engineer"). Fourteen of the fifteen follow one
- *   convention and this card follows the other — that is deviation #3 in
- *   `TalkCard`, and Story 3.6 owns reconciling it.
+ * - ⚠️ THE THREE DEVIATIONS 3.8 RECORDED ARE NOW CLOSED. Story 3.6 (2026-09-14)
+ *   made the number the largest element and a co-equal `tel:` target, put an
+ *   explicit `min-h-11` on both anchors, and settled the label rule: the number
+ *   link now uses the majority `Nav.phoneLabel` prefix while the button keeps
+ *   `Rfq.talkCta` (its visible label, which 2.5.3 requires the accessible name to
+ *   contain). See `TalkCard`'s docstring for the full resolution.
  * - The cert marks are locale-invariant and deliberately NOT in messages
  *   (they are marks, not copy) — bare mono text, no chips, per the canvas.
  */
@@ -49,8 +47,8 @@ export function RfqRail({ sla }: { sla: SlaContent | null }) {
         </div>
       )}
 
-      {/* Story 3.8: the SAME component /contact mounts. Extracted verbatim —
-          see `TalkCard` for the three deviations it carries, all owned by 3.6. */}
+      {/* Story 3.8: the SAME component /contact mounts. Story 3.6 closed the
+          three deviations it once carried — see `TalkCard`. */}
       <TalkCard />
 
       <div className="px-1">
