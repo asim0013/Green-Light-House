@@ -90,7 +90,7 @@ export function IndustryCta({
               <a
                 href={`tel:${SITE.phone}`}
                 aria-label={`${tNav("phoneLabel")}: ${SITE.phoneDisplay}`}
-                className={buttonClasses("onDarkSecondary", "w-full gap-2 font-data")}
+                className={buttonClasses("onDarkSecondary", "min-h-11 w-full gap-2 font-data")}
               >
                 <Phone size={16} aria-hidden />
                 {SITE.phoneDisplay}

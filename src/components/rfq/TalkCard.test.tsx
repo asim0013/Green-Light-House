@@ -2,113 +2,121 @@ import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { SITE } from "@/config/site";
-import { buttonClasses } from "@/components/ui/buttonClasses";
+import { routing } from "@/i18n/routing";
 
 /**
- * The shared talk card (Story 3.8 — AC8, §H #11).
+ * The shared talk card (Story 3.6 — AC3, AC4; §H #5–#8).
  *
- * ⚠️ THE POINT OF THIS FILE IS THE REGRESSION GUARD, NOT THE COVERAGE. AC8 says
- * the card is extracted "with no behavioural and no copy change", and an
- * intention is not a fact until something can contradict it. `RfqRail`'s own e2e
- * would not notice a class change or a lost `aria-label`; this does.
+ * ⚠️ THIS FILE REPLACES 3.8's "the extraction changed nothing" byte-baseline.
+ * That test pinned `TalkCard` to the markup `RfqRail` produced at `2fd608c`,
+ * ON PURPOSE, so that 3.8's extraction could not silently alter the card. Story
+ * 3.6 is the story that DOES alter it — the number becomes the largest element
+ * and a `tel:` target, and both anchors take an explicit floor. So the baseline
+ * is retired and its guarantees re-expressed as the properties 3.6 asserts,
+ * each with the mutation (§H) that must redden it.
  *
- * The BASELINE below is the markup `RfqRail` produced at HEAD `2fd608c`, before
- * the extraction. If the extraction altered anything a buyer or a screen reader
- * can perceive, the first test fails and names the difference.
+ * ⚠️ THE MOCK IS NAMESPACE-AWARE, and that is load-bearing. `TalkCard` now reads
+ * TWO namespaces — `Rfq` for its own copy and `Nav` for the shared phone label —
+ * and AC4 turns on which prefix each anchor uses. Rendering `namespace.key` keeps
+ * the namespace part of every assertion, so repointing a key is visible here.
  */
-
-// ⚠️ THE MOCK IS NAMESPACE-AWARE, AND THE PREVIOUS ONE WAS NOT. It was
-// `useTranslations: () => (key) => key`, which DISCARDS the namespace — so
-// changing `useTranslations("Rfq")` to any other namespace produced byte-identical
-// output and every assertion below stayed green. `TalkCard`'s own docstring calls
-// repointing the keys "the copy change AC8 forbids", and this was the test meant
-// to catch it. Rendering `namespace.key` makes the namespace part of the baseline.
 vi.mock("next-intl", () => ({
   useTranslations: (namespace: string) => (key: string) => `${namespace}.${key}`,
 }));
 
 const { TalkCard } = await import("./TalkCard");
 
-/**
- * The structure `RfqRail.tsx:46-62` produced at `2fd608c`, before the extraction.
- *
- * ⚠️ THE BUTTON'S CLASS LIST IS COMPOSED FROM `buttonClasses`, NOT SPELLED OUT,
- * and the first draft of this test got that wrong — I wrote the expansion from
- * memory and it did not match, which read as an extraction defect when the
- * extraction was in fact byte-clean. Composing it has a second, better property:
- * this test pins what the EXTRACTION could break (structure, labels, the props
- * passed to the design system) and stays green when `buttonClasses` is
- * legitimately restyled, which is not this component's business.
- *
- * The `<svg>` is likewise elided — it is lucide's output, not ours.
- */
-const BUTTON_CLASS = buttonClasses("secondary", "mt-4 w-full gap-2");
+/** All `<a>` elements as { attrs, visibleText }. */
+function anchors(html: string) {
+  return [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].map((m) => ({
+    attrs: m[1],
+    visibleText: m[2].replace(/<[^>]*>/g, "").trim(),
+  }));
+}
+const ariaLabel = (attrs: string) => attrs.match(/aria-label="([^"]*)"/)?.[1] ?? "";
+const pxOf = (fragment: string) => Number(fragment.match(/text-\[(\d+)px\]/)?.[1] ?? "0");
 
-const OPENS_AT_2fd608c =
-  '<div class="border border-border-subtle bg-surface p-5">' +
-  '<h2 class="font-heading text-[17px] font-bold tracking-tight text-ink">Rfq.talkTitle</h2>' +
-  '<p class="mt-2 text-[13px] text-ink-2">Rfq.talkHours</p>' +
-  `<a href="tel:${SITE.phone}" aria-label="Rfq.talkCta: ${SITE.phoneDisplay}" class="${BUTTON_CLASS}">`;
-
-const CLOSES_AT_2fd608c =
-  "Rfq.talkCta</a>" +
-  `<p class="mt-2 text-center font-data text-[13px] text-ink-2" translate="no">${SITE.phoneDisplay}</p>` +
-  "</div>";
-
-describe("TalkCard — the extraction changed nothing", () => {
-  it("renders markup IDENTICAL to what RfqRail produced before the extraction", () => {
-    // P5: change any class, the label, or the aria-label in `TalkCard` and this
-    // reddens with a diff naming exactly what moved.
+describe("TalkCard — the phone is co-equal (AC3)", () => {
+  it("renders BOTH the number and the button as tel: targets (§H #6)", () => {
+    // P5: revert the number from an `<a>` back to a `<p>` and this reddens.
     const html = renderToStaticMarkup(<TalkCard />);
-    // ⚠️ COMPARED AS STRINGS, NOT AS BOOLEANS. This used to be
-    // `expect(html.startsWith(OPENS), "the card opening changed").toBe(true)`,
-    // which fails with "expected false to be true" and shows NOTHING about what
-    // moved — while the file docstring promised the test "names the difference".
-    // Slicing to the baseline's length and comparing gives a real character diff.
-    expect(html.slice(0, OPENS_AT_2fd608c.length), "the card opening changed").toBe(
-      OPENS_AT_2fd608c,
-    );
-    expect(html.slice(-CLOSES_AT_2fd608c.length), "the card closing changed").toBe(
-      CLOSES_AT_2fd608c,
-    );
-    // The only thing between them is lucide s <svg>, which this story did not touch.
-    const between = html.slice(OPENS_AT_2fd608c.length, -CLOSES_AT_2fd608c.length);
-    expect(between.startsWith("<svg")).toBe(true);
-    expect(between.endsWith("</svg>")).toBe(true);
-    expect(between).toContain('aria-hidden="true"');
+    const tels = anchors(html).filter((a) => a.attrs.includes(`tel:${SITE.phone}`));
+    expect(tels).toHaveLength(2);
   });
 
-  it("keeps the accessible name as LABEL + NUMBER (2.5.3)", () => {
-    // The visible label alone would fail "label in name" for a voice user, who
-    // says what they see. Asserted separately from the byte-comparison so a
-    // future intentional restyle cannot quietly drop it while someone updates
-    // the baseline string above.
+  it("sets the number in mono as the LARGEST element in its column (§H #5)", () => {
+    // The number's own anchor is the mono one; the button carries the Phone icon.
+    // P5: restore `text-[13px]` on the number and this reddens (13 < 17 heading).
     const html = renderToStaticMarkup(<TalkCard />);
+    const numberAnchor = anchors(html).find(
+      (a) => a.attrs.includes(`tel:${SITE.phone}`) && a.attrs.includes("font-data"),
+    );
+    expect(numberAnchor, "no mono number anchor").toBeTruthy();
+    const headingPx = pxOf(html.match(/<h2\b[^>]*>/)?.[0] ?? "");
+    const numberPx = pxOf(numberAnchor!.attrs);
+    expect(headingPx).toBe(17);
+    expect(numberPx).toBeGreaterThan(headingPx);
+    expect(numberAnchor!.visibleText).toBe(SITE.phoneDisplay);
+    expect(numberAnchor!.attrs).toContain('translate="no"'); // machine data, not prose
+  });
+
+  it("clears the 44px floor on both tel: anchors with an explicit min-h-11 (AC2)", () => {
+    const html = renderToStaticMarkup(<TalkCard />);
+    const tels = anchors(html).filter((a) => a.attrs.includes(`tel:${SITE.phone}`));
+    for (const a of tels) expect(a.attrs).toContain("min-h-11");
+  });
+});
+
+describe("TalkCard — one label rule, applied here too (AC4, WCAG 2.5.3)", () => {
+  it("every tel: anchor's accessible name CONTAINS its visible label (§H #7)", () => {
+    // 2.5.3 (Label in Name). P5: give the button `Nav.phoneLabel` while it
+    // visibly reads `Rfq.talkCta` and this reddens — the aria-label would no
+    // longer contain the visible label.
+    const html = renderToStaticMarkup(<TalkCard />);
+    const tels = anchors(html).filter((a) => a.attrs.includes(`tel:${SITE.phone}`));
+    for (const a of tels) {
+      expect(ariaLabel(a.attrs), `accessible name must contain "${a.visibleText}"`).toContain(
+        a.visibleText,
+      );
+    }
+  });
+
+  it("applies the formula: number link uses Nav.phoneLabel, button uses Rfq.talkCta", () => {
+    // The number link's visible label is the number, so it takes the 14-site
+    // majority prefix `Nav.phoneLabel`; the button's visible label is text, so it
+    // keeps `Rfq.talkCta`. Neither mints a third convention.
+    const html = renderToStaticMarkup(<TalkCard />);
+    expect(html).toContain(`aria-label="Nav.phoneLabel: ${SITE.phoneDisplay}"`);
     expect(html).toContain(`aria-label="Rfq.talkCta: ${SITE.phoneDisplay}"`);
   });
 
+  it('"Talk to an engineer" is RETIRED — it exists in no catalogue', () => {
+    // The minority canvas spelling (2 frames), in no `messages/*.json`. Minting
+    // it would be the forbidden third convention. Swept structurally so it cannot
+    // creep back in via a future copy edit.
+    for (const locale of routing.locales) {
+      const raw = readFileSync(`messages/${locale}.json`, "utf8");
+      expect(raw, `${locale}.json minted a retired label`).not.toContain("Talk to an engineer");
+      expect(raw).not.toContain("mühendisle konuş"); // TR verb form
+    }
+  });
+});
+
+describe("TalkCard — chrome and mounts unchanged", () => {
   it("renders the phone as CHROME — the placeholder included (AC1's exemption)", () => {
-    // ⚠️ NOT AN OVERSIGHT, AND THE TEST SAYS SO. /contact's configured-channels
-    // rule governs the NEW channels; the phone is chrome and shows exactly what
-    // the header, the hero, every industry page and the 404 already show.
-    // Guarding it here would make /contact the only surface hiding it, which is
-    // the inconsistency rather than the fix.
+    // /contact's configured-channels rule governs the NEW channels; the phone is
+    // chrome and shows exactly what the header, hero, every industry/project page
+    // and the 404 already show. Guarding it here would make /contact the only
+    // surface hiding it — the inconsistency, not the fix.
     const html = renderToStaticMarkup(<TalkCard />);
     expect(html).toContain(`tel:${SITE.phone}`);
     expect(html).toContain(SITE.phoneDisplay);
   });
 
-  it("marks the number `translate=no` — it is machine data, not prose", () => {
-    expect(renderToStaticMarkup(<TalkCard />)).toContain('translate="no"');
-  });
-
-  it("is MOUNTED by both surfaces AC8 names — /rfq and /contact", () => {
-    // ⚠️ NOTHING ANYWHERE FAILED IF `<TalkCard />` WAS DELETED FROM A MOUNT SITE.
-    // Every test above renders the component in isolation, so all of them stay
-    // green on a page that no longer uses it — /rfq's half of AC8 had no guard at
-    // all, and /contact's e2e could not distinguish this card from the header's
-    // phone link until this review. Structural rather than rendered because both
-    // mount sites are server components a unit test cannot mount.
+  it("is MOUNTED by both surfaces AC8 names — /rfq and /contact (§H #8)", () => {
+    // Every render test above mounts the component in isolation, so all stay
+    // green on a page that no longer uses it. Structural because both mount sites
+    // are server components a unit test cannot mount.
     // P5: delete either mount and this reddens, naming the file.
     const MOUNTS = ["src/components/rfq/RfqRail.tsx", "src/app/[locale]/(public)/contact/page.tsx"];
     const missing = MOUNTS.filter((file) => !/<TalkCard\b/.test(readFileSync(file, "utf8")));
