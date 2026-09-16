@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { revalidateTag } from "next/cache";
 import { z } from "zod";
 import { isKnownTag } from "@/lib/cache-tags";
+import { revalidateTags } from "@/lib/revalidate";
 
 /**
  * On-demand cache revalidation (Story 1.8, FR40).
@@ -68,19 +68,10 @@ export async function POST(request: Request) {
     return fail(422, "unknown_tag", "One or more tags are not recognised.", { unknown });
   }
 
-  // Next 16.2 requires a cache profile as the second argument (it is typed
-  // `string | CacheLifeConfig`, not optional).
-  //
-  // Be precise about what `"max"` means, because the obvious reading is wrong: to a
-  // Next-NATIVE handler it marks entries stale immediately and hard-expiring only
-  // much later — i.e. stale-while-revalidate, not a purge. This app gets a true
-  // immediate purge because `cache-handler.js` ignores the profile entirely and
-  // simply stamps the tag, which makes every entry carrying it miss on the next
-  // read. That is the behaviour an admin publish needs; it is a property of OUR
-  // handler, not of the profile name.
-  for (const tag of parsed.data.tags) {
-    revalidateTag(tag, "max");
-  }
+  // The actual purge lives in `@/lib/revalidate` so the `revalidateTag` call and
+  // the load-bearing `"max"`-profile reasoning sit in one place — Epic 4's admin
+  // mutations call that helper in-process rather than hopping through this route.
+  revalidateTags(parsed.data.tags);
 
   return Response.json({ revalidated: parsed.data.tags, at: new Date().toISOString() });
 }

@@ -879,3 +879,175 @@ export async function suggestProducts(
     ];
   });
 }
+
+// ---- Writes (Story 4.3, admin CRUD) ---------------------------------------
+
+export interface ProductAttributePair {
+  key: string;
+  value: string;
+}
+
+export interface ProductEditData {
+  id: string;
+  slug: string;
+  model: string;
+  manufacturerId: string;
+  categoryId: string;
+  seriesId: string | null;
+  status: "draft" | "published";
+  attributes: ProductAttributePair[];
+  translations: { locale: Locale; name: string; description: string | null }[];
+}
+
+/** JSONB `attributes` → the form's ordered key/value pairs (non-object → empty). */
+function attributesToPairs(value: Prisma.JsonValue): ProductAttributePair[] {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return [];
+  return Object.entries(value).map(([key, v]) => ({
+    key,
+    value: typeof v === "string" ? v : String(v),
+  }));
+}
+
+/** Load one product's editable fields + raw translations, or null if absent. */
+export async function getProductForEdit(id: string): Promise<ProductEditData | null> {
+  const row = await prisma.product.findUnique({ where: { id }, include: { translations: true } });
+  if (!row) return null;
+  return {
+    id: row.id,
+    slug: row.slug,
+    model: row.model,
+    manufacturerId: row.manufacturerId,
+    categoryId: row.categoryId,
+    seriesId: row.seriesId,
+    status: row.status,
+    attributes: attributesToPairs(row.attributes),
+    translations: row.translations.map((t) => ({
+      locale: t.locale,
+      name: t.name,
+      description: t.description,
+    })),
+  };
+}
+
+export interface ProductWriteFields {
+  model: string;
+  manufacturerId: string;
+  categoryId: string;
+  seriesId?: string;
+  status: "draft" | "published";
+  attributes: Record<string, string>;
+}
+
+/** Create a product (media defaults to []; Story 4.5 owns media). Throws on duplicate slug. */
+export async function createProduct(
+  data: ProductWriteFields & {
+    slug: string;
+    translations: { locale: Locale; name: string; description: string | null }[];
+  },
+): Promise<{ id: string; slug: string }> {
+  return prisma.product.create({
+    data: {
+      slug: data.slug,
+      model: data.model,
+      manufacturerId: data.manufacturerId,
+      categoryId: data.categoryId,
+      seriesId: data.seriesId ?? null,
+      status: data.status,
+      attributes: data.attributes,
+      translations: {
+        create: data.translations.map((t) => ({
+          locale: t.locale,
+          name: t.name,
+          description: t.description,
+        })),
+      },
+    },
+    select: { id: true, slug: true },
+  });
+}
+
+/**
+ * Update a product's editable scalars + replace its translations. `slug` and
+ * `media` are intentionally NOT touched (slug is immutable in 4.3; media is
+ * Story 4.5). Returns false if the product is gone.
+ */
+export async function updateProduct(
+  id: string,
+  fields: ProductWriteFields,
+  translations: { locale: Locale; name: string; description: string | null }[],
+): Promise<boolean> {
+  const exists = await prisma.product.findUnique({ where: { id }, select: { id: true } });
+  if (!exists) return false;
+  await prisma.$transaction([
+    prisma.product.update({
+      where: { id },
+      data: {
+        model: fields.model,
+        manufacturerId: fields.manufacturerId,
+        categoryId: fields.categoryId,
+        seriesId: fields.seriesId ?? null,
+        status: fields.status,
+        attributes: fields.attributes,
+      },
+    }),
+    prisma.productTranslation.deleteMany({ where: { productId: id } }),
+    prisma.productTranslation.createMany({
+      data: translations.map((t) => ({
+        productId: id,
+        locale: t.locale,
+        name: t.name,
+        description: t.description,
+      })),
+    }),
+  ]);
+  return true;
+}
+
+/**
+ * References that block a product delete. BOM lines / accessory pairings /
+ * cross-references make it "in use"; documents are excluded on purpose — a
+ * versioned datasheet `SetNull`s its product link and must survive (schema:239).
+ */
+export async function productReferenceCounts(
+  id: string,
+): Promise<{ bomLines: number; accessories: number; crossReferences: number }> {
+  const [bomLines, asProduct, asAccessory, crossReferences] = await Promise.all([
+    prisma.projectBomLine.count({ where: { productId: id } }),
+    prisma.accessoryCompatibility.count({ where: { productId: id } }),
+    prisma.accessoryCompatibility.count({ where: { accessoryProductId: id } }),
+    prisma.crossReference.count({ where: { productId: id } }),
+  ]);
+  return { bomLines, accessories: asProduct + asAccessory, crossReferences };
+}
+
+/** Delete a product (translations cascade). Caller must check references first. */
+export async function deleteProduct(id: string): Promise<void> {
+  await prisma.product.delete({ where: { id } });
+}
+
+export interface AdminProductRow {
+  id: string;
+  slug: string;
+  model: string;
+  name: string;
+  status: "draft" | "published";
+}
+
+/**
+ * Every product for the admin list — ALL statuses, uncached (admin sees drafts,
+ * and must see them the instant they are saved). Public reads keep their
+ * `status: "published"` filter; this reader is the ONLY one that returns drafts.
+ */
+export async function listProductsForAdmin(locale: Locale): Promise<AdminProductRow[]> {
+  const rows = await prisma.product.findMany({
+    include: { translations: true },
+    orderBy: { slug: "asc" },
+  });
+  return rows.map((p) => ({
+    id: p.id,
+    slug: p.slug,
+    model: p.model,
+    name: resolveTranslation(p.translations, locale)?.value.name ?? p.model,
+    status: p.status,
+  }));
+}

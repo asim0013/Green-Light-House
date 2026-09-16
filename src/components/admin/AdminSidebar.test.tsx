@@ -36,13 +36,20 @@ describe("AdminSidebar", () => {
     expect(h).toContain('aria-current="page"');
   });
 
-  it("renders an unbuilt module as INERT — no href, a 'soon' marker", () => {
-    // P5: flip Catalog's `available` to true (or drop the guard) and this reddens
-    // — it would render as a link to /admin/catalog.
+  it("renders a live module (Catalog, shipped in 4.3) as a link", () => {
+    // P5: revert nav.ts's catalog `available` to false and this reddens.
     const h = html();
     expect(h).toContain("Catalog");
+    expect(h).toContain('href="/admin/catalog"');
+  });
+
+  it("renders an unbuilt module as INERT — no href, a 'soon' marker", () => {
+    // Content (Story 4.4) is not shipped yet, so it stays inert.
+    // P5: flip Content's `available` to true and this reddens.
+    const h = html();
+    expect(h).toContain("Content");
     expect(h).toContain("soon");
-    expect(h).not.toContain('href="/admin/catalog"');
+    expect(h).not.toContain('href="/admin/content"');
   });
 
   it("logout posts to the Story 4.1 route with the locale", () => {

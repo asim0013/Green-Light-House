@@ -82,3 +82,83 @@ export async function queryManufacturerOptions(locale: Locale): Promise<Manufact
     name: resolveTranslation(row.translations, locale)?.value.name ?? row.slug,
   }));
 }
+
+// ---- Writes (Story 4.3, admin CRUD) ---------------------------------------
+
+export interface SeriesEditData {
+  id: string;
+  slug: string;
+  manufacturerId: string;
+  translations: { locale: Locale; name: string }[];
+}
+
+/** Load one series' raw translations + manufacturer for editing, or null if absent. */
+export async function getSeriesForEdit(id: string): Promise<SeriesEditData | null> {
+  const row = await prisma.series.findUnique({ where: { id }, include: { translations: true } });
+  if (!row) return null;
+  return {
+    id: row.id,
+    slug: row.slug,
+    manufacturerId: row.manufacturerId,
+    translations: row.translations.map((t) => ({ locale: t.locale, name: t.name })),
+  };
+}
+
+/** All series as {id, slug, name, manufacturerId} for the admin product picker (uncached). */
+export async function listSeriesAdminOptions(
+  locale: Locale,
+): Promise<{ id: string; slug: string; name: string; manufacturerId: string }[]> {
+  const rows = await prisma.series.findMany({
+    include: { translations: true },
+    orderBy: { slug: "asc" },
+  });
+  return rows.map((s) => ({
+    id: s.id,
+    slug: s.slug,
+    manufacturerId: s.manufacturerId,
+    name: resolveTranslation(s.translations, locale)?.value.name ?? s.slug,
+  }));
+}
+
+export async function createSeries(data: {
+  slug: string;
+  manufacturerId: string;
+  translations: { locale: Locale; name: string }[];
+}): Promise<{ id: string; slug: string }> {
+  return prisma.series.create({
+    data: {
+      slug: data.slug,
+      manufacturerId: data.manufacturerId,
+      translations: { create: data.translations.map((t) => ({ locale: t.locale, name: t.name })) },
+    },
+    select: { id: true, slug: true },
+  });
+}
+
+/** Update a series' manufacturer + replace its translations. Returns false if absent. */
+export async function updateSeries(
+  id: string,
+  manufacturerId: string,
+  translations: { locale: Locale; name: string }[],
+): Promise<boolean> {
+  const exists = await prisma.series.findUnique({ where: { id }, select: { id: true } });
+  if (!exists) return false;
+  await prisma.$transaction([
+    prisma.series.update({ where: { id }, data: { manufacturerId } }),
+    prisma.seriesTranslation.deleteMany({ where: { seriesId: id } }),
+    prisma.seriesTranslation.createMany({
+      data: translations.map((t) => ({ seriesId: id, locale: t.locale, name: t.name })),
+    }),
+  ]);
+  return true;
+}
+
+/** How many products would block a series delete. */
+export async function seriesReferenceCounts(id: string): Promise<{ products: number }> {
+  return { products: await prisma.product.count({ where: { seriesId: id } }) };
+}
+
+/** Delete a series (translations cascade). Caller must check references first. */
+export async function deleteSeries(id: string): Promise<void> {
+  await prisma.series.delete({ where: { id } });
+}
