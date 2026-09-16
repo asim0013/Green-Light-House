@@ -9,6 +9,7 @@ import { createProductAction, updateProductAction } from "@/server/admin/catalog
 import {
   Field,
   TranslationTabs,
+  NAME_DESCRIPTION_FIELDS,
   useCatalogSubmit,
   flattenTranslations,
   errorText,
@@ -228,7 +229,7 @@ export function ProductForm({
           )}
         </fieldset>
 
-        <TranslationTabs withDescription />
+        <TranslationTabs fields={NAME_DESCRIPTION_FIELDS} />
 
         {formError && (
           <p role="alert" className="text-[13px] text-[#B42318]">

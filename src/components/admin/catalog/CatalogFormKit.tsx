@@ -2,7 +2,6 @@
 
 import { useState, type ReactNode } from "react";
 import { useFormContext, type FieldValues, type Path, type UseFormSetError } from "react-hook-form";
-import type { CatalogErrorKey } from "@/server/admin/catalog/schema";
 import type { MutationResult } from "@/server/admin/catalog/mutation";
 
 /**
@@ -14,7 +13,10 @@ import type { MutationResult } from "@/server/admin/catalog/mutation";
  * `{ error: { details } }` maps back onto fields exactly like the RFQ form.
  */
 
-export const CATALOG_ERROR_TEXT: Record<CatalogErrorKey, string> = {
+// Keyed by the shared stable error keys (Story 4.3 `CatalogErrorKey`) plus a few
+// Story 4.4 editorial keys — a plain string map so content entities can add keys
+// without touching the pinned `CATALOG_ERROR_KEYS` set.
+export const CATALOG_ERROR_TEXT: Record<string, string> = {
   required: "Required.",
   tooLong: "Too long.",
   invalid: "This value is not valid.",
@@ -22,6 +24,8 @@ export const CATALOG_ERROR_TEXT: Record<CatalogErrorKey, string> = {
   enRequired: "English is required.",
   descriptionWithoutName: "Add a name for this language, or clear its description.",
   duplicateAttributeKey: "Attribute keys must be unique.",
+  // Story 4.4 (editorial content):
+  titleRequiredForLocale: "Add a title for this language, or clear its other fields.",
 };
 
 /** Map a stable error key (from zod or a server MutationError detail) to inline English. */
@@ -73,16 +77,39 @@ const LOCALES = [
 ] as const;
 
 /**
- * The EN | TR | RU authoring tabs. Reads the form via context, so any entity
- * form wrapped in `<FormProvider>` can drop it in. EN is required; each tab shows
- * a filled dot when its name is set. Only the active locale's fields are shown,
- * but ALL locale fields stay registered (hidden), so validation and submission
- * see every language regardless of which tab is open.
+ * One translated field of an entity. `name` is the base field key (the form
+ * registers `${name}En`/`${name}Tr`/`${name}Ru`); `required` marks the field EN
+ * requires (also the tab's filled-dot signal).
  */
-export function TranslationTabs({ withDescription }: { withDescription: boolean }) {
+export interface TranslationField {
+  name: string;
+  label: string;
+  type?: "text" | "textarea";
+  required?: boolean;
+}
+
+/** Common field configs (Story 4.3/4.4). */
+export const NAME_ONLY_FIELDS: TranslationField[] = [
+  { name: "name", label: "Name", required: true },
+];
+export const NAME_DESCRIPTION_FIELDS: TranslationField[] = [
+  { name: "name", label: "Name", required: true },
+  { name: "description", label: "Description", type: "textarea" },
+];
+
+/**
+ * The EN | TR | RU authoring tabs. Reads the form via context, so any entity
+ * form wrapped in `<FormProvider>` can drop it in. Field-config driven (Story
+ * 4.4 generalized it from the fixed name/description shape): EN is required for
+ * the `required` field, and each tab shows a filled dot when that field is set.
+ * Only the active locale's fields are shown, but ALL locale fields stay
+ * registered (hidden), so validation and submission see every language.
+ */
+export function TranslationTabs({ fields }: { fields: TranslationField[] }) {
   const { register, watch, formState } = useFormContext();
   const [active, setActive] = useState<(typeof LOCALES)[number]["code"]>("En");
   const errors = formState.errors as Record<string, { message?: string } | undefined>;
+  const indicatorField = (fields.find((f) => f.required) ?? fields[0])?.name ?? "name";
 
   return (
     <fieldset className="flex flex-col gap-3 rounded border border-border-subtle p-4">
@@ -91,7 +118,7 @@ export function TranslationTabs({ withDescription }: { withDescription: boolean 
       </legend>
       <div role="tablist" aria-label="Translation language" className="flex gap-1">
         {LOCALES.map((loc) => {
-          const filled = Boolean(watch(`name${loc.code}`));
+          const filled = Boolean(watch(`${indicatorField}${loc.code}`));
           return (
             <button
               key={loc.code}
@@ -116,32 +143,28 @@ export function TranslationTabs({ withDescription }: { withDescription: boolean 
 
       {LOCALES.map((loc) => (
         <div key={loc.code} hidden={active !== loc.code} className="flex flex-col gap-3">
-          <Field
-            label={`Name (${loc.label})`}
-            htmlFor={`name${loc.code}`}
-            error={errorText(errors[`name${loc.code}`]?.message)}
-            hint={
-              loc.required
-                ? "Shown on the public site; other languages fall back to English."
-                : undefined
-            }
-          >
-            <input id={`name${loc.code}`} className={inputClass} {...register(`name${loc.code}`)} />
-          </Field>
-          {withDescription && (
-            <Field
-              label={`Description (${loc.label})`}
-              htmlFor={`description${loc.code}`}
-              error={errorText(errors[`description${loc.code}`]?.message)}
-            >
-              <textarea
-                id={`description${loc.code}`}
-                rows={4}
-                className={inputClass}
-                {...register(`description${loc.code}`)}
-              />
-            </Field>
-          )}
+          {fields.map((field) => {
+            const id = `${field.name}${loc.code}`;
+            return (
+              <Field
+                key={field.name}
+                label={`${field.label} (${loc.label})`}
+                htmlFor={id}
+                error={errorText(errors[id]?.message)}
+                hint={
+                  field.required && loc.required
+                    ? "Shown on the public site; other languages fall back to English."
+                    : undefined
+                }
+              >
+                {field.type === "textarea" ? (
+                  <textarea id={id} rows={4} className={inputClass} {...register(id)} />
+                ) : (
+                  <input id={id} className={inputClass} {...register(id)} />
+                )}
+              </Field>
+            );
+          })}
         </div>
       ))}
     </fieldset>

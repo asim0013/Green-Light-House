@@ -41,8 +41,8 @@ const ATTR_KEY_MAX = 64;
 const ATTR_VALUE_MAX = 500;
 const ATTR_MAX_PAIRS = 60;
 
-/** Required bounded text: trimmed, non-empty, capped, hostile code points rejected. */
-function requiredText(max: number) {
+/** Required bounded text: trimmed, non-empty, capped, hostile code points rejected. Shared with 4.4. */
+export function requiredText(max: number) {
   return z
     .string("required")
     .trim()
@@ -51,8 +51,8 @@ function requiredText(max: number) {
     .refine(isStorableText, "invalid");
 }
 
-/** Optional bounded text. `""`/absent both mean "no value"; the action stores null. */
-function optionalText(max: number) {
+/** Optional bounded text. `""`/absent both mean "no value"; the action stores null. Shared with 4.4. */
+export function optionalText(max: number) {
   return z
     .string("invalid")
     .trim()
@@ -84,7 +84,7 @@ const nameOnlyShape = {
   nameRu: optionalText(NAME_MAX),
 } as const;
 
-const nameDescriptionShape = {
+export const nameDescriptionShape = {
   nameEn: requiredText(NAME_MAX),
   descriptionEn: optionalText(DESCRIPTION_MAX),
   nameTr: optionalText(NAME_MAX),
@@ -98,7 +98,7 @@ const nameDescriptionShape = {
  * locale whose name is empty — a translation row is anchored on its name, so
  * such copy would never get written. The guard lives on the final object.
  */
-function withDescriptionNameGuard<S extends z.ZodRawShape>(shape: S) {
+export function withDescriptionNameGuard<S extends z.ZodRawShape>(shape: S) {
   return z
     .object(shape)
     .refine((v: Record<string, unknown>) => !(v.descriptionTr && !v.nameTr), {

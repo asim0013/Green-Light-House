@@ -22,13 +22,14 @@ describe("ADMIN_NAV config", () => {
     // before its story ships. Dashboard (4.2) and Catalog (4.3) are live; the
     // rest are inert until their own story flips them. Each module story flips
     // its OWN item here.
-    const live = new Set(["dashboard", "catalog"]);
+    const live = new Set(["dashboard", "catalog", "content"]);
     for (const item of ADMIN_NAV) {
       expect(item.available, `${item.key} availability`).toBe(live.has(item.key));
       expect(item.story).toMatch(/^4\.\d/);
     }
-    // Catalog specifically went live in this story (P5: revert nav.ts and this reddens).
+    // Catalog (4.3) and Content (4.4) are live (P5: revert nav.ts and this reddens).
     expect(byKey("catalog").available).toBe(true);
+    expect(byKey("content").available).toBe(true);
   });
 });
 

@@ -603,3 +603,173 @@ export function distinctCategories(
   }
   return [...bySlug.values()].sort((a, b) => a.slug.localeCompare(b.slug));
 }
+
+// ---- Writes (Story 4.4, admin CRUD) ---------------------------------------
+
+export interface ProjectTranslationWrite {
+  locale: Locale;
+  title: string;
+  description: string | null;
+  outcome: string | null;
+  scope: string | null;
+  location: string | null;
+}
+
+export interface ProjectScalars {
+  industryId?: string | null;
+  status: "draft" | "published";
+  deliveredAt?: Date | null;
+  leadTimeWeeks?: number | null;
+}
+
+export interface ProjectEditData {
+  id: string;
+  slug: string;
+  industryId: string | null;
+  status: "draft" | "published";
+  /** yyyy-mm-dd for the date input, or "" when unset. */
+  deliveredAt: string;
+  leadTimeWeeks: number | null;
+  translations: ProjectTranslationWrite[];
+}
+
+export interface AdminProjectRow {
+  id: string;
+  slug: string;
+  title: string;
+  status: "draft" | "published";
+}
+
+/** All projects for the admin list — ALL statuses, uncached (admin sees drafts). */
+export async function listProjectsForAdmin(locale: Locale): Promise<AdminProjectRow[]> {
+  const rows = await prisma.project.findMany({
+    include: { translations: true },
+    orderBy: { slug: "asc" },
+  });
+  return rows.map((p) => ({
+    id: p.id,
+    slug: p.slug,
+    title: resolveTranslation(p.translations, locale)?.value.title ?? p.slug,
+    status: p.status,
+  }));
+}
+
+/** Resolve industry ids to their slugs (drops nulls/misses, dedups) — for purge sets. */
+async function industrySlugs(ids: (string | null | undefined)[]): Promise<string[]> {
+  const wanted = [...new Set(ids.filter((v): v is string => Boolean(v)))];
+  if (wanted.length === 0) return [];
+  const rows = await prisma.industry.findMany({
+    where: { id: { in: wanted } },
+    select: { slug: true },
+  });
+  return rows.map((r) => r.slug);
+}
+
+/** Load one project's editable fields + raw translations, or null if absent. */
+export async function getProjectForEdit(id: string): Promise<ProjectEditData | null> {
+  const row = await prisma.project.findUnique({ where: { id }, include: { translations: true } });
+  if (!row) return null;
+  return {
+    id: row.id,
+    slug: row.slug,
+    industryId: row.industryId,
+    status: row.status,
+    deliveredAt: row.deliveredAt ? row.deliveredAt.toISOString().slice(0, 10) : "",
+    leadTimeWeeks: row.leadTimeWeeks,
+    translations: row.translations.map((t) => ({
+      locale: t.locale,
+      title: t.title,
+      description: t.description,
+      outcome: t.outcome,
+      scope: t.scope,
+      location: t.location,
+    })),
+  };
+}
+
+/** Create a project (media defaults to []; Story 4.5 owns media). Returns the industry slug to bust. */
+export async function createProject(
+  data: ProjectScalars & { slug: string; translations: ProjectTranslationWrite[] },
+): Promise<{ id: string; slug: string; industrySlugs: string[] }> {
+  const created = await prisma.project.create({
+    data: {
+      slug: data.slug,
+      industryId: data.industryId ?? null,
+      status: data.status,
+      deliveredAt: data.deliveredAt ?? null,
+      leadTimeWeeks: data.leadTimeWeeks ?? null,
+      translations: {
+        create: data.translations.map((t) => ({
+          locale: t.locale,
+          title: t.title,
+          description: t.description,
+          outcome: t.outcome,
+          scope: t.scope,
+          location: t.location,
+        })),
+      },
+    },
+    select: { id: true, slug: true },
+  });
+  return { ...created, industrySlugs: await industrySlugs([data.industryId]) };
+}
+
+/**
+ * Update a project's scalars + replace its translations. `media` and `bomLines`
+ * are untouched (Story 4.5 / a later story). Returns the industry slugs to bust
+ * (old + new). `ok: false` if the project is gone.
+ */
+export async function updateProject(
+  id: string,
+  scalars: ProjectScalars,
+  translations: ProjectTranslationWrite[],
+): Promise<{ ok: boolean; slug: string | null; industrySlugs: string[] }> {
+  const existing = await prisma.project.findUnique({
+    where: { id },
+    select: { slug: true, industryId: true },
+  });
+  if (!existing) return { ok: false, slug: null, industrySlugs: [] };
+  await prisma.$transaction([
+    prisma.project.update({
+      where: { id },
+      data: {
+        industryId: scalars.industryId ?? null,
+        status: scalars.status,
+        deliveredAt: scalars.deliveredAt ?? null,
+        leadTimeWeeks: scalars.leadTimeWeeks ?? null,
+      },
+    }),
+    prisma.projectTranslation.deleteMany({ where: { projectId: id } }),
+    prisma.projectTranslation.createMany({
+      data: translations.map((t) => ({
+        projectId: id,
+        locale: t.locale,
+        title: t.title,
+        description: t.description,
+        outcome: t.outcome,
+        scope: t.scope,
+        location: t.location,
+      })),
+    }),
+  ]);
+  return {
+    ok: true,
+    slug: existing.slug,
+    industrySlugs: await industrySlugs([existing.industryId, scalars.industryId]),
+  };
+}
+
+/** Delete a project (owned BOM lines + translations cascade). Returns the slug +
+ *  industry slug to bust; a no-op (null slug) if it was already gone. */
+export async function deleteProject(
+  id: string,
+): Promise<{ slug: string | null; industrySlugs: string[] }> {
+  const existing = await prisma.project.findUnique({
+    where: { id },
+    select: { slug: true, industryId: true },
+  });
+  if (!existing) return { slug: null, industrySlugs: [] };
+  const slugs = await industrySlugs([existing.industryId]);
+  await prisma.project.delete({ where: { id } });
+  return { slug: existing.slug, industrySlugs: slugs };
+}

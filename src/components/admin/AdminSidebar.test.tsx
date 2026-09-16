@@ -44,12 +44,12 @@ describe("AdminSidebar", () => {
   });
 
   it("renders an unbuilt module as INERT — no href, a 'soon' marker", () => {
-    // Content (Story 4.4) is not shipped yet, so it stays inert.
-    // P5: flip Content's `available` to true and this reddens.
+    // Media (Story 4.5) is not shipped yet, so it stays inert.
+    // P5: flip Media's `available` to true and this reddens.
     const h = html();
-    expect(h).toContain("Content");
+    expect(h).toContain("Media");
     expect(h).toContain("soon");
-    expect(h).not.toContain('href="/admin/content"');
+    expect(h).not.toContain('href="/admin/media"');
   });
 
   it("logout posts to the Story 4.1 route with the locale", () => {
