@@ -116,3 +116,103 @@ export async function queryIndustryBySlug(
 
   return toIndustryListItem(industry, locale);
 }
+
+// ---- Writes (Story 4.4, admin CRUD) ---------------------------------------
+
+export interface IndustryEditData {
+  id: string;
+  slug: string;
+  translations: { locale: Locale; name: string; description: string | null }[];
+}
+
+/** All industries as {id, slug, name} for admin lists/pickers (EN fallback). */
+export async function listIndustryOptions(
+  locale: Locale,
+): Promise<{ id: string; slug: string; name: string }[]> {
+  const rows = await prisma.industry.findMany({
+    include: { translations: true },
+    orderBy: { slug: "asc" },
+  });
+  return rows.map((i) => {
+    const t = resolveTranslation(i.translations, locale);
+    return { id: i.id, slug: i.slug, name: t?.value.name ?? i.slug };
+  });
+}
+
+/** Load one industry's raw translations for editing, or null if absent. */
+export async function getIndustryForEdit(id: string): Promise<IndustryEditData | null> {
+  const row = await prisma.industry.findUnique({ where: { id }, include: { translations: true } });
+  if (!row) return null;
+  return {
+    id: row.id,
+    slug: row.slug,
+    translations: row.translations.map((t) => ({
+      locale: t.locale,
+      name: t.name,
+      description: t.description,
+    })),
+  };
+}
+
+export async function createIndustry(data: {
+  slug: string;
+  translations: { locale: Locale; name: string; description: string | null }[];
+}): Promise<{ id: string; slug: string }> {
+  return prisma.industry.create({
+    data: {
+      slug: data.slug,
+      translations: {
+        create: data.translations.map((t) => ({
+          locale: t.locale,
+          name: t.name,
+          description: t.description,
+        })),
+      },
+    },
+    select: { id: true, slug: true },
+  });
+}
+
+/** Replace an industry's translations (slug immutable). Returns the slug (for the
+ *  `industry:{slug}` purge tag) or null if the industry is gone. */
+export async function updateIndustryTranslations(
+  id: string,
+  translations: { locale: Locale; name: string; description: string | null }[],
+): Promise<string | null> {
+  const exists = await prisma.industry.findUnique({ where: { id }, select: { slug: true } });
+  if (!exists) return null;
+  await prisma.$transaction([
+    prisma.industryTranslation.deleteMany({ where: { industryId: id } }),
+    prisma.industryTranslation.createMany({
+      data: translations.map((t) => ({
+        industryId: id,
+        locale: t.locale,
+        name: t.name,
+        description: t.description,
+      })),
+    }),
+  ]);
+  return exists.slug;
+}
+
+/** How many rows would be affected by (and thus block) an industry delete. */
+export async function industryReferenceCounts(
+  id: string,
+): Promise<{ products: number; documents: number; services: number; projects: number }> {
+  const [products, documents, services, projects] = await Promise.all([
+    prisma.productIndustry.count({ where: { industryId: id } }),
+    prisma.documentIndustry.count({ where: { industryId: id } }),
+    prisma.serviceIndustry.count({ where: { industryId: id } }),
+    prisma.project.count({ where: { industryId: id } }),
+  ]);
+  return { products, documents, services, projects };
+}
+
+/** Delete an industry (translations cascade). Returns the slug (for the purge tag).
+ *  Caller must check references first. */
+export async function deleteIndustry(id: string): Promise<string | null> {
+  const row = await prisma.industry.findUnique({ where: { id }, select: { slug: true } });
+  if (!row) return null;
+  await prisma.industry.delete({ where: { id } });
+  return row.slug;
+}

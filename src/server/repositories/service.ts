@@ -99,3 +99,99 @@ export async function queryServices(locale: Locale): Promise<ServiceListItem[]> 
 
   return services.map((service) => toServiceListItem(service, locale));
 }
+
+// ---- Writes (Story 4.4, admin CRUD) ---------------------------------------
+
+export interface ServiceEditData {
+  id: string;
+  slug: string;
+  translations: { locale: Locale; name: string; description: string | null }[];
+}
+
+/** All services as {id, slug, name} for the admin list (EN fallback). */
+export async function listServiceOptions(
+  locale: Locale,
+): Promise<{ id: string; slug: string; name: string }[]> {
+  const rows = await prisma.service.findMany({
+    include: { translations: true },
+    orderBy: { slug: "asc" },
+  });
+  return rows.map((s) => ({
+    id: s.id,
+    slug: s.slug,
+    name: resolveTranslation(s.translations, locale)?.value.name ?? s.slug,
+  }));
+}
+
+/** Load one service's raw translations for editing, or null if absent. */
+export async function getServiceForEdit(id: string): Promise<ServiceEditData | null> {
+  const row = await prisma.service.findUnique({ where: { id }, include: { translations: true } });
+  if (!row) return null;
+  return {
+    id: row.id,
+    slug: row.slug,
+    translations: row.translations.map((t) => ({
+      locale: t.locale,
+      name: t.name,
+      description: t.description,
+    })),
+  };
+}
+
+/**
+ * The slugs of every industry this service is linked to (via ServiceIndustry).
+ * The service's name shows on those industry pages (`listServicesByIndustry`),
+ * so a create/update/delete must bust each `industry:{slug}` tag.
+ */
+export async function serviceLinkedIndustrySlugs(serviceId: string): Promise<string[]> {
+  const links = await prisma.serviceIndustry.findMany({
+    where: { serviceId },
+    select: { industry: { select: { slug: true } } },
+  });
+  return links.map((l) => l.industry.slug);
+}
+
+export async function createService(data: {
+  slug: string;
+  translations: { locale: Locale; name: string; description: string | null }[];
+}): Promise<{ id: string; slug: string }> {
+  return prisma.service.create({
+    data: {
+      slug: data.slug,
+      translations: {
+        create: data.translations.map((t) => ({
+          locale: t.locale,
+          name: t.name,
+          description: t.description,
+        })),
+      },
+    },
+    select: { id: true, slug: true },
+  });
+}
+
+/** Replace a service's translations (slug immutable). Returns false if absent. */
+export async function updateServiceTranslations(
+  id: string,
+  translations: { locale: Locale; name: string; description: string | null }[],
+): Promise<boolean> {
+  const exists = await prisma.service.findUnique({ where: { id }, select: { id: true } });
+  if (!exists) return false;
+  await prisma.$transaction([
+    prisma.serviceTranslation.deleteMany({ where: { serviceId: id } }),
+    prisma.serviceTranslation.createMany({
+      data: translations.map((t) => ({
+        serviceId: id,
+        locale: t.locale,
+        name: t.name,
+        description: t.description,
+      })),
+    }),
+  ]);
+  return true;
+}
+
+/** Delete a service (ServiceIndustry links + translations cascade). */
+export async function deleteService(id: string): Promise<void> {
+  await prisma.service.delete({ where: { id } });
+}

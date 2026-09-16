@@ -12,6 +12,7 @@ import {
 import {
   Field,
   TranslationTabs,
+  NAME_DESCRIPTION_FIELDS,
   useCatalogSubmit,
   flattenTranslations,
   errorText,
@@ -87,7 +88,7 @@ export function ManufacturerForm({
             <p className="font-mono text-[12px] text-muted">Slug: {initial?.slug} (fixed)</p>
           </>
         )}
-        <TranslationTabs withDescription />
+        <TranslationTabs fields={NAME_DESCRIPTION_FIELDS} />
         {formError && (
           <p role="alert" className="text-[13px] text-[#B42318]">
             {formError}

@@ -12,6 +12,7 @@ import {
 import {
   Field,
   TranslationTabs,
+  NAME_ONLY_FIELDS,
   useCatalogSubmit,
   flattenTranslations,
   errorText,
@@ -109,7 +110,7 @@ export function CategoryForm({
             ))}
           </select>
         </Field>
-        <TranslationTabs withDescription={false} />
+        <TranslationTabs fields={NAME_ONLY_FIELDS} />
         {formError && (
           <p role="alert" className="text-[13px] text-[#B42318]">
             {formError}

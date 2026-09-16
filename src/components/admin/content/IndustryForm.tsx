@@ -4,70 +4,64 @@ import { useForm, FormProvider } from "react-hook-form";
 import type { z } from "zod";
 import { useRouter } from "@/i18n/navigation";
 import { zodResolver } from "@/lib/zod-resolver";
-import { seriesCreateSchema, seriesUpdateSchema } from "@/server/admin/catalog/schema";
-import { createSeriesAction, updateSeriesAction } from "@/server/admin/catalog/series-actions";
+import { industryCreateSchema, industryUpdateSchema } from "@/server/admin/content/schema";
+import {
+  createIndustryAction,
+  updateIndustryAction,
+} from "@/server/admin/content/industry-actions";
 import {
   Field,
   TranslationTabs,
-  NAME_ONLY_FIELDS,
+  NAME_DESCRIPTION_FIELDS,
   useCatalogSubmit,
   flattenTranslations,
   errorText,
   inputClass,
   submitButtonClass,
-} from "./CatalogFormKit";
+} from "@/components/admin/catalog/CatalogFormKit";
 
 interface Values {
   id?: string;
   slug?: string;
-  manufacturerId: string;
   nameEn: string;
+  descriptionEn?: string;
   nameTr?: string;
+  descriptionTr?: string;
   nameRu?: string;
+  descriptionRu?: string;
 }
 
-export interface ManufacturerOption {
-  id: string;
-  name: string;
-}
-export interface SeriesInitial {
+export interface IndustryInitial {
   id: string;
   slug: string;
-  manufacturerId: string;
-  translations: { locale: string; name: string }[];
+  translations: { locale: string; name: string; description: string | null }[];
 }
 
-/** Series create/edit form (Story 4.3). Belongs to exactly one manufacturer (required). */
-export function SeriesForm({
+/** Industry create/edit form (Story 4.4). Slug set-at-create (Decision 2). */
+export function IndustryForm({
   mode,
   initial,
-  manufacturerOptions,
 }: {
   mode: "create" | "edit";
-  initial?: SeriesInitial;
-  manufacturerOptions: ManufacturerOption[];
+  initial?: IndustryInitial;
 }) {
   const router = useRouter();
   const schema = (mode === "create"
-    ? seriesCreateSchema
-    : seriesUpdateSchema) as unknown as z.ZodType<Values>;
+    ? industryCreateSchema
+    : industryUpdateSchema) as unknown as z.ZodType<Values>;
   const form = useForm<Values>({
     mode: "onBlur",
     resolver: zodResolver<Values, Values>(schema),
     defaultValues:
       mode === "edit" && initial
-        ? {
-            id: initial.id,
-            manufacturerId: initial.manufacturerId,
-            ...flattenTranslations(initial.translations),
-          }
-        : { slug: "", manufacturerId: "", nameEn: "" },
+        ? { id: initial.id, ...flattenTranslations(initial.translations) }
+        : { slug: "", nameEn: "" },
   });
   const { submit, formError } = useCatalogSubmit<Values>(
-    mode === "create" ? createSeriesAction : updateSeriesAction,
+    mode === "create" ? createIndustryAction : updateIndustryAction,
     form.setError,
     () => {
-      router.push("/admin/catalog/series");
+      router.push("/admin/content/industries");
       router.refresh();
     },
   );
@@ -91,21 +85,7 @@ export function SeriesForm({
             <p className="font-mono text-[12px] text-muted">Slug: {initial?.slug} (fixed)</p>
           </>
         )}
-        <Field
-          label="Manufacturer"
-          htmlFor="manufacturerId"
-          error={errorText(errors.manufacturerId?.message)}
-        >
-          <select id="manufacturerId" className={inputClass} {...form.register("manufacturerId")}>
-            <option value="">— Select a manufacturer —</option>
-            {manufacturerOptions.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <TranslationTabs fields={NAME_ONLY_FIELDS} />
+        <TranslationTabs fields={NAME_DESCRIPTION_FIELDS} />
         {formError && (
           <p role="alert" className="text-[13px] text-[#B42318]">
             {formError}
@@ -117,7 +97,7 @@ export function SeriesForm({
             disabled={form.formState.isSubmitting}
             className={submitButtonClass}
           >
-            {mode === "create" ? "Create series" : "Save changes"}
+            {mode === "create" ? "Create industry" : "Save changes"}
           </button>
         </div>
       </form>

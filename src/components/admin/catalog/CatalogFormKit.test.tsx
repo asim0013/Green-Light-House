@@ -1,7 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { useForm, FormProvider } from "react-hook-form";
-import { TranslationTabs, errorText, CATALOG_ERROR_TEXT } from "./CatalogFormKit";
+import {
+  TranslationTabs,
+  NAME_ONLY_FIELDS,
+  NAME_DESCRIPTION_FIELDS,
+  errorText,
+  CATALOG_ERROR_TEXT,
+} from "./CatalogFormKit";
 
 /**
  * The reusable catalog form kit (Story 4.3). `errorText` is the inline-English
@@ -22,10 +28,12 @@ describe("errorText", () => {
 });
 
 function Host({ withDescription }: { withDescription: boolean }) {
-  const form = useForm({ defaultValues: { nameEn: "", nameTr: "", nameRu: "" } });
+  const form = useForm({
+    defaultValues: { nameEn: "", nameTr: "", nameRu: "", descriptionEn: "" },
+  });
   return (
     <FormProvider {...form}>
-      <TranslationTabs withDescription={withDescription} />
+      <TranslationTabs fields={withDescription ? NAME_DESCRIPTION_FIELDS : NAME_ONLY_FIELDS} />
     </FormProvider>
   );
 }
@@ -43,7 +51,9 @@ describe("TranslationTabs", () => {
     expect(h).toContain('id="nameRu"');
   });
 
-  it("renders description fields only when withDescription is set", () => {
+  it("renders a field for every locale × config field (description only when configured)", () => {
+    // P5: drop the `type: "textarea"` field from NAME_DESCRIPTION_FIELDS and the
+    // description assertion reddens; the name-only config must never emit one.
     expect(renderToStaticMarkup(<Host withDescription={false} />)).not.toContain(
       'id="descriptionEn"',
     );

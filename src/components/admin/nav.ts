@@ -63,7 +63,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     icon: FolderOpen,
     path: "/content",
     story: "4.4",
-    available: false,
+    available: true,
   },
   { key: "media", label: "Media", icon: Image, path: "/media", story: "4.5", available: false },
   {
