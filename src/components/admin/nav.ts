@@ -55,7 +55,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     icon: Package,
     path: "/catalog",
     story: "4.3",
-    available: false,
+    available: true,
   },
   {
     key: "content",

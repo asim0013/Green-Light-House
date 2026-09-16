@@ -4,6 +4,17 @@ import { cached } from "@/lib/cache";
 import { TAGS } from "@/lib/cache-tags";
 import { resolveTranslation } from "@/server/i18n/resolveTranslation";
 
+/**
+ * A translation row to write (Story 4.3). Description is only meaningful for
+ * entities whose translation table has the column (Manufacturer, Product); the
+ * name-only entities pass it absent.
+ */
+export interface TranslationWrite {
+  locale: Locale;
+  name: string;
+  description?: string | null;
+}
+
 export interface ManufacturerListItem {
   id: string;
   slug: string;
@@ -43,4 +54,92 @@ export async function queryManufacturers(locale: Locale): Promise<ManufacturerLi
       isFallback: t?.isFallback ?? false,
     };
   });
+}
+
+// ---- Writes (Story 4.3, admin CRUD) ---------------------------------------
+
+/** All three-locale translations for the admin edit form (raw rows, no fallback). */
+export interface ManufacturerEditData {
+  id: string;
+  slug: string;
+  translations: { locale: Locale; name: string; description: string | null }[];
+}
+
+/** Load one manufacturer's raw translations for editing, or null if absent. */
+export async function getManufacturerForEdit(id: string): Promise<ManufacturerEditData | null> {
+  const row = await prisma.manufacturer.findUnique({
+    where: { id },
+    include: { translations: true },
+  });
+  if (!row) return null;
+  return {
+    id: row.id,
+    slug: row.slug,
+    translations: row.translations.map((t) => ({
+      locale: t.locale,
+      name: t.name,
+      description: t.description,
+    })),
+  };
+}
+
+/** Create a manufacturer with its translation rows. Throws on a duplicate slug (P2002). */
+export async function createManufacturer(data: {
+  slug: string;
+  translations: TranslationWrite[];
+}): Promise<{ id: string; slug: string }> {
+  return prisma.manufacturer.create({
+    data: {
+      slug: data.slug,
+      translations: {
+        create: data.translations.map((t) => ({
+          locale: t.locale,
+          name: t.name,
+          description: t.description ?? null,
+        })),
+      },
+    },
+    select: { id: true, slug: true },
+  });
+}
+
+/**
+ * Replace a manufacturer's translations (slug + logoUrl are immutable in 4.3).
+ * delete-all-then-recreate inside a transaction: honours `@@unique([manufacturerId, locale])`
+ * and makes a cleared tab remove its row. Returns false if the manufacturer is gone.
+ */
+export async function updateManufacturerTranslations(
+  id: string,
+  translations: TranslationWrite[],
+): Promise<boolean> {
+  const exists = await prisma.manufacturer.findUnique({ where: { id }, select: { id: true } });
+  if (!exists) return false;
+  await prisma.$transaction([
+    prisma.manufacturerTranslation.deleteMany({ where: { manufacturerId: id } }),
+    prisma.manufacturerTranslation.createMany({
+      data: translations.map((t) => ({
+        manufacturerId: id,
+        locale: t.locale,
+        name: t.name,
+        description: t.description ?? null,
+      })),
+    }),
+  ]);
+  return true;
+}
+
+/** How many rows would block a manufacturer delete (series + products reference it). */
+export async function manufacturerReferenceCounts(
+  id: string,
+): Promise<{ series: number; products: number }> {
+  const [series, products] = await Promise.all([
+    prisma.series.count({ where: { manufacturerId: id } }),
+    prisma.product.count({ where: { manufacturerId: id } }),
+  ]);
+  return { series, products };
+}
+
+/** Delete a manufacturer (translations cascade). Caller must check references first. */
+export async function deleteManufacturer(id: string): Promise<void> {
+  await prisma.manufacturer.delete({ where: { id } });
 }

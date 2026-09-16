@@ -268,3 +268,110 @@ export async function queryCategoryBySlug(
     })),
   };
 }
+
+// ---- Writes (Story 4.3, admin CRUD) ---------------------------------------
+
+export interface CategoryEditData {
+  id: string;
+  slug: string;
+  parentId: string | null;
+  translations: { locale: Locale; name: string }[];
+}
+
+/** Load one category's raw translations + parent for editing, or null if absent. */
+export async function getCategoryForEdit(id: string): Promise<CategoryEditData | null> {
+  const row = await prisma.category.findUnique({ where: { id }, include: { translations: true } });
+  if (!row) return null;
+  return {
+    id: row.id,
+    slug: row.slug,
+    parentId: row.parentId,
+    translations: row.translations.map((t) => ({ locale: t.locale, name: t.name })),
+  };
+}
+
+/** All categories as {id, slug, name} for admin pickers (EN fallback, uncached — admin-only). */
+export async function listCategoryOptions(
+  locale: Locale,
+): Promise<{ id: string; slug: string; name: string }[]> {
+  const rows = await prisma.category.findMany({
+    include: { translations: true },
+    orderBy: { slug: "asc" },
+  });
+  return rows.map((c) => {
+    const t = resolveTranslation(c.translations, locale);
+    return { id: c.id, slug: c.slug, name: t?.value.name ?? c.slug };
+  });
+}
+
+export async function createCategory(data: {
+  slug: string;
+  parentId?: string;
+  translations: { locale: Locale; name: string }[];
+}): Promise<{ id: string; slug: string }> {
+  return prisma.category.create({
+    data: {
+      slug: data.slug,
+      parentId: data.parentId ?? null,
+      translations: { create: data.translations.map((t) => ({ locale: t.locale, name: t.name })) },
+    },
+    select: { id: true, slug: true },
+  });
+}
+
+/**
+ * Would setting `proposedParentId` as the parent of `categoryId` create a cycle?
+ * (`category.ts` reads deliberately do NOT check this — it belongs on write, here.)
+ * Walks up from the proposed parent; a cycle exists if we reach `categoryId`.
+ */
+export async function wouldCreateCategoryCycle(
+  categoryId: string,
+  proposedParentId: string,
+): Promise<boolean> {
+  if (proposedParentId === categoryId) return true;
+  const rows = await prisma.category.findMany({ select: { id: true, parentId: true } });
+  const parentOf = new Map(rows.map((r) => [r.id, r.parentId]));
+  const seen = new Set<string>();
+  let cursor: string | null | undefined = proposedParentId;
+  while (cursor) {
+    if (cursor === categoryId) return true;
+    if (seen.has(cursor)) break; // guard against a pre-existing cycle in the data
+    seen.add(cursor);
+    cursor = parentOf.get(cursor) ?? null;
+  }
+  return false;
+}
+
+/** Update a category's parent + replace its translations. Returns false if absent. */
+export async function updateCategory(
+  id: string,
+  parentId: string | null,
+  translations: { locale: Locale; name: string }[],
+): Promise<boolean> {
+  const exists = await prisma.category.findUnique({ where: { id }, select: { id: true } });
+  if (!exists) return false;
+  await prisma.$transaction([
+    prisma.category.update({ where: { id }, data: { parentId } }),
+    prisma.categoryTranslation.deleteMany({ where: { categoryId: id } }),
+    prisma.categoryTranslation.createMany({
+      data: translations.map((t) => ({ categoryId: id, locale: t.locale, name: t.name })),
+    }),
+  ]);
+  return true;
+}
+
+/** How many rows would block a category delete (child categories + products). */
+export async function categoryReferenceCounts(
+  id: string,
+): Promise<{ children: number; products: number }> {
+  const [children, products] = await Promise.all([
+    prisma.category.count({ where: { parentId: id } }),
+    prisma.product.count({ where: { categoryId: id } }),
+  ]);
+  return { children, products };
+}
+
+/** Delete a category (translations cascade). Caller must check references first. */
+export async function deleteCategory(id: string): Promise<void> {
+  await prisma.category.delete({ where: { id } });
+}

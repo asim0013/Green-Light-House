@@ -17,13 +17,18 @@ describe("ADMIN_NAV config", () => {
     expect(byKey("dashboard").path).toBe("");
   });
 
-  it("every non-dashboard item maps to a later story and is not yet available", () => {
+  it("shipped modules are live; unbuilt modules stay inert", () => {
     // Guards the "visible but inert" default: a module must not be linkable
-    // before its story ships. Each module story flips its OWN item here.
-    for (const item of ADMIN_NAV.filter((i) => i.key !== "dashboard")) {
-      expect(item.available, `${item.key} should be inert until its story ships`).toBe(false);
+    // before its story ships. Dashboard (4.2) and Catalog (4.3) are live; the
+    // rest are inert until their own story flips them. Each module story flips
+    // its OWN item here.
+    const live = new Set(["dashboard", "catalog"]);
+    for (const item of ADMIN_NAV) {
+      expect(item.available, `${item.key} availability`).toBe(live.has(item.key));
       expect(item.story).toMatch(/^4\.\d/);
     }
+    // Catalog specifically went live in this story (P5: revert nav.ts and this reddens).
+    expect(byKey("catalog").available).toBe(true);
   });
 });
 
