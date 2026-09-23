@@ -26,6 +26,8 @@ export const CATALOG_ERROR_TEXT: Record<string, string> = {
   duplicateAttributeKey: "Attribute keys must be unique.",
   // Story 4.4 (editorial content):
   titleRequiredForLocale: "Add a title for this language, or clear its other fields.",
+  // Story 4.4b (team):
+  nameRequiredForLocale: "Add a name for this language, or clear its other fields.",
 };
 
 /** Map a stable error key (from zod or a server MutationError detail) to inline English. */

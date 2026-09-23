@@ -47,6 +47,15 @@ describe("collection tags", () => {
     expect(isKnownTag(TAGS.sla)).toBe(true);
   });
 
+  it("names the extensions Story 4.4b added for homepage + team content", () => {
+    // Same argument as `sla`: their own tags (not `catalog`), and the revalidate
+    // endpoint must ACCEPT them or every homepage/team publish is a silent no-op.
+    expect(TAGS.home).toBe("home");
+    expect(TAGS.team).toBe("team");
+    expect(isKnownTag(TAGS.home)).toBe(true);
+    expect(isKnownTag(TAGS.team)).toBe(true);
+  });
+
   it("lists every collection tag in ALL_COLLECTION_TAGS", () => {
     // ⚠️ A DELIBERATELY CLOSED SET. Every story that mints a tag must come here
     // and say so — that is the whole point, and it is why adding `sla` (Story
@@ -64,6 +73,8 @@ describe("collection tags", () => {
         "projects",
         "services",
         "sla",
+        "home",
+        "team",
       ].sort(),
     );
   });

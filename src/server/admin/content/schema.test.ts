@@ -5,6 +5,10 @@ import {
   serviceCreateSchema,
   projectCreateSchema,
   projectRows,
+  homeContentSchema,
+  homeContentRows,
+  teamCreateSchema,
+  teamRows,
 } from "./schema";
 import { issueDetails } from "@/server/rfq/schema";
 
@@ -103,5 +107,44 @@ describe("projectRows", () => {
       scope: null,
       location: "Москва",
     });
+  });
+});
+
+describe("homeContentSchema (singleton)", () => {
+  it("accepts partial copy + cert marks and defaults certMarks to []", () => {
+    const parsed = homeContentSchema.safeParse({ titleEn: "Hi", certMarks: ["ISO 9001"] });
+    expect(parsed.success).toBe(true);
+    const empty = homeContentSchema.safeParse({});
+    expect(empty.success).toBe(true);
+    if (empty.success) expect(empty.data.certMarks).toEqual([]);
+  });
+
+  it("homeContentRows writes a locale only when it has content", () => {
+    const rows = homeContentRows({ titleEn: "Hi", kickerEn: "K", titleRu: "" });
+    expect(rows.map((r) => r.locale)).toEqual(["en"]);
+    expect(rows[0].title).toBe("Hi");
+    expect(rows[0].manufacturersTitle).toBeNull();
+  });
+});
+
+describe("teamCreateSchema", () => {
+  it("requires an EN name and coerces order", () => {
+    const ok = teamCreateSchema.safeParse({ nameEn: "Aylin", order: "3" });
+    expect(ok.success).toBe(true);
+    if (ok.success) expect(ok.data.order).toBe(3);
+    expect(keyAt(teamCreateSchema, { nameEn: "", order: 0 }, "nameEn")).toBe("required");
+  });
+
+  it("rejects a TR role when the TR name is empty (orphaned row)", () => {
+    expect(keyAt(teamCreateSchema, { nameEn: "A", order: 0, roleTr: "Müdür" }, "roleTr")).toBe(
+      "nameRequiredForLocale",
+    );
+  });
+
+  it("teamRows: EN always, TR/RU only when named", () => {
+    expect(teamRows({ nameEn: "A", roleEn: "Ops" })).toEqual([
+      { locale: "en", name: "A", role: "Ops", bio: null },
+    ]);
+    expect(teamRows({ nameEn: "A", nameRu: "Я" }).map((r) => r.locale)).toEqual(["en", "ru"]);
   });
 });

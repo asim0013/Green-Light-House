@@ -4,6 +4,7 @@ import { SectionHeader } from "@/components/ui";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { CONTAINER } from "@/components/layout/container";
 import type { ManufacturerListItem } from "@/server/repositories/manufacturer";
+import type { HomeContent } from "@/server/repositories/home-content";
 
 /**
  * OEM partner marks (Story 1.7, FR8).
@@ -18,14 +19,23 @@ import type { ManufacturerListItem } from "@/server/repositories/manufacturer";
  * the image branch is the seam for Story 4.5 (media library), which also owns the
  * `images.remotePatterns` config that a remote logo URL would require.
  */
-export function HomeManufacturers({ manufacturers }: { manufacturers: ManufacturerListItem[] }) {
+export function HomeManufacturers({
+  manufacturers,
+  content = null,
+}: {
+  manufacturers: ManufacturerListItem[];
+  content?: HomeContent | null;
+}) {
   const t = useTranslations("Home");
 
   return (
     /* No hairline: the credibility band's ink fill is the separator. */
     <section className="bg-surface">
       <div className={`${CONTAINER} py-12 md:py-16`}>
-        <SectionHeader kicker={t("manufacturersKicker")} title={t("manufacturersTitle")} />
+        <SectionHeader
+          kicker={t("manufacturersKicker")}
+          title={content?.manufacturersTitle ?? t("manufacturersTitle")}
+        />
 
         {manufacturers.length === 0 ? (
           <p className="mt-6 text-ink-2">{t("manufacturersEmpty")}</p>

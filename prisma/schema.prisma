@@ -713,3 +713,76 @@ model AdminUser {
 
   @@map("admin_users")
 }
+
+/// HOMEPAGE EDITORIAL COPY (Story 4.4b — FR36 "Homepage content", FR38).
+///
+/// A SINGLETON on the `SlaProcess` idiom: a stable `key`-addressed parent + a
+/// per-locale translation table for the editorial copy. Was next-intl
+/// `messages` (`Home` namespace) + a hardcoded `CERTS` const until 4.4b; 4.4
+/// carved it out because no model existed. `certMarks` is locale-invariant
+/// (proper nouns identical in every locale — the old `CERTS` array), so it lives
+/// on the parent as JSON, NOT in the translation table. Story 4.4's homepage
+/// still reads `messages` as the ULTIMATE FALLBACK, so an unseeded row cannot
+/// break the page.
+model HomeContent {
+  id           String                   @id @default(cuid())
+  key          String                   @unique
+  certMarks    Json                     @default("[]") @map("cert_marks")
+  createdAt    DateTime                 @default(now()) @map("created_at")
+  updatedAt    DateTime                 @updatedAt @map("updated_at")
+  translations HomeContentTranslation[]
+
+  @@map("home_content")
+}
+
+model HomeContentTranslation {
+  id                 String      @id @default(cuid())
+  homeContentId      String      @map("home_content_id")
+  locale             Locale
+  // The editable editorial strings (nullable — EN fallback + messages fallback).
+  kicker             String?
+  title              String?
+  lead               String?
+  noPrices           String?     @map("no_prices")
+  credibilityTitle   String?     @map("credibility_title")
+  capability         String?
+  ctaTitle           String?     @map("cta_title")
+  industriesTitle    String?     @map("industries_title")
+  industriesSub      String?     @map("industries_sub")
+  categoriesTitle    String?     @map("categories_title")
+  manufacturersTitle String?     @map("manufacturers_title")
+  homeContent        HomeContent @relation(fields: [homeContentId], references: [id], onDelete: Cascade)
+
+  @@unique([homeContentId, locale])
+  @@map("home_content_translations")
+}
+
+/// TEAM MEMBERS (Story 4.4b — FR36 "Team", FR38). Greenfield: no model/route
+/// existed. The model + admin editor land here; the PUBLIC team page is deferred
+/// to Epic 5 (no `/team` route exists, `/about` is an Epic 5 404 stub). `name`
+/// is translated (the row anchor — RU may carry a Cyrillic transliteration);
+/// `photoKey` is nullable and NOT edited here — the media library (Story 4.5)
+/// owns photo selection.
+model TeamMember {
+  id           String                  @id @default(cuid())
+  order        Int                     @default(0)
+  photoKey     String?                 @map("photo_key")
+  createdAt    DateTime                @default(now()) @map("created_at")
+  updatedAt    DateTime                @updatedAt @map("updated_at")
+  translations TeamMemberTranslation[]
+
+  @@map("team_members")
+}
+
+model TeamMemberTranslation {
+  id       String     @id @default(cuid())
+  memberId String     @map("member_id")
+  locale   Locale
+  name     String
+  role     String?
+  bio      String?
+  member   TeamMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, locale])
+  @@map("team_member_translations")
+}

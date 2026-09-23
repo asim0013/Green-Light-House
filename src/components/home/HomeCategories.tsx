@@ -5,6 +5,7 @@ import { SectionHeader } from "@/components/ui";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { CONTAINER } from "@/components/layout/container";
 import type { CategoryListItem } from "@/server/repositories/category";
+import type { HomeContent } from "@/server/repositories/home-content";
 
 /**
  * Product-category signposts (Story 1.7, FR8) — the secondary browse path, shown
@@ -28,7 +29,13 @@ const CATEGORY_ICON: Record<string, LucideIcon> = {
   ppe: HardHat,
 };
 
-export function HomeCategories({ categories }: { categories: CategoryListItem[] }) {
+export function HomeCategories({
+  categories,
+  content = null,
+}: {
+  categories: CategoryListItem[];
+  content?: HomeContent | null;
+}) {
   const t = useTranslations("Home");
 
   return (
@@ -36,7 +43,10 @@ export function HomeCategories({ categories }: { categories: CategoryListItem[] 
        fill change, not both. */
     <section className="bg-surface-2">
       <div className={`${CONTAINER} py-12 md:py-16`}>
-        <SectionHeader kicker={t("categoriesKicker")} title={t("categoriesTitle")} />
+        <SectionHeader
+          kicker={t("categoriesKicker")}
+          title={content?.categoriesTitle ?? t("categoriesTitle")}
+        />
 
         {categories.length === 0 ? (
           <p className="mt-6 text-ink-2">{t("categoriesEmpty")}</p>

@@ -18,6 +18,16 @@ const SECTIONS = [
     label: "Industries",
     desc: "The sectors that drive the IA and landing pages.",
   },
+  {
+    href: "/admin/content/homepage",
+    label: "Homepage",
+    desc: "The homepage hero, credibility copy and certification marks.",
+  },
+  {
+    href: "/admin/content/team",
+    label: "Team",
+    desc: "Team members (public page arrives in Epic 5).",
+  },
 ];
 
 export default function ContentIndexPage() {

@@ -155,3 +155,131 @@ export function projectRows(input: Record<string, unknown>): ProjectTranslationR
   add("Ru", "ru");
   return rows;
 }
+
+// ---- Homepage content (singleton — Story 4.4b) -----------------------------
+// The editable editorial strings; all optional (the homepage falls back to the
+// `messages` `Home` namespace field by field, so even EN can be blank).
+const HOME_FIELDS = [
+  "kicker",
+  "title",
+  "lead",
+  "noPrices",
+  "credibilityTitle",
+  "capability",
+  "ctaTitle",
+  "industriesTitle",
+  "industriesSub",
+  "categoriesTitle",
+  "manufacturersTitle",
+] as const;
+
+const LOCALE_CAP = [
+  ["En", "en"],
+  ["Tr", "tr"],
+  ["Ru", "ru"],
+] as const;
+
+function homeContentShape(): Record<string, z.ZodTypeAny> {
+  const shape: Record<string, z.ZodTypeAny> = {};
+  for (const [cap] of LOCALE_CAP)
+    for (const f of HOME_FIELDS) shape[`${f}${cap}`] = optionalText(4000);
+  return shape;
+}
+
+export const homeContentSchema = z.object({
+  certMarks: z
+    .array(z.string().trim().min(1, "required").max(64, "tooLong"))
+    .max(20, "tooLong")
+    .optional()
+    .default([]),
+  ...homeContentShape(),
+});
+export type HomeContentInput = z.infer<typeof homeContentSchema>;
+
+export interface HomeLocaleRow {
+  locale: "en" | "tr" | "ru";
+  [field: string]: string | null;
+}
+
+/** Build per-locale homepage rows: a locale is written when ANY of its fields is set. */
+export function homeContentRows(input: Record<string, unknown>): HomeLocaleRow[] {
+  const rows: HomeLocaleRow[] = [];
+  for (const [cap, locale] of LOCALE_CAP) {
+    const row: HomeLocaleRow = { locale };
+    let any = false;
+    for (const f of HOME_FIELDS) {
+      const v = (input[`${f}${cap}`] as string | undefined) ?? null;
+      row[f] = v;
+      if (v) any = true;
+    }
+    if (any) rows.push(row);
+  }
+  return rows;
+}
+
+// ---- Team members (Story 4.4b) ---------------------------------------------
+// `name` is the row anchor (EN required); `role`/`bio` optional; a role/bio for a
+// locale with no name would orphan the row.
+const TEAM_OPTIONAL = ["role", "bio"] as const;
+
+function teamTranslationShape(): Record<string, z.ZodTypeAny> {
+  const shape: Record<string, z.ZodTypeAny> = {
+    nameEn: requiredText(200),
+    nameTr: optionalText(200),
+    nameRu: optionalText(200),
+  };
+  for (const [cap] of LOCALE_CAP)
+    for (const f of TEAM_OPTIONAL) shape[`${f}${cap}`] = optionalText(2000);
+  return shape;
+}
+
+function teamLocaleGuard<T extends z.ZodTypeAny>(schema: T) {
+  return schema.superRefine((value, ctx) => {
+    const v = value as Record<string, unknown>;
+    for (const [cap] of LOCALE_CAP) {
+      if (cap === "En" || v[`name${cap}`]) continue;
+      for (const f of TEAM_OPTIONAL) {
+        if (v[`${f}${cap}`]) {
+          ctx.addIssue({ code: "custom", path: [`${f}${cap}`], message: "nameRequiredForLocale" });
+        }
+      }
+    }
+  });
+}
+
+const orderField = z.preprocess(
+  (val) => (val === "" || val === undefined || val === null ? 0 : val),
+  z.coerce.number().int("invalid").min(0, "invalid").max(9999, "invalid"),
+);
+
+export const teamCreateSchema = teamLocaleGuard(
+  z.object({ order: orderField, ...teamTranslationShape() }),
+);
+export const teamUpdateSchema = teamLocaleGuard(
+  z.object({ id: idField, order: orderField, ...teamTranslationShape() }),
+);
+export type TeamCreateInput = z.infer<typeof teamCreateSchema>;
+export type TeamUpdateInput = z.infer<typeof teamUpdateSchema>;
+
+export interface TeamTranslationRow {
+  locale: "en" | "tr" | "ru";
+  name: string;
+  role: string | null;
+  bio: string | null;
+}
+
+/** Build team translation rows: EN always; TR/RU only when their name is set. */
+export function teamRows(input: Record<string, unknown>): TeamTranslationRow[] {
+  const rows: TeamTranslationRow[] = [];
+  for (const [cap, locale] of LOCALE_CAP) {
+    const name = input[`name${cap}`] as string | undefined;
+    if (!name) continue;
+    rows.push({
+      locale,
+      name,
+      role: (input[`role${cap}`] as string | undefined) ?? null,
+      bio: (input[`bio${cap}`] as string | undefined) ?? null,
+    });
+  }
+  return rows;
+}
