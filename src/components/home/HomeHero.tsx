@@ -10,6 +10,7 @@ import { projectHref } from "@/lib/project-href";
 import { SlaSummary } from "@/components/sla/SlaSummary";
 import type { ProjectListItem } from "@/server/repositories/project";
 import type { SlaContent } from "@/server/repositories/sla";
+import type { HomeContent } from "@/server/repositories/home-content";
 import { hasSlaSummary } from "@/lib/sla-content";
 
 /**
@@ -29,12 +30,15 @@ import { hasSlaSummary } from "@/lib/sla-content";
 export function HomeHero({
   project,
   sla,
+  content = null,
 }: {
   project: ProjectListItem | null;
   /** The response process (Story 3.5). `null` only in the degenerate
    *  unseeded-content case, where the trust line renders nothing at all rather
    *  than an empty ruled block. */
   sla: SlaContent | null;
+  /** Editable homepage copy (Story 4.4b). `null`/missing field → `messages` fallback. */
+  content?: HomeContent | null;
 }) {
   const t = useTranslations("Home");
   const tNav = useTranslations("Nav");
@@ -47,15 +51,15 @@ export function HomeHero({
           sideWidth={420}
           main={
             <div>
-              <Kicker tone="ink">{t("kicker")}</Kicker>
+              <Kicker tone="ink">{content?.kicker ?? t("kicker")}</Kicker>
               {/* Type steps down at the narrowest widths: at 34px the Russian
                   "противопожарное" is wider than a 320px column and pushes the
                   page into horizontal scroll (measured: 8px overflow at 320). */}
               <h1 className="mt-3 font-heading text-[26px] font-bold leading-[1.1] tracking-tight text-ink sm:text-[34px] md:text-[44px]">
-                {t("title")}
+                {content?.title ?? t("title")}
               </h1>
               <p className="mt-5 max-w-[46ch] text-[17px] leading-relaxed text-ink-2">
-                {t("lead")}
+                {content?.lead ?? t("lead")}
               </p>
 
               <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-4">
@@ -88,7 +92,7 @@ export function HomeHero({
                   <SlaSummary sla={sla} tone="light" />
                 </p>
               )}
-              <p className="mt-2 text-sm text-ink-2">{t("noPrices")}</p>
+              <p className="mt-2 text-sm text-ink-2">{content?.noPrices ?? t("noPrices")}</p>
             </div>
           }
           side={project ? <ProofCard project={project} format={format} /> : <ProofEmpty />}

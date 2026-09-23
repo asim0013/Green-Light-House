@@ -14,6 +14,10 @@ import {
 // (zero imports), so pulling them into the seed drags nothing in.
 import { CONTACT } from "../src/config/contact";
 import { SITE } from "../src/config/site";
+// Story 4.4b: the homepage-content singleton is seeded FROM the same strings the
+// `Home` messages namespace still carries as the runtime fallback, plus the old
+// `CERTS` const. Values live in a fixtures module (zero imports), like the SLA seed.
+import { HOME_CONTENT_KEY, HOME_CONTENT_TEXT, CERT_MARKS } from "../scripts/home-fixtures";
 
 const prisma = new PrismaClient();
 
@@ -155,6 +159,32 @@ async function upsertSiteSettings() {
     update: values,
     create: { id: "singleton", ...values },
   });
+}
+
+/**
+ * The homepage-content singleton (Story 4.4b). Seeded verbatim from
+ * `scripts/home-fixtures.ts` — the same strings the `Home` messages namespace
+ * still carries as the runtime fallback — so the model reproduces today's
+ * homepage. Repairable AND retractable, exactly like the SLA process.
+ */
+async function upsertHomeContent() {
+  const home = await prisma.homeContent.upsert({
+    where: { key: HOME_CONTENT_KEY },
+    update: { certMarks: [...CERT_MARKS] },
+    create: { key: HOME_CONTENT_KEY, certMarks: [...CERT_MARKS] },
+  });
+  for (const { locale, ...fields } of HOME_CONTENT_TEXT) {
+    await prisma.homeContentTranslation.upsert({
+      where: { homeContentId_locale: { homeContentId: home.id, locale: Locale[locale] } },
+      update: fields,
+      create: { homeContentId: home.id, locale: Locale[locale], ...fields },
+    });
+  }
+  await deleteUnlistedLocales(
+    (locale) =>
+      prisma.homeContentTranslation.deleteMany({ where: { homeContentId: home.id, locale } }),
+    HOME_CONTENT_TEXT.map((t) => ({ locale: Locale[t.locale] })),
+  );
 }
 
 async function main() {
@@ -889,6 +919,7 @@ async function main() {
   });
 
   await upsertSiteSettings();
+  await upsertHomeContent();
 
   const counts = {
     industries: await prisma.industry.count(),
@@ -899,6 +930,8 @@ async function main() {
     projects: await prisma.project.count(),
     services: await prisma.service.count(),
     siteSettings: await prisma.siteSettings.count(),
+    homeContent: await prisma.homeContentTranslation.count(),
+    teamMembers: await prisma.teamMember.count(),
   };
   console.log("[seed] done:", counts);
 }

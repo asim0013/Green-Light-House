@@ -225,4 +225,38 @@ describe("HomeCredibility", () => {
     const html = renderToStaticMarkup(<HomeCredibility />);
     expect(html).toContain("bg-ink");
   });
+
+  // Story 4.4b: the editable model wins over messages when present; absent → the
+  // messages fallback (here the mock returns the key). P5: drop the `content?.x ??`
+  // in the component and the model values stop appearing.
+  it("prefers HomeContent model values over messages, and cert marks over CERTS", () => {
+    const content = {
+      kicker: null,
+      title: null,
+      lead: null,
+      noPrices: null,
+      credibilityTitle: "MODEL CRED TITLE",
+      capability: "MODEL CAPABILITY",
+      ctaTitle: "MODEL CTA",
+      industriesTitle: null,
+      industriesSub: null,
+      categoriesTitle: null,
+      manufacturersTitle: null,
+      certMarks: ["ZZZ-CERT-MARK"],
+      isFallback: false,
+    };
+    const html = renderToStaticMarkup(<HomeCredibility content={content} />);
+    expect(html).toContain("MODEL CRED TITLE");
+    expect(html).toContain("MODEL CAPABILITY");
+    expect(html).toContain("ZZZ-CERT-MARK");
+    // The message KEYS (what the mock renders as fallback) must NOT appear.
+    expect(html).not.toContain("credibilityTitle");
+    expect(html).not.toContain("ISO 9001");
+  });
+
+  it("falls back to messages when content is null", () => {
+    const html = renderToStaticMarkup(<HomeCredibility content={null} />);
+    expect(html).toContain("credibilityTitle"); // the mock's key-as-value fallback
+    expect(html).toContain("ISO 9001"); // the CERTS fallback
+  });
 });

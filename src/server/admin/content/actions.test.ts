@@ -48,13 +48,27 @@ vi.mock("@/server/repositories/project", () => ({
   deleteProject: (...a: unknown[]) => proj.deleteProject(...a),
 }));
 
+const home = { updateHomeContent: vi.fn() };
+vi.mock("@/server/repositories/home-content", () => ({
+  updateHomeContent: (...a: unknown[]) => home.updateHomeContent(...a),
+}));
+
+const team = { createTeamMember: vi.fn(), updateTeamMember: vi.fn(), deleteTeamMember: vi.fn() };
+vi.mock("@/server/repositories/team", () => ({
+  createTeamMember: (...a: unknown[]) => team.createTeamMember(...a),
+  updateTeamMember: (...a: unknown[]) => team.updateTeamMember(...a),
+  deleteTeamMember: (...a: unknown[]) => team.deleteTeamMember(...a),
+}));
+
 const { updateIndustryAction, deleteIndustryAction } = await import("./industry-actions");
 const { updateServiceAction } = await import("./service-actions");
 const { updateProjectAction } = await import("./project-actions");
+const { updateHomeContentAction } = await import("./home-actions");
+const { createTeamMemberAction, deleteTeamMemberAction } = await import("./team-actions");
 
 beforeEach(() => {
   revalidateTags.mockReset();
-  [ind, svc, proj].forEach((g) => Object.values(g).forEach((f) => f.mockReset()));
+  [ind, svc, proj, home, team].forEach((g) => Object.values(g).forEach((f) => f.mockReset()));
 });
 
 describe("industry actions", () => {
@@ -108,5 +122,32 @@ describe("project actions", () => {
       "industry:oil-gas",
       "industry:marine",
     ]);
+  });
+});
+
+describe("home content action", () => {
+  it("saves and busts the home tag", async () => {
+    home.updateHomeContent.mockResolvedValue(undefined);
+    const r = await updateHomeContentAction({ titleEn: "Hi", certMarks: ["ISO 9001"] });
+    expect(r.ok).toBe(true);
+    expect(home.updateHomeContent).toHaveBeenCalled();
+    expect(revalidateTags).toHaveBeenCalledWith(["home"]);
+  });
+});
+
+describe("team actions", () => {
+  it("create busts the team tag", async () => {
+    team.createTeamMember.mockResolvedValue({ id: "t1" });
+    const r = await createTeamMemberAction({ nameEn: "Aylin", order: 0 });
+    expect(r).toEqual({ ok: true, data: { id: "t1" } });
+    expect(revalidateTags).toHaveBeenCalledWith(["team"]);
+  });
+
+  it("delete busts the team tag", async () => {
+    team.deleteTeamMember.mockResolvedValue(undefined);
+    const r = await deleteTeamMemberAction("t1");
+    expect(r.ok).toBe(true);
+    expect(team.deleteTeamMember).toHaveBeenCalledWith("t1");
+    expect(revalidateTags).toHaveBeenCalledWith(["team"]);
   });
 });

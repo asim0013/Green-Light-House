@@ -5,6 +5,7 @@ import { setRequestLocale } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { getSlaContent } from "@/server/repositories/sla";
+import { getHomeContent } from "@/server/repositories/home-content";
 import { alternatesFor, robotsFor } from "@/lib/seo";
 import { listIndustries } from "@/server/repositories/industry";
 import { listManufacturers } from "@/server/repositories/manufacturer";
@@ -119,16 +120,21 @@ export default async function LocaleHome(props: { params: Promise<{ locale: stri
   // two consumers still makes a single round trip.
   const sla = await getSlaContent(locale);
 
+  // Story 4.4b: the editable homepage copy (React-`cache()`d). Nullable — the
+  // sections fall back to the `messages` `Home` namespace field by field, so an
+  // unseeded model renders exactly today's copy.
+  const content = await getHomeContent(locale);
+
   // Shared with `generateMetadata` above — one set of reads per request.
   const { projects, industries, categories, manufacturers } = await getHomepageData(locale);
 
   return (
     <>
-      <HomeHero project={projects[0] ?? null} sla={sla} />
-      <HomeIndustries industries={industries} />
-      <HomeCategories categories={categories} />
-      <HomeManufacturers manufacturers={manufacturers} />
-      <HomeCredibility />
+      <HomeHero project={projects[0] ?? null} sla={sla} content={content} />
+      <HomeIndustries industries={industries} content={content} />
+      <HomeCategories categories={categories} content={content} />
+      <HomeManufacturers manufacturers={manufacturers} content={content} />
+      <HomeCredibility content={content} />
     </>
   );
 }

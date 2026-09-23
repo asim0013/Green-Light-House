@@ -53,6 +53,10 @@ export const COLLECTION_TAGS = {
    * research converged on this one stale sentence.
    */
   sla: "sla",
+  /** Extension (Story 4.4b) — the homepage editorial-copy singleton. */
+  home: "home",
+  /** Extension (Story 4.4b) — the Team members collection. */
+  team: "team",
 } as const;
 
 export type CollectionTag = (typeof COLLECTION_TAGS)[keyof typeof COLLECTION_TAGS];

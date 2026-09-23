@@ -4,6 +4,7 @@ import { SectionHeader } from "@/components/ui";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { CONTAINER } from "@/components/layout/container";
 import type { IndustryListItem } from "@/server/repositories/industry";
+import type { HomeContent } from "@/server/repositories/home-content";
 
 /**
  * Industry entry points (Story 1.7, FR8) — the industry-led IA made visible on the
@@ -15,7 +16,13 @@ import type { IndustryListItem } from "@/server/repositories/industry";
  * multiplied. `/industries/<slug>` now exists for every seeded industry, so the
  * hrefs are wired — which is what this section was waiting for.
  */
-export function HomeIndustries({ industries }: { industries: IndustryListItem[] }) {
+export function HomeIndustries({
+  industries,
+  content = null,
+}: {
+  industries: IndustryListItem[];
+  content?: HomeContent | null;
+}) {
   const t = useTranslations("Home");
 
   return (
@@ -25,8 +32,8 @@ export function HomeIndustries({ industries }: { industries: IndustryListItem[] 
       <div className={`${CONTAINER} py-12 md:py-16`}>
         <SectionHeader
           kicker={t("industriesKicker")}
-          title={t("industriesTitle")}
-          sub={t("industriesSub")}
+          title={content?.industriesTitle ?? t("industriesTitle")}
+          sub={content?.industriesSub ?? t("industriesSub")}
         />
 
         {industries.length === 0 ? (
