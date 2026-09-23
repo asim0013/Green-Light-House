@@ -1,4 +1,4 @@
-import type { Locale } from "@prisma/client";
+import { Prisma, type Locale } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { cached } from "@/lib/cache";
 import { TAGS } from "@/lib/cache-tags";
@@ -620,6 +620,12 @@ export interface ProjectScalars {
   status: "draft" | "published";
   deliveredAt?: Date | null;
   leadTimeWeeks?: number | null;
+  /**
+   * The project's media (Story 4.5) — a frozen `ProjectMediaEntry[]` (with an
+   * additive `sourceAssetId`), built by the copy-on-attach helper. When provided
+   * it REPLACES `Project.media`; omit (undefined) to leave it untouched.
+   */
+  media?: ProjectMediaEntry[];
 }
 
 export interface ProjectEditData {
@@ -630,6 +636,8 @@ export interface ProjectEditData {
   /** yyyy-mm-dd for the date input, or "" when unset. */
   deliveredAt: string;
   leadTimeWeeks: number | null;
+  /** Source media-library asset id (from the attached entry's `sourceAssetId`), or null. */
+  mediaAssetId: string | null;
   translations: ProjectTranslationWrite[];
 }
 
@@ -665,6 +673,13 @@ async function industrySlugs(ids: (string | null | undefined)[]): Promise<string
   return rows.map((r) => r.slug);
 }
 
+/** The source library asset id carried on the (single) attached media entry, or null. */
+function mediaAssetIdOf(media: unknown): string | null {
+  if (!Array.isArray(media)) return null;
+  const first = media[0] as { sourceAssetId?: unknown } | undefined;
+  return first && typeof first.sourceAssetId === "string" ? first.sourceAssetId : null;
+}
+
 /** Load one project's editable fields + raw translations, or null if absent. */
 export async function getProjectForEdit(id: string): Promise<ProjectEditData | null> {
   const row = await prisma.project.findUnique({ where: { id }, include: { translations: true } });
@@ -676,6 +691,7 @@ export async function getProjectForEdit(id: string): Promise<ProjectEditData | n
     status: row.status,
     deliveredAt: row.deliveredAt ? row.deliveredAt.toISOString().slice(0, 10) : "",
     leadTimeWeeks: row.leadTimeWeeks,
+    mediaAssetId: mediaAssetIdOf(row.media),
     translations: row.translations.map((t) => ({
       locale: t.locale,
       title: t.title,
@@ -698,6 +714,7 @@ export async function createProject(
       status: data.status,
       deliveredAt: data.deliveredAt ?? null,
       leadTimeWeeks: data.leadTimeWeeks ?? null,
+      media: (data.media ?? []) as unknown as Prisma.InputJsonValue,
       translations: {
         create: data.translations.map((t) => ({
           locale: t.locale,
@@ -737,6 +754,10 @@ export async function updateProject(
         status: scalars.status,
         deliveredAt: scalars.deliveredAt ?? null,
         leadTimeWeeks: scalars.leadTimeWeeks ?? null,
+        // Provided → replace; omitted → leave the existing media untouched.
+        ...(scalars.media !== undefined
+          ? { media: scalars.media as unknown as Prisma.InputJsonValue }
+          : {}),
       },
     }),
     prisma.projectTranslation.deleteMany({ where: { projectId: id } }),

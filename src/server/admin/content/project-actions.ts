@@ -10,12 +10,14 @@ import {
 } from "@/server/admin/catalog/mutation";
 import { isUniqueViolation } from "@/server/admin/catalog/db-errors";
 import { projectCreateSchema, projectUpdateSchema, projectRows } from "./schema";
+import { buildProjectMedia } from "./project-media-attach";
 
 interface ProjectScalarInput {
   industryId?: string;
   status: "draft" | "published";
   deliveredAt?: string;
   leadTimeWeeks?: number;
+  mediaAssetId?: string;
 }
 
 /**
@@ -45,6 +47,7 @@ export async function createProjectAction(raw: unknown): Promise<MutationResult<
       const { id, slug, industrySlugs } = await createProject({
         slug: input.slug,
         ...scalars(input),
+        media: await buildProjectMedia(input.mediaAssetId),
         translations: projectRows(input),
       });
       return { tags: projectTags(slug, industrySlugs), data: { id } };
@@ -63,7 +66,7 @@ export async function updateProjectAction(raw: unknown): Promise<MutationResult<
   return withAdminMutation(projectUpdateSchema, raw, async (input) => {
     const { ok, slug, industrySlugs } = await updateProject(
       input.id,
-      scalars(input),
+      { ...scalars(input), media: await buildProjectMedia(input.mediaAssetId) },
       projectRows(input),
     );
     if (!ok || !slug) throw new MutationError("not_found", "That project no longer exists.");

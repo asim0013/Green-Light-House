@@ -62,6 +62,8 @@ export async function queryManufacturers(locale: Locale): Promise<ManufacturerLi
 export interface ManufacturerEditData {
   id: string;
   slug: string;
+  /** Current logo delivery href (`/api/media/<id>`), or null. Story 4.5. */
+  logoUrl: string | null;
   translations: { locale: Locale; name: string; description: string | null }[];
 }
 
@@ -75,6 +77,7 @@ export async function getManufacturerForEdit(id: string): Promise<ManufacturerEd
   return {
     id: row.id,
     slug: row.slug,
+    logoUrl: row.logoUrl,
     translations: row.translations.map((t) => ({
       locale: t.locale,
       name: t.name,
@@ -86,11 +89,13 @@ export async function getManufacturerForEdit(id: string): Promise<ManufacturerEd
 /** Create a manufacturer with its translation rows. Throws on a duplicate slug (P2002). */
 export async function createManufacturer(data: {
   slug: string;
+  logoUrl?: string | null;
   translations: TranslationWrite[];
 }): Promise<{ id: string; slug: string }> {
   return prisma.manufacturer.create({
     data: {
       slug: data.slug,
+      logoUrl: data.logoUrl ?? null,
       translations: {
         create: data.translations.map((t) => ({
           locale: t.locale,
@@ -104,17 +109,21 @@ export async function createManufacturer(data: {
 }
 
 /**
- * Replace a manufacturer's translations (slug + logoUrl are immutable in 4.3).
- * delete-all-then-recreate inside a transaction: honours `@@unique([manufacturerId, locale])`
- * and makes a cleared tab remove its row. Returns false if the manufacturer is gone.
+ * Replace a manufacturer's translations and set its logo (slug stays immutable).
+ * The logo (`logoUrl`, Story 4.5 — a `/api/media/<id>` href or null) is a media
+ * library selection, editable from 4.5 onward. delete-all-then-recreate inside a
+ * transaction honours `@@unique([manufacturerId, locale])`; a cleared tab removes
+ * its row. Returns false if the manufacturer is gone.
  */
 export async function updateManufacturerTranslations(
   id: string,
   translations: TranslationWrite[],
+  logoUrl: string | null = null,
 ): Promise<boolean> {
   const exists = await prisma.manufacturer.findUnique({ where: { id }, select: { id: true } });
   if (!exists) return false;
   await prisma.$transaction([
+    prisma.manufacturer.update({ where: { id }, data: { logoUrl } }),
     prisma.manufacturerTranslation.deleteMany({ where: { manufacturerId: id } }),
     prisma.manufacturerTranslation.createMany({
       data: translations.map((t) => ({

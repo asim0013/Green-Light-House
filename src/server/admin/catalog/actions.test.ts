@@ -57,6 +57,7 @@ describe("manufacturer actions", () => {
     expect(result).toEqual({ ok: true, data: { id: "m1" } });
     expect(repo.createManufacturer).toHaveBeenCalledWith({
       slug: "bosch",
+      logoUrl: null,
       translations: [{ locale: "en", name: "Bosch", description: null }],
     });
   });

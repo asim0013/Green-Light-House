@@ -896,7 +896,15 @@ export interface ProductEditData {
   seriesId: string | null;
   status: "draft" | "published";
   attributes: ProductAttributePair[];
+  /** Current media-library asset id (first entry), or null. Story 4.5. */
+  mediaAssetId: string | null;
   translations: { locale: Locale; name: string; description: string | null }[];
+}
+
+/** First media asset id stored on `Product.media` (provisional `string[]`), or null. */
+function firstMediaAssetId(value: Prisma.JsonValue): string | null {
+  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
+  return null;
 }
 
 /** JSONB `attributes` → the form's ordered key/value pairs (non-object → empty). */
@@ -921,6 +929,7 @@ export async function getProductForEdit(id: string): Promise<ProductEditData | n
     seriesId: row.seriesId,
     status: row.status,
     attributes: attributesToPairs(row.attributes),
+    mediaAssetId: firstMediaAssetId(row.media),
     translations: row.translations.map((t) => ({
       locale: t.locale,
       name: t.name,
@@ -936,9 +945,16 @@ export interface ProductWriteFields {
   seriesId?: string;
   status: "draft" | "published";
   attributes: Record<string, string>;
+  /**
+   * Media-library asset ids (Story 4.5). Provisional shape — a `string[]` of
+   * `MediaAsset` ids, currently at most one (the picker is single-select). No
+   * public reader yet; the product-detail media render + a richer entry shape are
+   * a later story. `mediaAssetReferenceCounts` scans this array by id.
+   */
+  media?: string[];
 }
 
-/** Create a product (media defaults to []; Story 4.5 owns media). Throws on duplicate slug. */
+/** Create a product. Throws on duplicate slug. */
 export async function createProduct(
   data: ProductWriteFields & {
     slug: string;
@@ -954,6 +970,7 @@ export async function createProduct(
       seriesId: data.seriesId ?? null,
       status: data.status,
       attributes: data.attributes,
+      media: data.media ?? [],
       translations: {
         create: data.translations.map((t) => ({
           locale: t.locale,
@@ -967,9 +984,10 @@ export async function createProduct(
 }
 
 /**
- * Update a product's editable scalars + replace its translations. `slug` and
- * `media` are intentionally NOT touched (slug is immutable in 4.3; media is
- * Story 4.5). Returns false if the product is gone.
+ * Update a product's editable scalars + media selection + replace its
+ * translations. `slug` stays immutable (4.3). `media` is the picker's selection
+ * (Story 4.5) — authoritative, so an edit rewrites it from the form. Returns
+ * false if the product is gone.
  */
 export async function updateProduct(
   id: string,
@@ -988,6 +1006,7 @@ export async function updateProduct(
         seriesId: fields.seriesId ?? null,
         status: fields.status,
         attributes: fields.attributes,
+        media: fields.media ?? [],
       },
     }),
     prisma.productTranslation.deleteMany({ where: { productId: id } }),

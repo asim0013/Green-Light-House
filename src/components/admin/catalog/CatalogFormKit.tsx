@@ -28,6 +28,15 @@ export const CATALOG_ERROR_TEXT: Record<string, string> = {
   titleRequiredForLocale: "Add a title for this language, or clear its other fields.",
   // Story 4.4b (team):
   nameRequiredForLocale: "Add a name for this language, or clear its other fields.",
+  // Story 4.5 (media library upload):
+  fileRequired: "Choose a file to upload.",
+  unsupportedType: "Unsupported file type. Images: JPG, PNG, WebP, AVIF. Video: MP4, WebM.",
+  fileTooLarge: "File is too large.",
+  fileCorrupt: "This file is not the type its name says it is.",
+  scanFailed: "This file could not be accepted (failed a security scan).",
+  storageUnavailable: "Storage is temporarily unavailable. Try again shortly.",
+  unauthorized: "Your session has expired. Sign in again.",
+  forbidden: "Request blocked.",
 };
 
 /** Map a stable error key (from zod or a server MutationError detail) to inline English. */

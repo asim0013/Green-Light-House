@@ -16,6 +16,8 @@ import {
   inputClass,
   submitButtonClass,
 } from "./CatalogFormKit";
+import { MediaPicker } from "@/components/admin/media/MediaPicker";
+import type { MediaPickerOption } from "@/lib/media";
 
 interface AttrPair {
   key: string;
@@ -30,6 +32,7 @@ interface Values {
   seriesId?: string;
   status: "draft" | "published";
   attributes: AttrPair[];
+  mediaAssetId?: string;
   nameEn: string;
   descriptionEn?: string;
   nameTr?: string;
@@ -54,22 +57,25 @@ export interface ProductInitial {
   seriesId: string | null;
   status: "draft" | "published";
   attributes: AttrPair[];
+  mediaAssetId: string | null;
   translations: { locale: string; name: string; description: string | null }[];
 }
 
-/** Product create/edit form (Story 4.3). Media is NOT edited here (Story 4.5). */
+/** Product create/edit form (Story 4.3; media selection added in Story 4.5). */
 export function ProductForm({
   mode,
   initial,
   manufacturerOptions,
   categoryOptions,
   seriesOptions,
+  mediaOptions,
 }: {
   mode: "create" | "edit";
   initial?: ProductInitial;
   manufacturerOptions: Option[];
   categoryOptions: Option[];
   seriesOptions: SeriesOption[];
+  mediaOptions: MediaPickerOption[];
 }) {
   const router = useRouter();
   const schema = (mode === "create"
@@ -88,6 +94,7 @@ export function ProductForm({
             seriesId: initial.seriesId ?? "",
             status: initial.status,
             attributes: initial.attributes,
+            mediaAssetId: initial.mediaAssetId ?? "",
             ...flattenTranslations(initial.translations),
           }
         : {
@@ -98,6 +105,7 @@ export function ProductForm({
             seriesId: "",
             status: "draft",
             attributes: [],
+            mediaAssetId: "",
             nameEn: "",
           },
   });
@@ -230,6 +238,13 @@ export function ProductForm({
         </fieldset>
 
         <TranslationTabs fields={NAME_DESCRIPTION_FIELDS} />
+
+        <MediaPicker
+          name="mediaAssetId"
+          label="Image (optional)"
+          options={mediaOptions}
+          hint="Pick an image from the media library. The public product image arrives in a later story."
+        />
 
         {formError && (
           <p role="alert" className="text-[13px] text-[#B42318]">

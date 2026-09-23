@@ -24,6 +24,8 @@ export interface TeamMemberRow {
 export interface TeamMemberEditData {
   id: string;
   order: number;
+  /** Selected media-library asset id (Story 4.5), or null. */
+  photoKey: string | null;
   translations: { locale: Locale; name: string; role: string | null; bio: string | null }[];
 }
 
@@ -49,6 +51,7 @@ export async function getTeamMemberForEdit(id: string): Promise<TeamMemberEditDa
   return {
     id: row.id,
     order: row.order,
+    photoKey: row.photoKey,
     translations: row.translations.map((t) => ({
       locale: t.locale,
       name: t.name,
@@ -60,11 +63,13 @@ export async function getTeamMemberForEdit(id: string): Promise<TeamMemberEditDa
 
 export async function createTeamMember(data: {
   order: number;
+  photoKey?: string | null;
   translations: TeamTranslationWrite[];
 }): Promise<{ id: string }> {
   const created = await prisma.teamMember.create({
     data: {
       order: data.order,
+      photoKey: data.photoKey ?? null,
       translations: {
         create: data.translations.map((t) => ({
           locale: t.locale,
@@ -79,16 +84,17 @@ export async function createTeamMember(data: {
   return created;
 }
 
-/** Update a member's order + replace translations (photoKey untouched — Story 4.5). Returns false if absent. */
+/** Update a member's order, photo and translations (Story 4.5 sets photoKey). Returns false if absent. */
 export async function updateTeamMember(
   id: string,
   order: number,
   translations: TeamTranslationWrite[],
+  photoKey: string | null = null,
 ): Promise<boolean> {
   const exists = await prisma.teamMember.findUnique({ where: { id }, select: { id: true } });
   if (!exists) return false;
   await prisma.$transaction([
-    prisma.teamMember.update({ where: { id }, data: { order } }),
+    prisma.teamMember.update({ where: { id }, data: { order, photoKey } }),
     prisma.teamMemberTranslation.deleteMany({ where: { memberId: id } }),
     prisma.teamMemberTranslation.createMany({
       data: translations.map((t) => ({

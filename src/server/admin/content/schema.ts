@@ -93,6 +93,10 @@ const projectScalars = {
   status: z.enum(["draft", "published"]),
   deliveredAt: optionalDate,
   leadTimeWeeks: optionalWeeks,
+  // Story 4.5: a single library image attached as the project's primary photo.
+  // The action copies it into the project's own `projects/` object (frozen
+  // delivery contract) and writes one `ProjectMediaEntry`.
+  mediaAssetId: optionalIdOrEmpty,
 } as const;
 
 /** Reject a TR/RU field supplied for a locale whose title is empty (an orphaned row). */
@@ -253,10 +257,15 @@ const orderField = z.preprocess(
 );
 
 export const teamCreateSchema = teamLocaleGuard(
-  z.object({ order: orderField, ...teamTranslationShape() }),
+  z.object({ order: orderField, photoAssetId: optionalIdOrEmpty, ...teamTranslationShape() }),
 );
 export const teamUpdateSchema = teamLocaleGuard(
-  z.object({ id: idField, order: orderField, ...teamTranslationShape() }),
+  z.object({
+    id: idField,
+    order: orderField,
+    photoAssetId: optionalIdOrEmpty,
+    ...teamTranslationShape(),
+  }),
 );
 export type TeamCreateInput = z.infer<typeof teamCreateSchema>;
 export type TeamUpdateInput = z.infer<typeof teamUpdateSchema>;

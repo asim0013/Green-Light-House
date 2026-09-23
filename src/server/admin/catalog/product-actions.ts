@@ -37,6 +37,7 @@ export async function createProductAction(raw: unknown): Promise<MutationResult<
         seriesId: input.seriesId,
         status: input.status,
         attributes: attributesObject(input.attributes),
+        media: input.mediaAssetId ? [input.mediaAssetId] : [],
         translations: nameDescriptionRows(input),
       });
       return { tags: productTags(id), data: { id } };
@@ -62,6 +63,7 @@ export async function updateProductAction(raw: unknown): Promise<MutationResult<
         seriesId: input.seriesId,
         status: input.status,
         attributes: attributesObject(input.attributes),
+        media: input.mediaAssetId ? [input.mediaAssetId] : [],
       },
       nameDescriptionRows(input),
     );

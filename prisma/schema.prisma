@@ -78,6 +78,14 @@ enum MatchType {
   alternative
 }
 
+/// Media library asset kind (Story 4.5 — FR37). Splits image vs video for
+/// delivery (video honours HTTP Range) and the upload allowlist (images exclude
+/// SVG; videos are a separate allowlist).
+enum MediaKind {
+  image
+  video
+}
+
 model Industry {
   id           String                @id @default(cuid())
   slug         String                @unique
@@ -785,4 +793,56 @@ model TeamMemberTranslation {
 
   @@unique([memberId, locale])
   @@map("team_member_translations")
+}
+
+/// MEDIA LIBRARY ASSET (Story 4.5 — FR37). Greenfield: no Media/Asset model
+/// existed; media was untyped JSONB (`Product.media`, `Project.media`) or scalar
+/// keys (`Manufacturer.logoUrl`, `TeamMember.photoKey`, `Document.fileKey`). This
+/// is the reusable library — upload once, reference from many content surfaces.
+///
+/// ⚠️ `storageKey` IS SERVER-ONLY — never selected into a client payload (same
+/// rule as `ProjectMediaEntry.storageKey`). The bucket stays private; assets are
+/// served same-origin through `/api/media/[id]`, never a bucket URL and never via
+/// `next/image` + `remotePatterns`. The `/`-rooted app-route href is what the
+/// existing next/image guards (e.g. HomeManufacturers) accept unchanged.
+///
+/// ⚠️ NO `scanStatus` COLUMN, deliberately. Unlike `Lead` (persist-first — a clean
+/// scan can still fail to upload and the lead is still kept), a persisted
+/// MediaAsset is CLEAN BY CONSTRUCTION: the upload path scans BEFORE `putObject`
+/// and creates no row on a non-clean scan or a failed upload. Nothing to record.
+///
+/// ⚠️ NO FK FROM CONSUMERS. Manufacturer/Team/Project/Product reference an asset
+/// through their existing scalar/JSON fields (logoUrl = `/api/media/<id>`,
+/// photoKey = asset id, media entries by storageKey), NOT a Prisma relation — so
+/// this migration is purely additive and breaks no frozen contract. Delete-safety
+/// is an app-level reference scan (`mediaAssetReferenceCounts`), not a FK cascade.
+///
+/// `alt` is per-locale copy (EN required at the zod boundary, TR/RU optional) —
+/// WCAG 2.1 AA (NFR3). A row exists only for a locale that has alt text.
+model MediaAsset {
+  id           String                  @id @default(cuid())
+  storageKey   String                  @unique @map("storage_key")
+  kind         MediaKind
+  mime         String
+  originalName String                  @map("original_name")
+  sizeBytes    Int                     @map("size_bytes")
+  width        Int?
+  height       Int?
+  createdAt    DateTime                @default(now()) @map("created_at")
+  updatedAt    DateTime                @updatedAt @map("updated_at")
+  translations MediaAssetTranslation[]
+
+  @@index([createdAt])
+  @@map("media_assets")
+}
+
+model MediaAssetTranslation {
+  id      String     @id @default(cuid())
+  assetId String     @map("asset_id")
+  locale  Locale
+  alt     String
+  asset   MediaAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([assetId, locale])
+  @@map("media_asset_translations")
 }

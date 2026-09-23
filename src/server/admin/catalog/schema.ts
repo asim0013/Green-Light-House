@@ -144,12 +144,16 @@ const attributesField = z
   .default([]);
 
 // ---- Manufacturer ----------------------------------------------------------
+// `logoAssetId` (Story 4.5) selects a media-library image; the action maps it to
+// `logoUrl = /api/media/<id>` (or null). Optional — a manufacturer may have no logo.
 export const manufacturerCreateSchema = withDescriptionNameGuard({
   slug: slugField,
+  logoAssetId: optionalId,
   ...nameDescriptionShape,
 });
 export const manufacturerUpdateSchema = withDescriptionNameGuard({
   id: idField,
+  logoAssetId: optionalId,
   ...nameDescriptionShape,
 });
 export type ManufacturerCreateInput = z.infer<typeof manufacturerCreateSchema>;
@@ -193,6 +197,11 @@ const productEditableShape = {
   seriesId: optionalId,
   status: z.enum(["draft", "published"]),
   attributes: attributesField,
+  // Story 4.5: a media-library image selection. Stored as a provisional
+  // reference (`Product.media = [assetId]`); the public product-detail media
+  // render + a richer gallery shape are deferred to a Product-media story (no
+  // reader exists today — see deferred-work).
+  mediaAssetId: optionalId,
 } as const;
 export const productCreateSchema = withDescriptionNameGuard({
   slug: slugField,

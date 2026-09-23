@@ -23,6 +23,7 @@ export async function createTeamMemberAction(
   return withAdminMutation(teamCreateSchema, raw, async (input) => {
     const { id } = await createTeamMember({
       order: input.order,
+      photoKey: input.photoAssetId ?? null,
       translations: teamRows(input as Record<string, unknown>),
     });
     return { tags: TEAM_TAGS, data: { id } };
@@ -37,6 +38,7 @@ export async function updateTeamMemberAction(
       input.id,
       input.order,
       teamRows(input as Record<string, unknown>),
+      input.photoAssetId ?? null,
     );
     if (!ok) throw new MutationError("not_found", "That team member no longer exists.");
     return { tags: TEAM_TAGS, data: { id: input.id } };

@@ -19,10 +19,13 @@ import {
   inputClass,
   submitButtonClass,
 } from "./CatalogFormKit";
+import { MediaPicker } from "@/components/admin/media/MediaPicker";
+import { mediaIdFromHref, type MediaPickerOption } from "@/lib/media";
 
 interface Values {
   id?: string;
   slug?: string;
+  logoAssetId?: string;
   nameEn: string;
   descriptionEn?: string;
   nameTr?: string;
@@ -34,6 +37,7 @@ interface Values {
 export interface ManufacturerInitial {
   id: string;
   slug: string;
+  logoUrl: string | null;
   translations: { locale: string; name: string; description: string | null }[];
 }
 
@@ -41,9 +45,11 @@ export interface ManufacturerInitial {
 export function ManufacturerForm({
   mode,
   initial,
+  mediaOptions,
 }: {
   mode: "create" | "edit";
   initial?: ManufacturerInitial;
+  mediaOptions: MediaPickerOption[];
 }) {
   const router = useRouter();
   // The runtime schema is the precise create/update schema; the form-values type
@@ -57,8 +63,12 @@ export function ManufacturerForm({
     resolver: zodResolver<Values, Values>(schema),
     defaultValues:
       mode === "edit" && initial
-        ? { id: initial.id, ...flattenTranslations(initial.translations) }
-        : { slug: "", nameEn: "" },
+        ? {
+            id: initial.id,
+            logoAssetId: mediaIdFromHref(initial.logoUrl) ?? "",
+            ...flattenTranslations(initial.translations),
+          }
+        : { slug: "", nameEn: "", logoAssetId: "" },
   });
   const { submit, formError } = useCatalogSubmit<Values>(
     mode === "create" ? createManufacturerAction : updateManufacturerAction,
@@ -89,6 +99,12 @@ export function ManufacturerForm({
           </>
         )}
         <TranslationTabs fields={NAME_DESCRIPTION_FIELDS} />
+        <MediaPicker
+          name="logoAssetId"
+          label="Logo"
+          options={mediaOptions}
+          hint="Pick an image from the media library. Shown on the homepage manufacturer strip."
+        />
         {formError && (
           <p role="alert" className="text-[13px] text-[#B42318]">
             {formError}

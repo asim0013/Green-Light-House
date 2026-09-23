@@ -15,6 +15,8 @@ import {
   submitButtonClass,
   type TranslationField,
 } from "@/components/admin/catalog/CatalogFormKit";
+import { MediaPicker } from "@/components/admin/media/MediaPicker";
+import type { MediaPickerOption } from "@/lib/media";
 
 const PROJECT_FIELDS: TranslationField[] = [
   { name: "title", label: "Title", required: true },
@@ -49,6 +51,7 @@ export interface ProjectInitial {
   status: "draft" | "published";
   deliveredAt: string;
   leadTimeWeeks: number | null;
+  mediaAssetId: string | null;
   translations: ProjectTranslationInitial[];
 }
 export interface IndustryOption {
@@ -78,10 +81,12 @@ export function ProjectForm({
   mode,
   initial,
   industryOptions,
+  mediaOptions,
 }: {
   mode: "create" | "edit";
   initial?: ProjectInitial;
   industryOptions: IndustryOption[];
+  mediaOptions: MediaPickerOption[];
 }) {
   const router = useRouter();
   const schema = (mode === "create"
@@ -98,6 +103,7 @@ export function ProjectForm({
             status: initial.status,
             deliveredAt: initial.deliveredAt,
             leadTimeWeeks: initial.leadTimeWeeks ?? "",
+            mediaAssetId: initial.mediaAssetId ?? "",
             ...flattenProject(initial.translations),
           }
         : {
@@ -106,6 +112,7 @@ export function ProjectForm({
             status: "draft",
             deliveredAt: "",
             leadTimeWeeks: "",
+            mediaAssetId: "",
             titleEn: "",
           },
   });
@@ -194,6 +201,13 @@ export function ProjectForm({
         </div>
 
         <TranslationTabs fields={PROJECT_FIELDS} />
+
+        <MediaPicker
+          name="mediaAssetId"
+          label="Primary photo (optional)"
+          options={mediaOptions}
+          hint="Pick an image from the media library. It is copied into the project and shown on the project page."
+        />
 
         {formError && (
           <p role="alert" className="text-[13px] text-[#B42318]">

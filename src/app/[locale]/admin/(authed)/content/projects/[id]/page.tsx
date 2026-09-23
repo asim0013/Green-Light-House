@@ -5,15 +5,17 @@ import { AdminTopbar } from "@/components/admin/AdminTopbar";
 import { ProjectForm } from "@/components/admin/content/ProjectForm";
 import { getProjectForEdit } from "@/server/repositories/project";
 import { listIndustryOptions } from "@/server/repositories/industry";
+import { listMediaAssetOptions } from "@/server/repositories/media";
 
 export default async function EditProjectPage(props: {
   params: Promise<{ locale: string; id: string }>;
 }) {
   const { locale, id } = await props.params;
   if (!hasLocale(routing.locales, locale)) notFound();
-  const [initial, industries] = await Promise.all([
+  const [initial, industries, mediaOptions] = await Promise.all([
     getProjectForEdit(id),
     listIndustryOptions(locale),
+    listMediaAssetOptions(locale),
   ]);
   if (!initial) notFound();
 
@@ -24,6 +26,7 @@ export default async function EditProjectPage(props: {
         mode="edit"
         initial={initial}
         industryOptions={industries.map((i) => ({ id: i.id, name: i.name }))}
+        mediaOptions={mediaOptions}
       />
     </>
   );
