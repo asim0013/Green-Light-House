@@ -18,6 +18,8 @@ import {
   submitButtonClass,
   type TranslationField,
 } from "@/components/admin/catalog/CatalogFormKit";
+import { MediaPicker } from "@/components/admin/media/MediaPicker";
+import type { MediaPickerOption } from "@/lib/media";
 
 const TEAM_FIELDS: TranslationField[] = [
   { name: "name", label: "Name", required: true },
@@ -36,6 +38,7 @@ interface Values {
 export interface TeamInitial {
   id: string;
   order: number;
+  photoKey: string | null;
   translations: { locale: string; name: string; role: string | null; bio: string | null }[];
 }
 
@@ -51,8 +54,16 @@ function flattenTeam(translations: TeamInitial["translations"]): Record<string, 
   return out;
 }
 
-/** Team member create/edit form (Story 4.4b). Photo is NOT edited here (Story 4.5). */
-export function TeamForm({ mode, initial }: { mode: "create" | "edit"; initial?: TeamInitial }) {
+/** Team member create/edit form (Story 4.4b; photo added in Story 4.5). */
+export function TeamForm({
+  mode,
+  initial,
+  mediaOptions,
+}: {
+  mode: "create" | "edit";
+  initial?: TeamInitial;
+  mediaOptions: MediaPickerOption[];
+}) {
   const router = useRouter();
   const schema = (mode === "create"
     ? teamCreateSchema
@@ -62,8 +73,13 @@ export function TeamForm({ mode, initial }: { mode: "create" | "edit"; initial?:
     resolver: zodResolver<Values, Values>(schema),
     defaultValues:
       mode === "edit" && initial
-        ? { id: initial.id, order: initial.order, ...flattenTeam(initial.translations) }
-        : { order: 0, nameEn: "" },
+        ? {
+            id: initial.id,
+            order: initial.order,
+            photoAssetId: initial.photoKey ?? "",
+            ...flattenTeam(initial.translations),
+          }
+        : { order: 0, nameEn: "", photoAssetId: "" },
   });
   const { submit, formError } = useCatalogSubmit<Values>(
     mode === "create" ? createTeamMemberAction : updateTeamMemberAction,
@@ -94,6 +110,12 @@ export function TeamForm({ mode, initial }: { mode: "create" | "edit"; initial?:
           />
         </Field>
         <TranslationTabs fields={TEAM_FIELDS} />
+        <MediaPicker
+          name="photoAssetId"
+          label="Photo"
+          options={mediaOptions}
+          hint="Pick a portrait from the media library. Rendered on the public team page (Epic 5)."
+        />
         {formError && (
           <p role="alert" className="text-[13px] text-[#B42318]">
             {formError}

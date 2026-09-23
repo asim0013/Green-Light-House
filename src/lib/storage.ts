@@ -4,6 +4,7 @@ import {
   HeadObjectCommand,
   PutObjectCommand,
   DeleteObjectCommand,
+  CopyObjectCommand,
   NoSuchKey,
 } from "@aws-sdk/client-s3";
 
@@ -148,6 +149,32 @@ export async function putObject(key: string, body: Uint8Array, contentType: stri
  */
 export async function deleteObject(key: string): Promise<void> {
   await s3().send(new DeleteObjectCommand({ Bucket: process.env.S3_BUCKET, Key: key }));
+}
+
+/**
+ * Server-side copy of one object to a new key (Story 4.5). Used when a media
+ * library asset (`media/…`) is attached to a project: the frozen `Project.media`
+ * delivery route serves only `projects/…` keys, so the selected image is copied
+ * into the project's own namespace rather than modifying that frozen route. The
+ * copy is independent of the library original — deleting the library asset does
+ * not affect the project. THROWS on any failure (operator error), like putObject.
+ */
+export async function copyObject(
+  sourceKey: string,
+  destinationKey: string,
+  contentType: string,
+): Promise<void> {
+  const bucket = process.env.S3_BUCKET;
+  await s3().send(
+    new CopyObjectCommand({
+      Bucket: bucket,
+      // CopySource is `<bucket>/<key>`, URL-encoded.
+      CopySource: `${bucket}/${encodeURIComponent(sourceKey)}`,
+      Key: destinationKey,
+      ContentType: contentType,
+      MetadataDirective: "REPLACE",
+    }),
+  );
 }
 
 /**

@@ -57,6 +57,12 @@ export const COLLECTION_TAGS = {
   home: "home",
   /** Extension (Story 4.4b) — the Team members collection. */
   team: "team",
+  /**
+   * Extension (Story 4.5) — the media library. Alt edits and deletes purge this;
+   * a change that also alters a consumer surface (a manufacturer logo, a project
+   * photo) additionally purges that consumer's own tag via its module's action.
+   */
+  media: "media",
 } as const;
 
 export type CollectionTag = (typeof COLLECTION_TAGS)[keyof typeof COLLECTION_TAGS];

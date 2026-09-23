@@ -56,6 +56,13 @@ describe("collection tags", () => {
     expect(isKnownTag(TAGS.team)).toBe(true);
   });
 
+  it("names the extension Story 4.5 added for the media library", () => {
+    // Alt edits and deletes purge `media`; a consumer-affecting change also purges
+    // that consumer's tag. Must be accepted by the revalidate endpoint.
+    expect(TAGS.media).toBe("media");
+    expect(isKnownTag(TAGS.media)).toBe(true);
+  });
+
   it("lists every collection tag in ALL_COLLECTION_TAGS", () => {
     // ⚠️ A DELIBERATELY CLOSED SET. Every story that mints a tag must come here
     // and say so — that is the whole point, and it is why adding `sla` (Story
@@ -75,6 +82,7 @@ describe("collection tags", () => {
         "sla",
         "home",
         "team",
+        "media",
       ].sort(),
     );
   });

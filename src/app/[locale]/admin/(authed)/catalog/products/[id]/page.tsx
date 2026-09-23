@@ -7,17 +7,19 @@ import { getProductForEdit } from "@/server/repositories/product";
 import { listManufacturers } from "@/server/repositories/manufacturer";
 import { listCategoryOptions } from "@/server/repositories/category";
 import { listSeriesAdminOptions } from "@/server/repositories/series";
+import { listMediaAssetOptions } from "@/server/repositories/media";
 
 export default async function EditProductPage(props: {
   params: Promise<{ locale: string; id: string }>;
 }) {
   const { locale, id } = await props.params;
   if (!hasLocale(routing.locales, locale)) notFound();
-  const [initial, manufacturers, categories, series] = await Promise.all([
+  const [initial, manufacturers, categories, series, mediaOptions] = await Promise.all([
     getProductForEdit(id),
     listManufacturers(locale),
     listCategoryOptions(locale),
     listSeriesAdminOptions(locale),
+    listMediaAssetOptions(locale),
   ]);
   if (!initial) notFound();
 
@@ -34,6 +36,7 @@ export default async function EditProductPage(props: {
           name: s.name,
           manufacturerId: s.manufacturerId,
         }))}
+        mediaOptions={mediaOptions}
       />
     </>
   );

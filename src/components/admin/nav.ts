@@ -65,7 +65,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     story: "4.4",
     available: true,
   },
-  { key: "media", label: "Media", icon: Image, path: "/media", story: "4.5", available: false },
+  { key: "media", label: "Media", icon: Image, path: "/media", story: "4.5", available: true },
   {
     key: "documents",
     label: "Documents",

@@ -15,6 +15,7 @@ import {
 } from "./schema";
 import { withAdminMutation, MutationError, type MutationResult } from "./mutation";
 import { isUniqueViolation } from "./db-errors";
+import { mediaHref } from "@/lib/media";
 
 /**
  * Manufacturer CRUD server actions (Story 4.3) — the pattern the other three
@@ -25,7 +26,9 @@ import { isUniqueViolation } from "./db-errors";
  * reads (verified), so busting it would be a silent no-op.
  */
 
-const MANUFACTURER_TAGS = [TAGS.manufacturers, TAGS.catalog] as const;
+// `home` is in the set (Story 4.5): the homepage manufacturer strip renders both
+// the name and the logo, so any manufacturer edit can change what it shows.
+const MANUFACTURER_TAGS = [TAGS.manufacturers, TAGS.catalog, TAGS.home] as const;
 
 export async function createManufacturerAction(
   raw: unknown,
@@ -34,6 +37,7 @@ export async function createManufacturerAction(
     try {
       const { id } = await createManufacturer({
         slug: input.slug,
+        logoUrl: input.logoAssetId ? mediaHref(input.logoAssetId) : null,
         translations: nameDescriptionRows(input),
       });
       return { tags: MANUFACTURER_TAGS, data: { id } };
@@ -52,7 +56,11 @@ export async function updateManufacturerAction(
   raw: unknown,
 ): Promise<MutationResult<{ id: string }>> {
   return withAdminMutation(manufacturerUpdateSchema, raw, async (input) => {
-    const ok = await updateManufacturerTranslations(input.id, nameDescriptionRows(input));
+    const ok = await updateManufacturerTranslations(
+      input.id,
+      nameDescriptionRows(input),
+      input.logoAssetId ? mediaHref(input.logoAssetId) : null,
+    );
     if (!ok) throw new MutationError("not_found", "That manufacturer no longer exists.");
     return { tags: MANUFACTURER_TAGS, data: { id: input.id } };
   });
