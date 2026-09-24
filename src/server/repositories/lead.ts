@@ -1,7 +1,18 @@
-import type { Prisma } from "@prisma/client";
+import type { Prisma, LeadStatus, LeadSource, Locale } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { deleteObject } from "@/lib/storage";
-import { PENDING_MAX_AGE_MS } from "@/lib/lead-attachment";
+import {
+  PENDING_MAX_AGE_MS,
+  toLeadAttachmentView,
+  type LeadAttachmentView,
+} from "@/lib/lead-attachment";
+import {
+  parseLeadEquipment,
+  labelOf,
+  parsePrefillContext,
+  type LeadEquipmentItem,
+  type PrefillContext,
+} from "@/server/rfq/contracts";
 
 /**
  * Lead writes (Story 3.2 — FR27/FR29's persist-first half).
@@ -274,6 +285,218 @@ export async function recordDeliveryFailure(id: string, reason: string): Promise
     where: { id },
     data: { deliveryFailureReason: [...kept, reason].join(";") },
   });
+}
+
+// ---- Admin reads (Story 4.7) ----------------------------------------------
+//
+// The FIRST general readers of the Lead model (3.2 wrote it, 3.3's email select
+// and the queue replay are the only other reads). UNCACHED by design — the admin
+// sees live data and leads have no public surface, so there is no tag and no
+// purge (this module's docstring named 4.7 the owner of that decision; the
+// decision is: none). `attachmentKey`/`storageKey` NEVER enter a returned DTO —
+// the attachment is projected through `toLeadAttachmentView`, whose union carries
+// no key on any branch.
+
+export interface AdminLeadRow {
+  id: string;
+  reference: string;
+  company: string;
+  name: string;
+  status: LeadStatus;
+  source: LeadSource;
+  createdAt: Date;
+  /** True when the lead carries an attachment in ANY state (the list indicator). */
+  hasAttachment: boolean;
+}
+
+/** All leads for the admin list, newest-first, optional status filter. Uses `@@index([status, createdAt])`. */
+export async function listLeadsForAdmin(filter?: LeadStatus): Promise<AdminLeadRow[]> {
+  const rows = await prisma.lead.findMany({
+    where: filter ? { status: filter } : undefined,
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      reference: true,
+      company: true,
+      name: true,
+      status: true,
+      source: true,
+      createdAt: true,
+      attachmentScanStatus: true,
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    reference: r.reference,
+    company: r.company,
+    name: r.name,
+    status: r.status,
+    source: r.source,
+    createdAt: r.createdAt,
+    hasAttachment: r.attachmentScanStatus !== null,
+  }));
+}
+
+export interface AdminLeadDetail {
+  id: string;
+  reference: string;
+  createdAt: Date;
+  status: LeadStatus;
+  source: LeadSource;
+  industry: string | null;
+  equipment: LeadEquipmentItem[];
+  prefillContext: PrefillContext;
+  projectDetails: string | null;
+  quantities: string | null;
+  timeline: string | null;
+  company: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  country: string | null;
+  locale: Locale | null;
+  consent: boolean;
+  consentAt: Date | null;
+  consentVersion: string | null;
+  /** No storage key on any branch; `href` (clean only) is the authenticated route. */
+  attachment: LeadAttachmentView;
+  notifiedAt: Date | null;
+  confirmationSentAt: Date | null;
+  deliveryFailureReason: string | null;
+}
+
+/** One lead fully projected for the detail view (frozen parsers), or null. */
+export async function getLeadForAdmin(id: string): Promise<AdminLeadDetail | null> {
+  const lead = await prisma.lead.findUnique({ where: { id } });
+  if (!lead) return null;
+  return {
+    id: lead.id,
+    reference: lead.reference,
+    createdAt: lead.createdAt,
+    status: lead.status,
+    source: lead.source,
+    industry: lead.industry,
+    equipment: parseLeadEquipment(lead.equipment),
+    prefillContext: parsePrefillContext(lead.prefillContext),
+    projectDetails: lead.projectDetails,
+    quantities: lead.quantities,
+    timeline: lead.timeline,
+    company: lead.company,
+    name: lead.name,
+    email: lead.email,
+    phone: lead.phone,
+    country: lead.country,
+    locale: lead.locale,
+    consent: lead.consent,
+    consentAt: lead.consentAt,
+    consentVersion: lead.consentVersion,
+    attachment: toLeadAttachmentView(lead),
+    notifiedAt: lead.notifiedAt,
+    confirmationSentAt: lead.confirmationSentAt,
+    deliveryFailureReason: lead.deliveryFailureReason,
+  };
+}
+
+/** Resolve the attachment storage key for the authenticated download route ONLY
+ *  when the lead's attachment is servable (clean + key present). Server-only. */
+export async function getServableLeadAttachment(
+  id: string,
+): Promise<{ storageKey: string; name: string; mime: string | null } | null> {
+  const lead = await prisma.lead.findUnique({
+    where: { id },
+    select: {
+      attachmentKey: true,
+      attachmentName: true,
+      attachmentMime: true,
+      attachmentScanStatus: true,
+    },
+  });
+  if (
+    !lead ||
+    lead.attachmentScanStatus !== "clean" ||
+    !lead.attachmentKey ||
+    !lead.attachmentName
+  ) {
+    return null;
+  }
+  return { storageKey: lead.attachmentKey, name: lead.attachmentName, mime: lead.attachmentMime };
+}
+
+/** Prisma "record not found" (P2025) — a row deleted between read and write. */
+function isRecordNotFound(error: unknown): boolean {
+  return (
+    typeof error === "object" && error !== null && (error as { code?: string }).code === "P2025"
+  );
+}
+
+/** Set a lead's status (Story 4.7). Returns false if the lead is gone (incl. a delete race). */
+export async function updateLeadStatus(id: string, status: LeadStatus): Promise<boolean> {
+  try {
+    await prisma.lead.update({ where: { id }, data: { status } });
+    return true;
+  } catch (error) {
+    if (isRecordNotFound(error)) return false;
+    throw error;
+  }
+}
+
+export interface LeadExportRow {
+  reference: string;
+  createdAt: Date;
+  status: LeadStatus;
+  source: LeadSource;
+  company: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  country: string | null;
+  locale: Locale | null;
+  industry: string | null;
+  equipment: string;
+  projectDetails: string | null;
+  quantities: string | null;
+  timeline: string | null;
+  consent: boolean;
+  consentAt: Date | null;
+  consentVersion: string | null;
+  attachmentName: string | null;
+  attachmentScanStatus: string | null;
+  notifiedAt: Date | null;
+  confirmationSentAt: Date | null;
+  deliveryFailureReason: string | null;
+}
+
+/** All leads flattened for CSV export (equipment → a `labelOf`-joined string), newest-first. */
+export async function listLeadsForExport(filter?: LeadStatus): Promise<LeadExportRow[]> {
+  const rows = await prisma.lead.findMany({
+    where: filter ? { status: filter } : undefined,
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map((lead) => ({
+    reference: lead.reference,
+    createdAt: lead.createdAt,
+    status: lead.status,
+    source: lead.source,
+    company: lead.company,
+    name: lead.name,
+    email: lead.email,
+    phone: lead.phone,
+    country: lead.country,
+    locale: lead.locale,
+    industry: lead.industry,
+    equipment: parseLeadEquipment(lead.equipment).map(labelOf).join("; "),
+    projectDetails: lead.projectDetails,
+    quantities: lead.quantities,
+    timeline: lead.timeline,
+    consent: lead.consent,
+    consentAt: lead.consentAt,
+    consentVersion: lead.consentVersion,
+    attachmentName: lead.attachmentName,
+    attachmentScanStatus: lead.attachmentScanStatus,
+    notifiedAt: lead.notifiedAt,
+    confirmationSentAt: lead.confirmationSentAt,
+    deliveryFailureReason: lead.deliveryFailureReason,
+  }));
 }
 
 /**
