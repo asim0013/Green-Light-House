@@ -28,6 +28,29 @@ function notFound(): Response {
   });
 }
 
+/**
+ * Build a safe `Content-Disposition` from the buyer's ORIGINAL filename.
+ *
+ * ⚠️ `attachmentName` is attacker-controlled and `isStorableText` DELIBERATELY
+ * permits CR/LF/tab (it also guards free-text fields). Interpolating it raw would
+ * (a) let CR/LF split the header and (b) throw in the Fetch `Headers` validator —
+ * an unhandled 500 on every download of that lead. So: an ASCII-only `filename`
+ * fallback (control chars, DEL, non-ASCII, quotes and backslashes filtered out by
+ * char code — no `\xNN` escapes in source, which the editor would turn into raw
+ * bytes) PLUS an RFC 5987 `filename*` that percent-encodes the full UTF-8 name for
+ * clients that read it (so Türkçe/Cyrillic names survive).
+ */
+function contentDisposition(name: string): string {
+  const ascii =
+    [...name]
+      .filter((ch) => {
+        const code = ch.charCodeAt(0);
+        return code > 0x1f && code < 0x7f && ch !== '"' && ch !== "\\";
+      })
+      .join("") || "download";
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+}
+
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireAdmin();
@@ -65,9 +88,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   const headers = new Headers({ "Cache-Control": "no-store" });
   headers.set("Content-Type", attachment.mime ?? "application/octet-stream");
-  // Filename from the buyer's original name; quote-escape to keep the header valid.
-  const safeName = attachment.name.replace(/["\\]/g, "_");
-  headers.set("Content-Disposition", `attachment; filename="${safeName}"`);
+  headers.set("Content-Disposition", contentDisposition(attachment.name));
   if (stored.contentLength !== undefined) {
     headers.set("Content-Length", String(stored.contentLength));
   }
