@@ -10,7 +10,8 @@ import { getSlaForEdit } from "@/server/repositories/sla";
  * `(authed)` layout guards; each save revalidates its own tag (`settings` /
  * `sla`) so edits go live with no deploy.
  */
-export default async function SettingsPage() {
+export default async function SettingsPage(props: { params: Promise<{ locale: string }> }) {
+  const { locale } = await props.params;
   const [settings, sla] = await Promise.all([getSiteSettingsForEdit(), getSlaForEdit()]);
   return (
     <>
@@ -25,6 +26,26 @@ export default async function SettingsPage() {
             No SLA process found — run <code>db:seed</code>.
           </p>
         )}
+      </div>
+      <div className="border-t border-border-subtle">
+        <AdminTopbar title="Backup / Export" subtitle="Operations · Download the full dataset (Story 4.9)" />
+        <div className="flex max-w-2xl flex-col gap-3 p-8">
+          <p className="text-[13px] text-ink-2">
+            Downloads the full catalog, content and leads as one re-importable JSON file for
+            backup or migration. Admin credentials are never included. Stored attachment and
+            media objects are backed up separately at the storage layer, not in this file.
+          </p>
+          {/* A PLAIN anchor (not next-intl <Link>) so the browser does a full GET and the
+              attachment downloads, rather than a client-side navigation to a file route. The
+              locale prefix is required — the route lives under /[locale]/admin. */}
+          <a
+            href={`/${locale}/admin/settings/export`}
+            download
+            className="self-start rounded bg-ink px-4 py-2 font-mono text-[13px] uppercase tracking-[0.08em] text-surface"
+          >
+            Export full dataset (JSON)
+          </a>
+        </div>
       </div>
     </>
   );
