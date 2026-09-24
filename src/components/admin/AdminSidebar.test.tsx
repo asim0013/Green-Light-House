@@ -50,13 +50,14 @@ describe("AdminSidebar", () => {
     expect(h).toContain('href="/admin/documents"');
   });
 
-  it("renders an unbuilt module as INERT — no href, a 'soon' marker", () => {
-    // Settings (Story 4.8) is not shipped yet, so it stays inert.
-    // P5: flip Settings' `available` to true and this reddens.
+  it("renders Settings (shipped in 4.8) as a live link — every module is now live", () => {
+    // Settings was the LAST inert module; Story 4.8 flips it live, so as of this
+    // story no 'soon' marker remains anywhere in the sidebar.
+    // P5: revert Settings' `available` to false in nav.ts and this reddens.
     const h = html();
     expect(h).toContain("Settings");
-    expect(h).toContain("soon");
-    expect(h).not.toContain('href="/admin/settings"');
+    expect(h).toContain('href="/admin/settings"');
+    expect(h).not.toContain("soon");
   });
 
   it("logout posts to the Story 4.1 route with the locale", () => {

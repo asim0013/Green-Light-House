@@ -4,6 +4,7 @@ import { setRequestLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { getSlaContent } from "@/server/repositories/sla";
+import { getSitePhone } from "@/server/repositories/site-settings";
 import { alternatesFor, robotsFor } from "@/lib/seo";
 import { isValidSlug } from "@/lib/slug";
 import { getProductPageData, signalsFromPageData, productHref } from "@/server/product-page";
@@ -118,6 +119,7 @@ export default async function ProductDetailPage(props: {
   // (see `SlaStepper`), and `getSlaContent` is React-`cache()`d so a page mounting
   // two consumers still makes a single round trip.
   const sla = await getSlaContent(locale);
+  const phone = await getSitePhone(); // Story 4.8 — admin-managed phone (SITE fallback)
 
   const safeSlug = gateSlug(slug);
   const data = safeSlug ? await getProductPageData(safeSlug, locale) : null;
@@ -191,7 +193,7 @@ export default async function ProductDetailPage(props: {
             <RelatedGrid title={t("accessoriesTitle")} products={accessories} />
           </div>
 
-          <ProductAnchorCard product={product} sla={sla} />
+          <ProductAnchorCard product={product} sla={sla} phone={phone} />
         </div>
       </section>
     </>

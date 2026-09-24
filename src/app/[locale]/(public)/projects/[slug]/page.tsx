@@ -4,6 +4,7 @@ import { setRequestLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { getSlaContent } from "@/server/repositories/sla";
+import { getSitePhone } from "@/server/repositories/site-settings";
 import { alternatesFor, robotsFor } from "@/lib/seo";
 import { isValidSlug } from "@/lib/slug";
 import { getProjectPageData, projectSignals, projectHref } from "@/server/project-page";
@@ -92,6 +93,7 @@ export default async function ProjectDetailPage(props: {
   // (see `SlaStepper`), and `getSlaContent` is React-`cache()`d so a page mounting
   // two consumers still makes a single round trip.
   const sla = await getSlaContent(locale);
+  const phone = await getSitePhone(); // Story 4.8 — admin-managed phone (SITE fallback)
 
   const t = await getTranslations({ locale, namespace: "Projects" });
   // Read from `Industry`: `deliveredOn` already exists there with reviewed TR/RU,
@@ -295,7 +297,7 @@ export default async function ProjectDetailPage(props: {
         </section>
       )}
 
-      <ProjectCta projectSlug={project.slug} sla={sla} />
+      <ProjectCta projectSlug={project.slug} sla={sla} phone={phone} />
     </>
   );
 }

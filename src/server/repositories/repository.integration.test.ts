@@ -26,7 +26,7 @@ import {
 } from "./document";
 import { queryServicesByIndustry, queryServices } from "./service";
 import { queryManufacturerOptions } from "./series";
-import { querySlaContent, SLA_PROCESS_KEY } from "./sla";
+import { querySlaContent, getSlaForEdit, reorderSlaSteps, SLA_PROCESS_KEY } from "./sla";
 // The seeded copy, read from the module the SEED writes from. Retyping any of it
 // here would mint a second source and the AC5 hygiene gate would fail on it.
 import { slaTextFor } from "../../../scripts/sla-fixtures";
@@ -1746,6 +1746,51 @@ describe("Story 3.5 — the SLA singleton (integration)", () => {
             where: { step: { process: { key: SLA_PROCESS_KEY } } },
           }),
         ).toBe(0);
+      } finally {
+        await restoreGraph();
+      }
+    });
+
+    it("reorders steps through the deferred-constraint transaction — a bare swap fails without it (Story 4.8, AC2)", async (ctx) => {
+      if (!dbReachable) return ctx.skip();
+      try {
+        const before = await getSlaForEdit();
+        expect(before, "expected the seeded SLA process").not.toBeNull();
+        const ids = before!.steps.map((s) => s.id); // ordered by sort asc
+        expect(ids.length, "need at least two steps to swap").toBeGreaterThanOrEqual(2);
+
+        // CONTROL — PROVES THE DEFERRAL IS LOAD-BEARING (P5). A bare two-statement
+        // swap WITHOUT `SET CONSTRAINTS ... DEFERRED` must still fail: statement 1
+        // sets step[0].sort to step[1]'s current value, colliding at END OF
+        // STATEMENT under the IMMEDIATE deferrable constraint. Remove the
+        // `SET CONSTRAINTS` line from `reorderSlaSteps` and the GREEN case below
+        // starts throwing exactly this way.
+        await expect(
+          prisma.$transaction([
+            prisma.slaStep.update({
+              where: { id: ids[0] },
+              data: { sort: before!.steps[1].sort },
+            }),
+            prisma.slaStep.update({
+              where: { id: ids[1] },
+              data: { sort: before!.steps[0].sort },
+            }),
+          ]),
+        ).rejects.toThrow();
+        // The failed transaction rolled back — order unchanged.
+        expect((await getSlaForEdit())!.steps.map((s) => s.id)).toEqual(ids);
+
+        // GREEN — the deferred-constraint transaction reorders with no collision.
+        const reversed = [...ids].reverse();
+        await reorderSlaSteps(reversed);
+        const after = await getSlaForEdit();
+        expect(after!.steps.map((s) => s.id)).toEqual(reversed);
+        expect(after!.steps.map((s) => s.sort)).toEqual(ids.map((_, i) => i + 1));
+
+        // Restore the original order (again via the deferred path); afterAll's
+        // byte-identity assertion is the backstop.
+        await reorderSlaSteps(ids);
+        expect((await getSlaForEdit())!.steps.map((s) => s.id)).toEqual(ids);
       } finally {
         await restoreGraph();
       }

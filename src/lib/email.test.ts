@@ -10,6 +10,12 @@ import {
   resolveNotifyRecipient,
 } from "./email";
 
+// Story 4.8: `resolveNotifyRecipient` now reads `SiteSettings.rfqNotifyTo` first
+// (admin-managed) and falls back to the env var. vitest loads `.env`, so an
+// unmocked read would hit live Postgres — mock the client and drive the row.
+vi.mock("@/lib/db", () => ({ prisma: { siteSettings: { findUnique: vi.fn() } } }));
+import { prisma } from "@/lib/db";
+
 /**
  * The transport seam (Story 3.3, AC12) and the header-safety guard (AC5).
  *
@@ -212,14 +218,38 @@ describe("MemoryTransport — the CI instrument", () => {
   });
 });
 
-describe("resolveNotifyRecipient — the ONE reader of RFQ_NOTIFY_TO (AC7)", () => {
-  it("returns the trimmed address, or null when there is nowhere to send", () => {
-    process.env.RFQ_NOTIFY_TO = "  aylin@glh.example  ";
-    expect(resolveNotifyRecipient()).toBe("aylin@glh.example");
-    process.env.RFQ_NOTIFY_TO = "   ";
-    expect(resolveNotifyRecipient()).toBeNull();
+describe("resolveNotifyRecipient — the ONE reader of RFQ_NOTIFY_TO (AC7); admin row wins (Story 4.8)", () => {
+  const findUnique = vi.mocked(prisma.siteSettings.findUnique);
+  afterEach(() => {
+    findUnique.mockReset();
     delete process.env.RFQ_NOTIFY_TO;
-    expect(resolveNotifyRecipient()).toBeNull();
+  });
+
+  it("prefers the admin-managed SiteSettings.rfqNotifyTo (trimmed) over the env fallback", async () => {
+    // P5: drop the row branch and this reddens — the env value would win instead.
+    findUnique.mockResolvedValue({ rfqNotifyTo: "  ops@glh.example  " } as never);
+    process.env.RFQ_NOTIFY_TO = "env@glh.example";
+    expect(await resolveNotifyRecipient()).toBe("ops@glh.example");
+  });
+
+  it("falls back to the trimmed env var when the row has no recipient", async () => {
+    findUnique.mockResolvedValue({ rfqNotifyTo: null } as never);
+    process.env.RFQ_NOTIFY_TO = "  aylin@glh.example  ";
+    expect(await resolveNotifyRecipient()).toBe("aylin@glh.example");
+  });
+
+  it("treats a blank row recipient as not-supplied and uses the env fallback", async () => {
+    findUnique.mockResolvedValue({ rfqNotifyTo: "   " } as never);
+    process.env.RFQ_NOTIFY_TO = "env@glh.example";
+    expect(await resolveNotifyRecipient()).toBe("env@glh.example");
+  });
+
+  it("returns null when neither the row nor the env supplies one", async () => {
+    findUnique.mockResolvedValue(null as never);
+    process.env.RFQ_NOTIFY_TO = "   ";
+    expect(await resolveNotifyRecipient()).toBeNull();
+    delete process.env.RFQ_NOTIFY_TO;
+    expect(await resolveNotifyRecipient()).toBeNull();
   });
 });
 

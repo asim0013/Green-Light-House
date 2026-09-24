@@ -3,7 +3,7 @@ import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { buttonClasses } from "@/components/ui/buttonClasses";
-import { SITE } from "@/config/site";
+import { SITE, type SitePhone } from "@/config/site";
 import type { SearchSuggestion } from "@/server/repositories/product";
 
 /**
@@ -29,9 +29,12 @@ import type { SearchSuggestion } from "@/server/repositories/product";
 export function SearchEmptyState({
   query,
   suggestions,
+  phone = SITE,
 }: {
   query: string;
   suggestions: readonly SearchSuggestion[];
+  /** The `tel:` phone (Story 4.8). Defaults to the `SITE` placeholder. */
+  phone?: SitePhone;
 }) {
   const t = useTranslations("Catalog");
   const tNav = useTranslations("Nav");
@@ -85,12 +88,12 @@ export function SearchEmptyState({
           {t("zeroCta", { query })}
         </Link>
         <a
-          href={`tel:${SITE.phone}`}
-          aria-label={`${tNav("phoneLabel")}: ${SITE.phoneDisplay}`}
+          href={`tel:${phone.phone}`}
+          aria-label={`${tNav("phoneLabel")}: ${phone.phoneDisplay}`}
           className="inline-flex min-h-11 items-center gap-2 whitespace-nowrap font-data text-[15px] text-ink hover:text-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
         >
           <Phone size={16} aria-hidden />
-          {SITE.phoneDisplay}
+          {phone.phoneDisplay}
         </a>
       </div>
     </div>

@@ -6,7 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { Link, usePathname } from "@/i18n/navigation";
 import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 import { buttonClasses } from "@/components/ui/buttonClasses";
-import { NAV_ITEMS, SITE } from "@/config/site";
+import { NAV_ITEMS, SITE, type SitePhone } from "@/config/site";
 import { isActivePath } from "./isActivePath";
 import { CONTAINER } from "./container";
 import { BrandMark } from "./BrandMark";
@@ -24,7 +24,7 @@ const DESKTOP_QUERY = "(min-width: 1280px)";
  * Client component: needs `usePathname` (active state) + menu state.
  * Nav links point at canonical routes that 404 until their stories build them.
  */
-export function SiteHeader() {
+export function SiteHeader({ phone = SITE }: { phone?: SitePhone }) {
   const t = useTranslations("Nav");
   const locale = useLocale();
   const pathname = usePathname();
@@ -80,17 +80,17 @@ export function SiteHeader() {
   const linkClass = (href: string) =>
     isActivePath(pathname, href) ? "font-semibold text-ink" : "text-ink-2 hover:text-ink";
 
-  const phone = (touch = false) => (
+  const phoneLink = (touch = false) => (
     <a
-      href={`tel:${SITE.phone}`}
+      href={`tel:${phone.phone}`}
       // The visible number is contained in the accessible name (WCAG 2.5.3).
-      aria-label={`${t("phoneLabel")}: ${SITE.phoneDisplay}`}
+      aria-label={`${t("phoneLabel")}: ${phone.phoneDisplay}`}
       className={`flex items-center gap-1.5 whitespace-nowrap font-data text-sm text-ink hover:text-accent ${
         touch ? "min-h-11 py-2" : ""
       }`}
     >
       <Phone size={15} aria-hidden />
-      {SITE.phoneDisplay}
+      {phone.phoneDisplay}
     </a>
   );
 
@@ -132,7 +132,7 @@ export function SiteHeader() {
         {/* Desktop right cluster */}
         <div className="hidden shrink-0 items-center gap-5 xl:flex">
           <LanguageSwitcher asLandmark />
-          {phone()}
+          {phoneLink()}
           <Link href={SITE.rfqHref} className={buttonClasses("primary", "whitespace-nowrap")}>
             {t("requestQuote")}
           </Link>
@@ -166,7 +166,7 @@ export function SiteHeader() {
               are mutually exclusive by breakpoint, so never two at once.
             */}
             <LanguageSwitcher asLandmark size="lg" />
-            {phone(true)}
+            {phoneLink(true)}
           </div>
           <Link
             href={SITE.rfqHref}

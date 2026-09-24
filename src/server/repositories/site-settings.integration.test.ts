@@ -1,6 +1,10 @@
 // @vitest-environment node
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
+import { querySitePhone, queryContactDetails } from "./site-settings";
+import { resolveNotifyRecipient } from "@/lib/email";
+import { CONTACT } from "@/config/contact";
+import { SITE } from "@/config/site";
 
 /**
  * The `SiteSettings` singleton — Story 4.0's ONLY test until Story 4.8 adds a
@@ -115,5 +119,98 @@ describe("SiteSettings singleton (integration)", () => {
     expect(rows[0].rfq_notify_to).toBe(TEST.rfqNotifyTo);
     expect(rows[0].phone_display).toBe(TEST.phoneDisplay);
     expect(rows[0].trade_registry_no).toBe(TEST.tradeRegistryNo);
+  });
+});
+
+/**
+ * Story 4.8 — the READER the file's docstring said this story would add. These
+ * live HERE (not in a separate file) on purpose: vitest parallelises test FILES
+ * by default, and two files mutating this one singleton row would race. Within a
+ * file the `it`s run in order, so these follow the 4.0 assertions above and the
+ * file's `afterAll` restores the original snapshot. Uses the UNCACHED query fns
+ * (the cached wrappers need the Next runtime), same as `queryHomeContent`.
+ */
+async function setRow(values: Partial<Record<(typeof VALUE_KEYS)[number], string | null>>) {
+  await prisma.siteSettings.upsert({
+    where: { id: SINGLETON },
+    update: values,
+    create: { id: SINGLETON, ...values },
+  });
+}
+
+afterEach(() => {
+  delete process.env.RFQ_NOTIFY_TO;
+});
+
+describe("getContactDetails — row values, CODE approvals (Story 4.8, AC4)", () => {
+  it("takes email/address/legal from the row, and approvals ALWAYS from contact.ts", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    await setRow({
+      contactEmail: "  ops@glh.example  ",
+      contactAddress: "Line one\nLine two",
+      legalName: "GLH Yangın A.Ş.",
+      tradeRegistryNo: "TR-123",
+      taxOffice: "Kadıköy",
+      taxNo: "TN-123",
+      mersisNo: "M-123",
+    });
+    const details = await queryContactDetails();
+    expect(details.email).toBe("ops@glh.example"); // trimmed via suppliedValue
+    expect(details.address).toBe("Line one\nLine two"); // interior whitespace kept
+    expect(details.legal.legalName).toBe("GLH Yangın A.Ş.");
+    expect(details.legal.mersisNo).toBe("M-123");
+    // ⛔ The safety invariant: approvals come from code, NOT the row (there is no
+    // approvals column). P5: source approvals from the row and this reddens.
+    expect(details.approvals).toEqual(CONTACT.approvals);
+  });
+
+  it("falls back field-by-field to contact.ts when the row is blank/null", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    await setRow({
+      contactEmail: null,
+      contactAddress: "   ",
+      legalName: null,
+      tradeRegistryNo: null,
+      taxOffice: null,
+      taxNo: null,
+      mersisNo: null,
+    });
+    const details = await queryContactDetails();
+    expect(details.email).toBe(CONTACT.email);
+    expect(details.address).toBe(CONTACT.address); // blank → not supplied → fallback
+    expect(details.legal.legalName).toBe(CONTACT.legal.legalName);
+  });
+});
+
+describe("getSitePhone — row value, SITE fallback (Story 4.8, AC5)", () => {
+  it("uses the row phone when supplied", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    await setRow({ phone: "+905551112233", phoneDisplay: "+90 555 111 22 33" });
+    expect(await querySitePhone()).toEqual({
+      phone: "+905551112233",
+      phoneDisplay: "+90 555 111 22 33",
+    });
+  });
+
+  it("falls back to SITE.phone when the row is blank/null", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    await setRow({ phone: "   ", phoneDisplay: null });
+    expect(await querySitePhone()).toEqual({ phone: SITE.phone, phoneDisplay: SITE.phoneDisplay });
+  });
+});
+
+describe("resolveNotifyRecipient — row wins, env fallback (Story 4.8, AC3)", () => {
+  it("routes to the admin-managed recipient over the env var", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    await setRow({ rfqNotifyTo: "  admin@glh.example  " });
+    process.env.RFQ_NOTIFY_TO = "env@glh.example";
+    expect(await resolveNotifyRecipient()).toBe("admin@glh.example");
+  });
+
+  it("falls back to the env var when the row has none", async (ctx) => {
+    if (!dbReachable) return ctx.skip();
+    await setRow({ rfqNotifyTo: null });
+    process.env.RFQ_NOTIFY_TO = "env@glh.example";
+    expect(await resolveNotifyRecipient()).toBe("env@glh.example");
   });
 });

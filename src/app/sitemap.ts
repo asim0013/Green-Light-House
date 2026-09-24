@@ -19,6 +19,7 @@ import { listServices } from "@/server/repositories/service";
 import { servicesSignals } from "@/server/services-page";
 import { rfqSignals } from "@/server/rfq-page";
 import { contactSignals } from "@/server/contact-page";
+import { getContactDetails } from "@/server/repositories/site-settings";
 import { projectsIndexSignals, projectSignals, projectHref } from "@/server/project-page";
 import { isValidSlug } from "@/lib/slug";
 
@@ -72,6 +73,12 @@ export const dynamic = "force-dynamic";
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // The three locales are independent — read them concurrently rather than
   // awaiting each in turn, which tripled this route's latency for no reason.
+  // Story 4.8: the contact/legal VALUES now come from the admin-editable
+  // `SiteSettings` row (config fallback), read ONCE — they are locale-invariant.
+  // The APPROVAL gates stay code-flipped inside this object, so filling values in
+  // admin cannot self-list /contact in the sitemap. Same object the page's
+  // generateMetadata builds from, so the two cannot drift (FR42a).
+  const contact = await getContactDetails();
   const perLocale = await Promise.all(
     routing.locales.map(async (locale) => {
       const [
@@ -161,11 +168,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         // `rfqSignals` for why /rfq cannot be thin — but routed through the
         // SAME predicate the page's robots metadata calls, never hard-coded.
         rfqIndexable: isIndexable(rfqSignals(locale)),
-        // Story 3.8. ⚠️ SELF-LIFTING: /contact is `isPlaceholder` while GLH has
-        // supplied no contact details, so it is absent here AND noindex — the
-        // same single fact driving both, exactly as /privacy does. The day the
-        // values land in `src/config/contact.ts` this flips with no code change.
-        contactIndexable: isIndexable(contactSignals(locale)),
+        // Story 3.8/4.8. ⚠️ SELF-LIFTING: /contact is `isPlaceholder` until the
+        // admin supplies the required VALUES *and* a human flips the code-side
+        // `translationsReviewed` gate — so filling values alone leaves it absent
+        // here AND noindex, the same single fact driving both, exactly as /privacy
+        // does. `contact` (the row + code approvals) is the SAME object the page's
+        // generateMetadata builds from, so the two cannot drift.
+        contactIndexable: isIndexable(contactSignals(locale, contact)),
         // One predicate per surface (Story 3.1): `projectsIndexSignals` is what
         // /projects' robots metadata uses. On today's seed this is TRUE for en/tr
         // and FALSE for ru — zero `ru` project translations means every row falls

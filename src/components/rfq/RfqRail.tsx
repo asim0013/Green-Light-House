@@ -2,6 +2,7 @@ import { useTranslations } from "next-intl";
 import { Kicker } from "@/components/ui";
 import { SlaStepper } from "@/components/sla/SlaStepper";
 import { TalkCard } from "./TalkCard";
+import { SITE, type SitePhone } from "@/config/site";
 import type { SlaContent } from "@/server/repositories/sla";
 
 /**
@@ -28,7 +29,7 @@ import type { SlaContent } from "@/server/repositories/sla";
  * - The cert marks are locale-invariant and deliberately NOT in messages
  *   (they are marks, not copy) — bare mono text, no chips, per the canvas.
  */
-export function RfqRail({ sla }: { sla: SlaContent | null }) {
+export function RfqRail({ sla, phone = SITE }: { sla: SlaContent | null; phone?: SitePhone }) {
   const t = useTranslations("Rfq");
 
   return (
@@ -49,7 +50,7 @@ export function RfqRail({ sla }: { sla: SlaContent | null }) {
 
       {/* Story 3.8: the SAME component /contact mounts. Story 3.6 closed the
           three deviations it once carried — see `TalkCard`. */}
-      <TalkCard />
+      <TalkCard phone={phone} />
 
       <div className="px-1">
         <Kicker tone="ink">{t("whyKicker")}</Kicker>

@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { getSlaContent } from "@/server/repositories/sla";
 import { getHomeContent } from "@/server/repositories/home-content";
+import { getSitePhone } from "@/server/repositories/site-settings";
 import { alternatesFor, robotsFor } from "@/lib/seo";
 import { listIndustries } from "@/server/repositories/industry";
 import { listManufacturers } from "@/server/repositories/manufacturer";
@@ -128,13 +129,16 @@ export default async function LocaleHome(props: { params: Promise<{ locale: stri
   // Shared with `generateMetadata` above — one set of reads per request.
   const { projects, industries, categories, manufacturers } = await getHomepageData(locale);
 
+  // Story 4.8: the admin-managed phone (SITE fallback), threaded into the tel: sites.
+  const phone = await getSitePhone();
+
   return (
     <>
-      <HomeHero project={projects[0] ?? null} sla={sla} content={content} />
+      <HomeHero project={projects[0] ?? null} sla={sla} content={content} phone={phone} />
       <HomeIndustries industries={industries} content={content} />
       <HomeCategories categories={categories} content={content} />
       <HomeManufacturers manufacturers={manufacturers} content={content} />
-      <HomeCredibility content={content} />
+      <HomeCredibility content={content} phone={phone} />
     </>
   );
 }

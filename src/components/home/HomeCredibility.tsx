@@ -4,7 +4,7 @@ import { Link } from "@/i18n/navigation";
 import { Chip, DarkBand, Kicker, TwoColumn } from "@/components/ui";
 import { buttonClasses } from "@/components/ui/buttonClasses";
 import { CONTAINER } from "@/components/layout/container";
-import { SITE } from "@/config/site";
+import { SITE, type SitePhone } from "@/config/site";
 import type { HomeContent } from "@/server/repositories/home-content";
 
 /**
@@ -30,7 +30,13 @@ import type { HomeContent } from "@/server/repositories/home-content";
  */
 const CERTS = ["ISO 9001", "CE", "EN 54", "A.TR"] as const;
 
-export function HomeCredibility({ content = null }: { content?: HomeContent | null }) {
+export function HomeCredibility({
+  content = null,
+  phone = SITE,
+}: {
+  content?: HomeContent | null;
+  phone?: SitePhone;
+}) {
   const t = useTranslations("Home");
   const tNav = useTranslations("Nav");
   const certs = content?.certMarks?.length ? content.certMarks : CERTS;
@@ -78,12 +84,12 @@ export function HomeCredibility({ content = null }: { content?: HomeContent | nu
                 {tNav("requestQuote")}
               </Link>
               <a
-                href={`tel:${SITE.phone}`}
-                aria-label={`${tNav("phoneLabel")}: ${SITE.phoneDisplay}`}
+                href={`tel:${phone.phone}`}
+                aria-label={`${tNav("phoneLabel")}: ${phone.phoneDisplay}`}
                 className={buttonClasses("onDarkSecondary", "min-h-11 w-full gap-2 font-data")}
               >
                 <Phone size={16} aria-hidden />
-                {SITE.phoneDisplay}
+                {phone.phoneDisplay}
               </a>
             </div>
           }
