@@ -45,9 +45,12 @@ export const ADMIN_NAV: AdminNavItem[] = [
     key: "inquiries",
     label: "Inquiries",
     icon: Inbox,
-    path: "/inquiries",
+    // URL base is `/leads` (not `/inquiries`): the frozen `leadAttachmentHref`
+    // (Story 3.7b) points at `/admin/leads/<id>/attachment`, so the whole module
+    // lives under `/admin/leads` for one coherent base.
+    path: "/leads",
     story: "4.7",
-    available: false,
+    available: true,
   },
   {
     key: "catalog",
