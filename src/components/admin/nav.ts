@@ -72,7 +72,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     icon: FileText,
     path: "/documents",
     story: "4.6",
-    available: false,
+    available: true,
   },
   {
     key: "settings",
