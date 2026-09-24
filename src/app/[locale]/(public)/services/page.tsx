@@ -15,6 +15,7 @@ import { buttonClasses } from "@/components/ui/buttonClasses";
 import { ServiceList } from "@/components/services/ServiceList";
 import { CONTAINER } from "@/components/layout/container";
 import { SITE } from "@/config/site";
+import { getSitePhone } from "@/server/repositories/site-settings";
 
 /**
  * SSR per request — reads live DB content, so it must never be baked into the
@@ -76,6 +77,7 @@ export default async function ServicesPage(props: { params: Promise<{ locale: st
 
   const services = await getServicesPageData(locale);
   const sla = await getSlaContent(locale);
+  const phone = await getSitePhone(); // Story 4.8 — admin-managed phone (SITE fallback)
   const t = await getTranslations({ locale, namespace: "Services" });
   const tNav = await getTranslations({ locale, namespace: "Nav" });
 
@@ -161,12 +163,12 @@ export default async function ServicesPage(props: { params: Promise<{ locale: st
                   {tNav("requestQuote")}
                 </Link>
                 <a
-                  href={`tel:${SITE.phone}`}
-                  aria-label={`${tNav("phoneLabel")}: ${SITE.phoneDisplay}`}
+                  href={`tel:${phone.phone}`}
+                  aria-label={`${tNav("phoneLabel")}: ${phone.phoneDisplay}`}
                   className={buttonClasses("onDarkSecondary", "min-h-11 w-full gap-2 font-data")}
                 >
                   <Phone size={16} aria-hidden />
-                  {SITE.phoneDisplay}
+                  {phone.phoneDisplay}
                 </a>
               </div>
             }

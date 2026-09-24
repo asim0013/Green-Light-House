@@ -4,7 +4,7 @@ import { Link } from "@/i18n/navigation";
 import { Kicker, DarkBand, TwoColumn } from "@/components/ui";
 import { buttonClasses } from "@/components/ui/buttonClasses";
 import { CONTAINER } from "@/components/layout/container";
-import { SITE } from "@/config/site";
+import { SITE, type SitePhone } from "@/config/site";
 import { SlaSummary } from "@/components/sla/SlaSummary";
 import type { SlaContent } from "@/server/repositories/sla";
 import { hasSlaSummary } from "@/lib/sla-content";
@@ -47,10 +47,13 @@ import { hasSlaSummary } from "@/lib/sla-content";
 export function ProjectCta({
   projectSlug,
   sla,
+  phone = SITE,
 }: {
   projectSlug?: string;
   /** The response process (Story 3.5); `null` only when unseeded. */
   sla: SlaContent | null;
+  /** The `tel:` phone (Story 4.8). Defaults to the `SITE` placeholder. */
+  phone?: SitePhone;
 }) {
   const t = useTranslations("Projects");
   const tNav = useTranslations("Nav");
@@ -103,12 +106,12 @@ export function ProjectCta({
                   obligation: a >=44px `tel:` action. 3.6's residual is click
                   tracking only. */}
               <a
-                href={`tel:${SITE.phone}`}
-                aria-label={`${tNav("phoneLabel")}: ${SITE.phoneDisplay}`}
+                href={`tel:${phone.phone}`}
+                aria-label={`${tNav("phoneLabel")}: ${phone.phoneDisplay}`}
                 className={buttonClasses("onDarkSecondary", "min-h-11 w-full gap-2 font-data")}
               >
                 <Phone size={16} aria-hidden />
-                {SITE.phoneDisplay}
+                {phone.phoneDisplay}
               </a>
             </div>
           }

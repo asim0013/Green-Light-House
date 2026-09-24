@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { alternatesFor, robotsFor } from "@/lib/seo";
 import { contactSignals } from "@/server/contact-page";
+import { getContactDetails, getSitePhone } from "@/server/repositories/site-settings";
 import { getSlaContent } from "@/server/repositories/sla";
 import { listIndustries } from "@/server/repositories/industry";
 import { hasSlaSummary } from "@/lib/sla-content";
@@ -13,13 +14,7 @@ import { RfqForm } from "@/components/rfq/RfqForm";
 import { TalkCard } from "@/components/rfq/TalkCard";
 import { Breadcrumb, Kicker, TwoColumn } from "@/components/ui";
 import { CONTAINER } from "@/components/layout/container";
-import {
-  CONTACT,
-  configuredChannels,
-  reachChannels,
-  suppliedValue,
-  mapsUrl,
-} from "@/config/contact";
+import { configuredChannels, reachChannels, suppliedValue, mapsUrl } from "@/config/contact";
 
 /**
  * SSR per request — reads live DB content (the industry list and the SLA), so it
@@ -47,7 +42,10 @@ export async function generateMetadata(props: {
   // engine two channels the page could not show — the exact thing the page
   // docstring says it never does. The condition is the claim: this key renders
   // only when both of the channels it names are configured.
-  const channels = configuredChannels();
+  // Story 4.8: contact VALUES from the admin-editable row (config fallback); the
+  // approval gates stay code-flipped inside this object.
+  const contact = await getContactDetails();
+  const channels = configuredChannels(contact);
   const describesEmailAndAddress = channels.includes("email") && channels.includes("address");
 
   return {
@@ -55,8 +53,9 @@ export async function generateMetadata(props: {
     description: t(describesEmailAndAddress ? "metaDescription" : "metaDescriptionMinimal"),
     alternates: alternatesFor(locale, "/contact"),
     // Shared with sitemap.ts so the page's robots tag and the sitemap's
-    // inclusion rule can never disagree about this URL (FR42a).
-    robots: robotsFor(contactSignals(locale)),
+    // inclusion rule can never disagree about this URL (FR42a). Same `contact`
+    // object the sitemap builds — one source, no drift.
+    robots: robotsFor(contactSignals(locale, contact)),
   };
 }
 
@@ -107,7 +106,12 @@ export default async function ContactPage(props: { params: Promise<{ locale: str
   }
   setRequestLocale(locale);
 
-  const [sla, industries] = await Promise.all([getSlaContent(locale), listIndustries(locale)]);
+  const [sla, industries, contact, phone] = await Promise.all([
+    getSlaContent(locale),
+    listIndustries(locale),
+    getContactDetails(),
+    getSitePhone(),
+  ]);
   const t = await getTranslations({ locale, namespace: "Contact" });
   const tNav = await getTranslations({ locale, namespace: "Nav" });
 
@@ -119,16 +123,16 @@ export default async function ContactPage(props: { params: Promise<{ locale: str
   // `string | null` to `string` for TypeScript. The difference is load-bearing
   // for the legal block, which `configuredChannels` withholds until
   // `approvals.legalReviewed` regardless of how complete its values are.
-  const channels = configuredChannels();
+  const channels = configuredChannels(contact);
   const hasChannels = channels.length > 0;
-  const email = channels.includes("email") ? suppliedValue(CONTACT.email) : null;
-  const address = channels.includes("address") ? suppliedValue(CONTACT.address) : null;
-  const legal = channels.includes("legal") ? CONTACT.legal : null;
+  const email = channels.includes("email") ? suppliedValue(contact.email) : null;
+  const address = channels.includes("address") ? suppliedValue(contact.address) : null;
+  const legal = channels.includes("legal") ? contact.legal : null;
   // ⚠️ THE SECTION KICKER FOLLOWS THE REACH CHANNELS, NOT THE ZONE. With only
   // the registered name supplied, "Ways to reach us" would head a block that
   // offers no way to reach anyone. The block still renders — it is a disclosure
   // GLH supplied — and its own "Company details" label describes it correctly.
-  const hasReachChannels = reachChannels().length > 0;
+  const hasReachChannels = reachChannels(contact).length > 0;
 
   return (
     <>
@@ -290,7 +294,7 @@ export default async function ContactPage(props: { params: Promise<{ locale: str
             side={
               <div className="flex flex-col gap-5">
                 {/* The SAME component `/rfq` mounts — one card, two pages. */}
-                <TalkCard />
+                <TalkCard phone={phone} />
 
                 {hasSlaSummary(sla) && (
                   <p className="px-1 font-mono text-[11px] uppercase leading-relaxed tracking-[0.15em] text-ink-2">

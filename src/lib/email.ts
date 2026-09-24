@@ -24,6 +24,8 @@
  * whatever pulls this in without needing mail configuration.
  */
 
+import { prisma } from "@/lib/db";
+
 export type EmailTransportName = "resend" | "memory" | "log";
 
 export interface EmailMessage {
@@ -251,18 +253,31 @@ export function createEmailTransport(name = process.env.EMAIL_PROVIDER?.trim()):
 /**
  * THE ONE FUNCTION THAT READS `RFQ_NOTIFY_TO` (AC7).
  *
- * Story 4.8 (FR36b) repoints this at an admin-managed setting. That is a change
- * to this function's body and nothing else — which is only true while it stays
- * the single reader, so the guard audit greps for a second `process.env
- * .RFQ_NOTIFY_TO` and the story's test asserts there is exactly one.
+ * Story 4.8 (FR36b) repointed this at the admin-managed `SiteSettings.rfqNotifyTo`
+ * — a change to this function's BODY and nothing else, exactly as this docstring
+ * predicted. It is still the SINGLE reader of `RFQ_NOTIFY_TO` (the env var is the
+ * FALLBACK), so `email.test.ts`'s "exactly one reader" gate stays green.
+ *
+ * ⚠️ THE ROW IS READ FRESH, NOT CACHED. FR36b's AC is "changing the notification
+ * address routes the NEXT RFQ to it" — the notify path has no page cache to
+ * `revalidateTag`, so a cached read could route one more inquiry to the old
+ * address. The worker calls this once per job; a single indexed singleton lookup
+ * is cheap. (This is why `SiteSettings` has a `settings` cache tag for the phone /
+ * contact page reads but this recipient read is deliberately outside it.)
  *
  * `null` means "we have nowhere to send it": the caller records
- * `notify:unconfigured` and does NOT retry, because a missing environment
- * variable will still be missing on the next attempt.
+ * `notify:unconfigured` and does NOT retry, because a missing recipient will
+ * still be missing on the next attempt.
  */
-export function resolveNotifyRecipient(): string | null {
-  const value = process.env.RFQ_NOTIFY_TO?.trim();
-  return value ? value : null;
+export async function resolveNotifyRecipient(): Promise<string | null> {
+  const row = await prisma.siteSettings.findUnique({
+    where: { id: "singleton" },
+    select: { rfqNotifyTo: true },
+  });
+  const configured = row?.rfqNotifyTo?.trim();
+  if (configured) return configured;
+  const env = process.env.RFQ_NOTIFY_TO?.trim();
+  return env ? env : null;
 }
 
 /**

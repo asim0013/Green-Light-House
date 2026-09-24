@@ -3,7 +3,7 @@ import { useTranslations } from "next-intl";
 import { Link } from "@/i18n/navigation";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { buttonClasses } from "@/components/ui/buttonClasses";
-import { SITE } from "@/config/site";
+import { SITE, type SitePhone } from "@/config/site";
 import { rfqProductHref } from "@/lib/rfq-href";
 import { SlaSummary } from "@/components/sla/SlaSummary";
 import type { ProductDetail } from "@/server/repositories/product";
@@ -47,10 +47,13 @@ import { hasSlaSummary } from "@/lib/sla-content";
 export function ProductAnchorCard({
   product,
   sla,
+  phone = SITE,
 }: {
   product: ProductDetail;
   /** The response process (Story 3.5); `null` only when unseeded. */
   sla: SlaContent | null;
+  /** The `tel:` phone (Story 4.8). Defaults to the `SITE` placeholder. */
+  phone?: SitePhone;
 }) {
   const t = useTranslations("Product");
   const tNav = useTranslations("Nav");
@@ -101,12 +104,12 @@ export function ProductAnchorCard({
           {t("quoteCta")}
         </Link>
         <a
-          href={`tel:${SITE.phone}`}
-          aria-label={`${tNav("phoneLabel")}: ${SITE.phoneDisplay}`}
+          href={`tel:${phone.phone}`}
+          aria-label={`${tNav("phoneLabel")}: ${phone.phoneDisplay}`}
           className="mt-3 flex min-h-11 items-center justify-center gap-2 font-data text-[15px] text-ink hover:text-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
         >
           <Phone size={16} aria-hidden />
-          {SITE.phoneDisplay}
+          {phone.phoneDisplay}
         </a>
         {/* The mono trust line — the same SLA promise the homepage and every
             industry page make, now literally the same ROW rather than a fourth

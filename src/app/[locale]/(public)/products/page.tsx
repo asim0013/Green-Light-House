@@ -14,6 +14,7 @@ import {
   flattenTree,
 } from "@/server/catalog-page";
 import { listSeriesOptions, listManufacturerOptions } from "@/server/repositories/series";
+import { getSitePhone } from "@/server/repositories/site-settings";
 import { Breadcrumb, type Crumb } from "@/components/ui";
 import { ProductCard } from "@/components/catalog/ProductCard";
 import { CategoryChips, pathTo } from "@/components/catalog/CategoryChips";
@@ -142,6 +143,9 @@ export default async function ProductsPage(props: {
     listManufacturerOptions(locale),
     listSeriesOptions(locale),
   ]);
+
+  // Story 4.8: the admin-managed phone (SITE fallback) for the empty-state tel: CTAs.
+  const phone = await getSitePhone();
 
   // ---- Data: the 2.5 search branch, or the 2.2 catalog branch, untouched ----
   let tree, category;
@@ -272,14 +276,17 @@ export default async function ProductsPage(props: {
               {parsed.q ? (
                 /* FR17a's state: the query matched nothing. Suggestions, the
                    browse path (the chips above stay live), and the RFQ pre-fill. */
-                <SearchEmptyState query={parsed.q} suggestions={suggestions} />
+                <SearchEmptyState query={parsed.q} suggestions={suggestions} phone={phone} />
               ) : (
                 /* Facet-only zero (e.g. an unknown-but-well-formed
                    ?manufacturer): there is no query to echo or suggest around.
                    FR16's copy names a CATEGORY, so it is only honest when a
                    category is actually the filter — otherwise the generic
                    catalog variant speaks (2.5 review). */
-                <CatalogEmptyState variant={parsed.categorySlug ? "category" : "catalog"} />
+                <CatalogEmptyState
+                  variant={parsed.categorySlug ? "category" : "catalog"}
+                  phone={phone}
+                />
               )}
             </div>
           ) : showCatalogEmptyState ? (
@@ -290,7 +297,7 @@ export default async function ProductsPage(props: {
                   above IS the content. The unknown case is NOT 2.1's soft-404
                   problem: /products is a real page whatever the param says, so
                   200 is simply correct. */}
-              <CatalogEmptyState variant={catalogIsEmpty ? "catalog" : "category"} />
+              <CatalogEmptyState variant={catalogIsEmpty ? "catalog" : "category"} phone={phone} />
             </div>
           ) : products.length > 0 ? (
             <ul className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">

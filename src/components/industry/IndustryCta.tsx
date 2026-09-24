@@ -4,7 +4,7 @@ import { Link } from "@/i18n/navigation";
 import { DarkBand, Kicker, TwoColumn } from "@/components/ui";
 import { buttonClasses } from "@/components/ui/buttonClasses";
 import { CONTAINER } from "@/components/layout/container";
-import { SITE } from "@/config/site";
+import { SITE, type SitePhone } from "@/config/site";
 import { rfqIndustryHref } from "@/lib/rfq-href";
 import { SlaSummary } from "@/components/sla/SlaSummary";
 import type { SlaContent } from "@/server/repositories/sla";
@@ -31,6 +31,7 @@ export function IndustryCta({
   industrySlug,
   sla,
   isFallback = false,
+  phone = SITE,
 }: {
   industryName: string;
   /** The response process (Story 3.5); `null` only when unseeded. */
@@ -45,6 +46,8 @@ export function IndustryCta({
    * name landed unmarked inside a Russian h2 (FR34a / AC6).
    */
   isFallback?: boolean;
+  /** The `tel:` phone (Story 4.8). Defaults to the `SITE` placeholder. */
+  phone?: SitePhone;
 }) {
   const t = useTranslations("Industry");
   const tNav = useTranslations("Nav");
@@ -88,12 +91,12 @@ export function IndustryCta({
                 {tNav("requestQuote")}
               </Link>
               <a
-                href={`tel:${SITE.phone}`}
-                aria-label={`${tNav("phoneLabel")}: ${SITE.phoneDisplay}`}
+                href={`tel:${phone.phone}`}
+                aria-label={`${tNav("phoneLabel")}: ${phone.phoneDisplay}`}
                 className={buttonClasses("onDarkSecondary", "min-h-11 w-full gap-2 font-data")}
               >
                 <Phone size={16} aria-hidden />
-                {SITE.phoneDisplay}
+                {phone.phoneDisplay}
               </a>
             </div>
           }

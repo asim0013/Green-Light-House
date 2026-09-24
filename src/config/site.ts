@@ -49,3 +49,16 @@ export const FOOTER_LEGAL = [
 
 export type NavItem = (typeof NAV_ITEMS)[number];
 export type FooterLegalItem = (typeof FOOTER_LEGAL)[number];
+
+/**
+ * The phone a `tel:` surface renders (Story 4.8). The `SITE` placeholder above is
+ * the FALLBACK; the live value comes from `getSitePhone()` (the `SiteSettings`
+ * row) threaded in as a prop. Defined here — a pure config module with no server
+ * deps — so client components (e.g. `SiteHeader`) can type-import it safely.
+ */
+export interface SitePhone {
+  /** The `tel:` href (E.164). */
+  phone: string;
+  /** The human-readable label. */
+  phoneDisplay: string;
+}

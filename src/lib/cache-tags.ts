@@ -63,6 +63,22 @@ export const COLLECTION_TAGS = {
    * photo) additionally purges that consumer's own tag via its module's action.
    */
   media: "media",
+  /**
+   * Extension (Story 4.8) — the operational `SiteSettings` singleton: the
+   * contact/legal VALUES and the phone. Purged when an admin edits contact or
+   * phone details, so `getContactDetails()` and `getSitePhone()` (both tagged
+   * here) go live without a redeploy. Its own tag rather than `catalog`: an edit
+   * to the phone or address must not invalidate the catalogue, and vice versa.
+   *
+   * ⚠️ NOT the RFQ notification recipient. `rfqNotifyTo` lives in the same row but
+   * is read UNCACHED by the worker (`resolveNotifyRecipient`), because the "next
+   * RFQ routes to the new recipient" contract needs the live value, not a
+   * tag-purged page cache — there is no page in that path to revalidate.
+   *
+   * ⛔ NOT the approval gates. `CONTACT.approvals` stay code-flipped in
+   * `contact.ts`; they are never in this row and never behind this tag.
+   */
+  settings: "settings",
 } as const;
 
 export type CollectionTag = (typeof COLLECTION_TAGS)[keyof typeof COLLECTION_TAGS];

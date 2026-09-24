@@ -4,6 +4,7 @@ import { setRequestLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { getSlaContent } from "@/server/repositories/sla";
+import { getSitePhone } from "@/server/repositories/site-settings";
 import { alternatesFor, robotsFor } from "@/lib/seo";
 import { getIndustryPageData, industrySignals, industryHref } from "@/server/industry-page";
 import { Breadcrumb } from "@/components/ui/Breadcrumb";
@@ -91,6 +92,7 @@ export default async function IndustryPage(props: {
   // (see `SlaStepper`), and `getSlaContent` is React-`cache()`d so a page mounting
   // two consumers still makes a single round trip.
   const sla = await getSlaContent(locale);
+  const phone = await getSitePhone(); // Story 4.8 — admin-managed phone (SITE fallback)
 
   const data = await getIndustryPageData(slug, locale);
   const t = await getTranslations({ locale, namespace: "Industry" });
@@ -120,7 +122,7 @@ export default async function IndustryPage(props: {
           { label: industry.name, isFallback: industry.isFallback },
         ]}
       />
-      <IndustryHero industry={industry} sla={sla} />
+      <IndustryHero industry={industry} sla={sla} phone={phone} />
       <IndustrySupplies categories={categories} />
       <IndustryCertificates certificates={certificates} />
       <IndustryServices services={services} />
@@ -131,6 +133,7 @@ export default async function IndustryPage(props: {
         industrySlug={industry.slug}
         sla={sla}
         isFallback={industry.isFallback}
+        phone={phone}
       />
     </>
   );

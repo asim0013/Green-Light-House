@@ -5,7 +5,7 @@ import { DarkBand, Kicker, TwoColumn } from "@/components/ui";
 import { buttonClasses } from "@/components/ui/buttonClasses";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { CONTAINER } from "@/components/layout/container";
-import { SITE } from "@/config/site";
+import { SITE, type SitePhone } from "@/config/site";
 import { rfqIndustryHref } from "@/lib/rfq-href";
 import { SlaSummary } from "@/components/sla/SlaSummary";
 import type { IndustryDetail } from "@/server/repositories/industry";
@@ -39,10 +39,13 @@ import { hasSlaSummary } from "@/lib/sla-content";
 export function IndustryHero({
   industry,
   sla,
+  phone = SITE,
 }: {
   industry: IndustryDetail;
   /** The response process (Story 3.5); `null` only when unseeded. */
   sla: SlaContent | null;
+  /** The `tel:` phone (Story 4.8). Defaults to the `SITE` placeholder. */
+  phone?: SitePhone;
 }) {
   const t = useTranslations("Industry");
   const tNav = useTranslations("Nav");
@@ -104,12 +107,12 @@ export function IndustryHero({
               {/* Co-equal phone (FR31 / EXPERIENCE.md § Interaction Primitives:
                   "everywhere the RFQ CTA appears"). Never a navy button on ink. */}
               <a
-                href={`tel:${SITE.phone}`}
-                aria-label={`${tNav("phoneLabel")}: ${SITE.phoneDisplay}`}
+                href={`tel:${phone.phone}`}
+                aria-label={`${tNav("phoneLabel")}: ${phone.phoneDisplay}`}
                 className={buttonClasses("onDarkSecondary", "min-h-11 w-full gap-2 font-data")}
               >
                 <Phone size={16} aria-hidden />
-                {SITE.phoneDisplay}
+                {phone.phoneDisplay}
               </a>
             </div>
           }

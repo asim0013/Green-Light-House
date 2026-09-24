@@ -83,7 +83,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     icon: Settings,
     path: "/settings",
     story: "4.8",
-    available: false,
+    available: true,
   },
 ];
 

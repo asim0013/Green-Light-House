@@ -4,6 +4,7 @@ import { setRequestLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { getSlaContent } from "@/server/repositories/sla";
+import { getSitePhone } from "@/server/repositories/site-settings";
 import { alternatesFor, robotsFor } from "@/lib/seo";
 import { getProjectsPageData, projectsIndexSignals, groupByIndustry } from "@/server/project-page";
 import { ProjectCard } from "@/components/projects/ProjectCard";
@@ -59,6 +60,7 @@ export default async function ProjectsPage(props: { params: Promise<{ locale: st
   // (see `SlaStepper`), and `getSlaContent` is React-`cache()`d so a page mounting
   // two consumers still makes a single round trip.
   const sla = await getSlaContent(locale);
+  const phone = await getSitePhone(); // Story 4.8 — admin-managed phone (SITE fallback)
 
   const t = await getTranslations({ locale, namespace: "Projects" });
   const projects = await getProjectsPageData(locale);
@@ -111,7 +113,7 @@ export default async function ProjectsPage(props: { params: Promise<{ locale: st
         </div>
       </section>
 
-      <ProjectCta sla={sla} />
+      <ProjectCta sla={sla} phone={phone} />
     </>
   );
 }

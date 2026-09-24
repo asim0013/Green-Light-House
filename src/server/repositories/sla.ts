@@ -192,3 +192,110 @@ export async function querySlaContent(locale: Locale): Promise<SlaContent | null
   if (!process) return null;
   return toSlaContent(process, locale);
 }
+
+// ---- Admin edit (Story 4.8 — FR30/FR38) -----------------------------------
+
+/** One step's raw, UNRESOLVED per-locale text for the editor (all locales). */
+export interface SlaStepEditData {
+  id: string;
+  sort: number;
+  translations: { locale: Locale; badge: string; title: string; description: string }[];
+}
+
+/** The whole process, unresolved, for the admin editor — steps ordered by `sort`. */
+export interface SlaEditData {
+  processId: string;
+  translations: { locale: Locale; kicker: string; summary: string }[];
+  steps: SlaStepEditData[];
+}
+
+/**
+ * Load the singleton process + its steps + ALL per-locale translations for the
+ * editor. Unlike `querySlaContent`, nothing is resolved or EN-fallen-back: the
+ * form edits each locale's raw value, so it needs every row as stored.
+ */
+export async function getSlaForEdit(): Promise<SlaEditData | null> {
+  const process = await prisma.slaProcess.findUnique({
+    where: { key: SLA_PROCESS_KEY },
+    select: {
+      id: true,
+      translations: { select: { locale: true, kicker: true, summary: true } },
+      steps: {
+        orderBy: { sort: "asc" },
+        select: {
+          id: true,
+          sort: true,
+          translations: { select: { locale: true, badge: true, title: true, description: true } },
+        },
+      },
+    },
+  });
+  if (!process) return null;
+  return { processId: process.id, translations: process.translations, steps: process.steps };
+}
+
+/**
+ * Replace the process's per-locale kicker/summary. Upsert by the NORMAL
+ * `@@unique([processId, locale])` — an ordinary (non-deferrable) constraint, so
+ * the native `ON CONFLICT` upsert path is fine here (unlike the step `sort`).
+ */
+export async function updateSlaProcessText(
+  processId: string,
+  translations: { locale: Locale; kicker: string; summary: string }[],
+): Promise<void> {
+  await prisma.$transaction(
+    translations.map((t) =>
+      prisma.slaProcessTranslation.upsert({
+        where: { processId_locale: { processId, locale: t.locale } },
+        update: { kicker: t.kicker, summary: t.summary },
+        create: { processId, locale: t.locale, kicker: t.kicker, summary: t.summary },
+      }),
+    ),
+  );
+}
+
+/**
+ * Replace one step's per-locale badge/title/description. Upsert by the NORMAL
+ * `@@unique([stepId, locale])` — again an ordinary constraint, arbiter-safe.
+ */
+export async function updateSlaStepText(
+  stepId: string,
+  translations: { locale: Locale; badge: string; title: string; description: string }[],
+): Promise<void> {
+  await prisma.$transaction(
+    translations.map((t) =>
+      prisma.slaStepTranslation.upsert({
+        where: { stepId_locale: { stepId, locale: t.locale } },
+        update: { badge: t.badge, title: t.title, description: t.description },
+        create: { stepId, locale: t.locale, badge: t.badge, title: t.title, description: t.description },
+      }),
+    ),
+  );
+}
+
+/**
+ * Reorder the steps via the DEFERRED-CONSTRAINT transaction (Story 4.8, AC2).
+ *
+ * `@@unique([processId, sort])` is `DEFERRABLE INITIALLY IMMEDIATE` in Postgres
+ * (migration `20260906120000`), which Prisma cannot see. In IMMEDIATE mode the
+ * check runs at END OF STATEMENT, so a plain multi-`UPDATE` swap fails at the
+ * first statement that duplicates a `sort`. So inside ONE interactive transaction
+ * we DEFER the constraint by name, reassign each step's `sort` to its new
+ * 1-based position, and let uniqueness be checked at COMMIT — the transient
+ * duplicate mid-transaction is tolerated.
+ *
+ * ⛔ IT CANNOT BE AN `ON CONFLICT` ARBITER. Postgres refuses a deferrable
+ * constraint there (`SQLSTATE 55000`), so `slaStep.upsert({ where:
+ * { processId_sort } })` and `createMany({ skipDuplicates })` both THROW on this
+ * table. Reassign by PRIMARY KEY (`id`) only — never by `processId_sort`.
+ */
+export async function reorderSlaSteps(orderedStepIds: string[]): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    // Transaction-scoped: it must be issued inside the SAME interactive tx as the
+    // updates. The constant name is the one migration 20260906120000 declares.
+    await tx.$executeRawUnsafe("SET CONSTRAINTS sla_steps_process_id_sort_key DEFERRED");
+    for (let i = 0; i < orderedStepIds.length; i++) {
+      await tx.slaStep.update({ where: { id: orderedStepIds[i] }, data: { sort: i + 1 } });
+    }
+  });
+}

@@ -63,6 +63,15 @@ describe("collection tags", () => {
     expect(isKnownTag(TAGS.media)).toBe(true);
   });
 
+  it("names the extension Story 4.8 added for the SiteSettings contact/phone singleton", () => {
+    // `getContactDetails()` + `getSitePhone()` are tagged `settings`; an admin
+    // contact/phone edit purges it. Must be accepted by the revalidate endpoint or
+    // every settings publish is a silent no-op. (The RFQ notify recipient is NOT
+    // here — it is read uncached; the approvals gates are NEVER here.)
+    expect(TAGS.settings).toBe("settings");
+    expect(isKnownTag(TAGS.settings)).toBe(true);
+  });
+
   it("lists every collection tag in ALL_COLLECTION_TAGS", () => {
     // ⚠️ A DELIBERATELY CLOSED SET. Every story that mints a tag must come here
     // and say so — that is the whole point, and it is why adding `sla` (Story
@@ -83,6 +92,7 @@ describe("collection tags", () => {
         "home",
         "team",
         "media",
+        "settings",
       ].sort(),
     );
   });

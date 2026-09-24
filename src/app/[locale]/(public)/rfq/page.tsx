@@ -4,6 +4,7 @@ import { setRequestLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { getSlaContent } from "@/server/repositories/sla";
+import { getSitePhone } from "@/server/repositories/site-settings";
 import { alternatesFor, robotsFor } from "@/lib/seo";
 import { rfqSignals } from "@/server/rfq-page";
 import { resolveRfqPrefill } from "@/server/rfq-prefill";
@@ -95,6 +96,7 @@ export default async function RfqPage(props: {
   // (see `SlaStepper`), and `getSlaContent` is React-`cache()`d so a page mounting
   // two consumers still makes a single round trip.
   const sla = await getSlaContent(locale);
+  const phone = await getSitePhone(); // Story 4.8 — admin-managed phone (SITE fallback)
 
   const industries = await listIndustries(locale);
   const params = readPrefillParams(await props.searchParams);
@@ -126,7 +128,7 @@ export default async function RfqPage(props: {
               sla={sla}
             />
           }
-          side={<RfqRail sla={sla} />}
+          side={<RfqRail sla={sla} phone={phone} />}
         />
       </div>
     </div>

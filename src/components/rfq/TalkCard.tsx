@@ -1,7 +1,7 @@
 import { Phone } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { buttonClasses } from "@/components/ui/buttonClasses";
-import { SITE } from "@/config/site";
+import { SITE, type SitePhone } from "@/config/site";
 
 /**
  * The "prefer to talk?" card — ONE component, mounted by `/rfq` and `/contact`
@@ -37,15 +37,15 @@ import { SITE } from "@/config/site";
  * bare-number prefix legitimately reads `Nav` because that is the shared phone
  * label the other fourteen sites already use.
  *
- * ⚠️ THE NUMBER IS STILL `SITE.phone`'s PLACEHOLDER, and that is correct here.
- * The phone is CHROME: the same placeholder already renders in the header on
- * every page, the homepage hero, every industry and project page, `/services`
- * and the 404. It is exempt from /contact's configured-channels rule, because
- * hiding it on one page while fifteen other surfaces show it would be the
- * inconsistency, not the fix. Replacing it is an owner action
- * (`owner-actions.md` §1), not a dev task.
+ * ⚠️ THE NUMBER IS NOW ADMIN-EDITABLE (Story 4.8), threaded in as `phone` and
+ * defaulting to `SITE.phone`'s placeholder. The phone is still CHROME: the same
+ * value renders in the header on every page, the homepage hero, every industry
+ * and project page, `/services`, and it is exempt from /contact's
+ * configured-channels rule — hiding it on one page while the other surfaces show
+ * it would be the inconsistency, not the fix. The default keeps the 404 and any
+ * un-threaded caller on the placeholder until the owner sets the real number.
  */
-export function TalkCard() {
+export function TalkCard({ phone = SITE }: { phone?: SitePhone }) {
   const t = useTranslations("Rfq");
   const tNav = useTranslations("Nav");
 
@@ -60,16 +60,16 @@ export function TalkCard() {
           (`Nav.phoneLabel` + number) so 2.5.3 holds and the site keeps ONE label
           rule. `translate="no"` because it is machine data, not prose. */}
       <a
-        href={`tel:${SITE.phone}`}
-        aria-label={`${tNav("phoneLabel")}: ${SITE.phoneDisplay}`}
+        href={`tel:${phone.phone}`}
+        aria-label={`${tNav("phoneLabel")}: ${phone.phoneDisplay}`}
         translate="no"
         className="mt-3 flex min-h-11 items-center font-data text-[22px] font-semibold tracking-tight text-ink hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
       >
-        {SITE.phoneDisplay}
+        {phone.phoneDisplay}
       </a>
       <a
-        href={`tel:${SITE.phone}`}
-        aria-label={`${t("talkCta")}: ${SITE.phoneDisplay}`}
+        href={`tel:${phone.phone}`}
+        aria-label={`${t("talkCta")}: ${phone.phoneDisplay}`}
         className={buttonClasses("secondary", "mt-3 min-h-11 w-full gap-2")}
       >
         <Phone size={16} aria-hidden />

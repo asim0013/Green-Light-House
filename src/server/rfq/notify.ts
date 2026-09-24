@@ -269,7 +269,7 @@ export async function processRfqSubmitted(
 
   // --- The GLH notification -------------------------------------------------
   if (lead.notifiedAt === null) {
-    const recipient = resolveNotifyRecipient();
+    const recipient = await resolveNotifyRecipient();
     if (!recipient || !isEmailConfigured(deps.transport)) {
       // A missing recipient or API key will still be missing on the next
       // attempt, so this is recorded IMMEDIATELY and never retried — unlike a

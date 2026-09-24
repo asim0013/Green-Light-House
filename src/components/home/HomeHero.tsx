@@ -5,7 +5,7 @@ import { Chip, Kicker, TwoColumn } from "@/components/ui";
 import { buttonClasses } from "@/components/ui/buttonClasses";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { CONTAINER } from "@/components/layout/container";
-import { SITE } from "@/config/site";
+import { SITE, type SitePhone } from "@/config/site";
 import { projectHref } from "@/lib/project-href";
 import { SlaSummary } from "@/components/sla/SlaSummary";
 import type { ProjectListItem } from "@/server/repositories/project";
@@ -31,6 +31,7 @@ export function HomeHero({
   project,
   sla,
   content = null,
+  phone = SITE,
 }: {
   project: ProjectListItem | null;
   /** The response process (Story 3.5). `null` only in the degenerate
@@ -39,6 +40,8 @@ export function HomeHero({
   sla: SlaContent | null;
   /** Editable homepage copy (Story 4.4b). `null`/missing field → `messages` fallback. */
   content?: HomeContent | null;
+  /** The `tel:` phone (Story 4.8). Defaults to the `SITE` placeholder. */
+  phone?: SitePhone;
 }) {
   const t = useTranslations("Home");
   const tNav = useTranslations("Nav");
@@ -69,12 +72,12 @@ export function HomeHero({
                 {/* Co-equal phone (FR31): a first-class tel: action, not a footnote.
                     The visible number stays inside the accessible name (WCAG 2.5.3). */}
                 <a
-                  href={`tel:${SITE.phone}`}
-                  aria-label={`${tNav("phoneLabel")}: ${SITE.phoneDisplay}`}
+                  href={`tel:${phone.phone}`}
+                  aria-label={`${tNav("phoneLabel")}: ${phone.phoneDisplay}`}
                   className="inline-flex min-h-11 items-center gap-2 whitespace-nowrap font-data text-[15px] text-ink hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
                 >
                   <Phone size={16} aria-hidden />
-                  {SITE.phoneDisplay}
+                  {phone.phoneDisplay}
                 </a>
               </div>
 
