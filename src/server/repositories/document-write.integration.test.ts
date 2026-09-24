@@ -125,6 +125,24 @@ describe("document create / replace / edit / delete", () => {
 
     await deleteDocument(id);
     expect(await getDocumentForEdit(id)).toBeNull();
+
+    // A write against a now-gone document returns the clean null/false (never throws) —
+    // the same path the P2025 catch maps a mid-flight delete race onto.
+    expect(
+      await replaceDocumentFile(id, {
+        fileKey: "docs/x.pdf",
+        mime: "application/pdf",
+        sizeBytes: 1,
+      }),
+    ).toBeNull();
+    expect(
+      await updateDocumentMeta(id, {
+        type: "datasheet",
+        isPublic: true,
+        industryIds: [],
+        translations: [{ locale: "en", title: "X" }],
+      }),
+    ).toBe(false);
   });
 });
 

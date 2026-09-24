@@ -189,6 +189,13 @@ export async function queryDocumentsByProduct(
 // mutation is purged by `TAGS.documents` alone: all three readers include it, so
 // busting it invalidates every document-derived cache entry (verified above).
 
+/** Prisma "record not found" (P2025) — a row deleted between our read and write. */
+function isRecordNotFound(error: unknown): boolean {
+  return (
+    typeof error === "object" && error !== null && (error as { code?: string }).code === "P2025"
+  );
+}
+
 export interface DocumentTitleWrite {
   locale: Locale;
   title: string;
@@ -307,15 +314,22 @@ export async function replaceDocumentFile(
 ): Promise<{ oldFileKey: string } | null> {
   const existing = await prisma.document.findUnique({ where: { id }, select: { fileKey: true } });
   if (!existing) return null;
-  await prisma.document.update({
-    where: { id },
-    data: {
-      fileKey: file.fileKey,
-      mime: file.mime,
-      sizeBytes: file.sizeBytes,
-      version: { increment: 1 },
-    },
-  });
+  try {
+    await prisma.document.update({
+      where: { id },
+      data: {
+        fileKey: file.fileKey,
+        mime: file.mime,
+        sizeBytes: file.sizeBytes,
+        version: { increment: 1 },
+      },
+    });
+  } catch (error) {
+    // Deleted between the read and the update (P2025) → treat as gone; the caller
+    // then cleans up the just-stored object rather than orphaning it.
+    if (isRecordNotFound(error)) return null;
+    throw error;
+  }
   return { oldFileKey: existing.fileKey };
 }
 
@@ -337,25 +351,32 @@ export async function updateDocumentMeta(
 ): Promise<boolean> {
   const exists = await prisma.document.findUnique({ where: { id }, select: { id: true } });
   if (!exists) return false;
-  await prisma.$transaction([
-    prisma.document.update({
-      where: { id },
-      data: {
-        type: data.type,
-        isPublic: data.isPublic,
-        productId: data.productId ?? null,
-        manufacturerId: data.manufacturerId ?? null,
-      },
-    }),
-    prisma.documentTranslation.deleteMany({ where: { documentId: id } }),
-    prisma.documentTranslation.createMany({
-      data: data.translations.map((t) => ({ documentId: id, locale: t.locale, title: t.title })),
-    }),
-    prisma.documentIndustry.deleteMany({ where: { documentId: id } }),
-    prisma.documentIndustry.createMany({
-      data: data.industryIds.map((industryId) => ({ documentId: id, industryId })),
-    }),
-  ]);
+  try {
+    await prisma.$transaction([
+      prisma.document.update({
+        where: { id },
+        data: {
+          type: data.type,
+          isPublic: data.isPublic,
+          productId: data.productId ?? null,
+          manufacturerId: data.manufacturerId ?? null,
+        },
+      }),
+      prisma.documentTranslation.deleteMany({ where: { documentId: id } }),
+      prisma.documentTranslation.createMany({
+        data: data.translations.map((t) => ({ documentId: id, locale: t.locale, title: t.title })),
+      }),
+      prisma.documentIndustry.deleteMany({ where: { documentId: id } }),
+      prisma.documentIndustry.createMany({
+        data: data.industryIds.map((industryId) => ({ documentId: id, industryId })),
+      }),
+    ]);
+  } catch (error) {
+    // Deleted between the read and the transaction (P2025) → treat as gone (the
+    // action maps this to the clean `not_found` result rather than a 500).
+    if (isRecordNotFound(error)) return false;
+    throw error;
+  }
   return true;
 }
 
