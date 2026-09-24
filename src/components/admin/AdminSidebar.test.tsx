@@ -43,20 +43,20 @@ describe("AdminSidebar", () => {
     expect(h).toContain('href="/admin/catalog"');
   });
 
-  it("renders a live module (Media, shipped in 4.5) as a link", () => {
-    // P5: revert nav.ts's media `available` to false and this reddens.
+  it("renders live modules (Media 4.5, Documents 4.6) as links", () => {
+    // P5: revert either `available` to false in nav.ts and this reddens.
     const h = html();
-    expect(h).toContain("Media");
     expect(h).toContain('href="/admin/media"');
+    expect(h).toContain('href="/admin/documents"');
   });
 
   it("renders an unbuilt module as INERT — no href, a 'soon' marker", () => {
-    // Documents (Story 4.6) is not shipped yet, so it stays inert.
-    // P5: flip Documents' `available` to true and this reddens.
+    // Settings (Story 4.8) is not shipped yet, so it stays inert.
+    // P5: flip Settings' `available` to true and this reddens.
     const h = html();
-    expect(h).toContain("Documents");
+    expect(h).toContain("Settings");
     expect(h).toContain("soon");
-    expect(h).not.toContain('href="/admin/documents"');
+    expect(h).not.toContain('href="/admin/settings"');
   });
 
   it("logout posts to the Story 4.1 route with the locale", () => {

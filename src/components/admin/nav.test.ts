@@ -19,18 +19,19 @@ describe("ADMIN_NAV config", () => {
 
   it("shipped modules are live; unbuilt modules stay inert", () => {
     // Guards the "visible but inert" default: a module must not be linkable
-    // before its story ships. Dashboard (4.2), Catalog (4.3), Content (4.4) and
-    // Media (4.5) are live; the rest are inert until their own story flips them.
-    // Each module story flips its OWN item here.
-    const live = new Set(["dashboard", "catalog", "content", "media"]);
+    // before its story ships. Dashboard (4.2), Catalog (4.3), Content (4.4),
+    // Media (4.5) and Documents (4.6) are live; the rest are inert until their
+    // own story flips them. Each module story flips its OWN item here.
+    const live = new Set(["dashboard", "catalog", "content", "media", "documents"]);
     for (const item of ADMIN_NAV) {
       expect(item.available, `${item.key} availability`).toBe(live.has(item.key));
       expect(item.story).toMatch(/^4\.\d/);
     }
-    // Catalog (4.3), Content (4.4) and Media (4.5) are live (P5: revert nav.ts and this reddens).
+    // Catalog (4.3), Content (4.4), Media (4.5), Documents (4.6) are live (P5: revert nav.ts and this reddens).
     expect(byKey("catalog").available).toBe(true);
     expect(byKey("content").available).toBe(true);
     expect(byKey("media").available).toBe(true);
+    expect(byKey("documents").available).toBe(true);
   });
 });
 

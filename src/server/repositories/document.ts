@@ -2,6 +2,7 @@ import type { Locale, DocumentType } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { cached } from "@/lib/cache";
 import { TAGS } from "@/lib/cache-tags";
+import { deleteObject } from "@/lib/storage";
 import { resolveTranslation } from "@/server/i18n/resolveTranslation";
 
 export interface CertificateListItem {
@@ -178,4 +179,197 @@ export async function queryDocumentsByProduct(
     ...toCertificateListItem(document, locale),
     type: document.type,
   }));
+}
+
+// ---- Writes (Story 4.6, admin CRUD) ---------------------------------------
+//
+// The read repo above is the FROZEN Story 2.3 contract. These writes never touch
+// `slug` after create (it is the stable public identity, FR25a) and always keep
+// `fileKey` under the `docs/` prefix (the stream route hard-asserts it). Every
+// mutation is purged by `TAGS.documents` alone: all three readers include it, so
+// busting it invalidates every document-derived cache entry (verified above).
+
+export interface DocumentTitleWrite {
+  locale: Locale;
+  title: string;
+}
+
+export interface DocumentEditData {
+  id: string;
+  slug: string;
+  type: DocumentType;
+  isPublic: boolean;
+  version: number;
+  mime: string | null;
+  sizeBytes: number | null;
+  productId: string | null;
+  manufacturerId: string | null;
+  industryIds: string[];
+  translations: { locale: Locale; title: string }[];
+  /** The stable public download URL — shown on the edit page. */
+  downloadHref: string;
+}
+
+export interface AdminDocumentRow {
+  id: string;
+  slug: string;
+  type: DocumentType;
+  isPublic: boolean;
+  version: number;
+  title: string;
+}
+
+/** All documents for the admin list — ALL rows incl. private, EN-fallback title. */
+export async function listDocumentsForAdmin(locale: Locale): Promise<AdminDocumentRow[]> {
+  const rows = await prisma.document.findMany({
+    include: { translations: true },
+    orderBy: [{ type: "asc" }, { slug: "asc" }],
+  });
+  return rows.map((d) => ({
+    id: d.id,
+    slug: d.slug,
+    type: d.type,
+    isPublic: d.isPublic,
+    version: d.version,
+    title: resolveTranslation(d.translations, locale)?.value.title ?? d.slug,
+  }));
+}
+
+/** Load one document's editable fields + raw translations + linked industry ids. */
+export async function getDocumentForEdit(id: string): Promise<DocumentEditData | null> {
+  const d = await prisma.document.findUnique({
+    where: { id },
+    include: { translations: true, industries: { select: { industryId: true } } },
+  });
+  if (!d) return null;
+  return {
+    id: d.id,
+    slug: d.slug,
+    type: d.type,
+    isPublic: d.isPublic,
+    version: d.version,
+    mime: d.mime,
+    sizeBytes: d.sizeBytes,
+    productId: d.productId,
+    manufacturerId: d.manufacturerId,
+    industryIds: d.industries.map((i) => i.industryId),
+    translations: d.translations.map((t) => ({ locale: t.locale, title: t.title })),
+    downloadHref: `/api/documents/${d.slug}`,
+  };
+}
+
+/**
+ * Create a document with its translations + industry joins. The file is already
+ * validated, scanned and stored under `docs/` by the upload route — this only
+ * writes the row. `version` starts at 1. Throws on a duplicate slug (P2002).
+ */
+export async function createDocument(data: {
+  slug: string;
+  type: DocumentType;
+  fileKey: string;
+  mime: string;
+  sizeBytes: number;
+  isPublic: boolean;
+  productId?: string | null;
+  manufacturerId?: string | null;
+  industryIds: string[];
+  translations: DocumentTitleWrite[];
+}): Promise<{ id: string }> {
+  return prisma.document.create({
+    data: {
+      slug: data.slug,
+      type: data.type,
+      fileKey: data.fileKey,
+      mime: data.mime,
+      sizeBytes: data.sizeBytes,
+      version: 1,
+      isPublic: data.isPublic,
+      productId: data.productId ?? null,
+      manufacturerId: data.manufacturerId ?? null,
+      translations: {
+        create: data.translations.map((t) => ({ locale: t.locale, title: t.title })),
+      },
+      industries: { create: data.industryIds.map((industryId) => ({ industryId })) },
+    },
+    select: { id: true },
+  });
+}
+
+/**
+ * Replace a document's FILE (FR25a). Bumps `version`, repoints `fileKey` + mime +
+ * sizeBytes; `slug` and associations are untouched. Returns the OLD fileKey so the
+ * caller can delete the superseded object AFTER this repoint commits (upload new →
+ * repoint row → delete old), or null if the document is gone.
+ */
+export async function replaceDocumentFile(
+  id: string,
+  file: { fileKey: string; mime: string; sizeBytes: number },
+): Promise<{ oldFileKey: string } | null> {
+  const existing = await prisma.document.findUnique({ where: { id }, select: { fileKey: true } });
+  if (!existing) return null;
+  await prisma.document.update({
+    where: { id },
+    data: {
+      fileKey: file.fileKey,
+      mime: file.mime,
+      sizeBytes: file.sizeBytes,
+      version: { increment: 1 },
+    },
+  });
+  return { oldFileKey: existing.fileKey };
+}
+
+/**
+ * Update a document's metadata + associations (NOT slug, NOT fileKey/version).
+ * delete-recreate translations + industry joins in a transaction. Returns false
+ * if the document is gone.
+ */
+export async function updateDocumentMeta(
+  id: string,
+  data: {
+    type: DocumentType;
+    isPublic: boolean;
+    productId?: string | null;
+    manufacturerId?: string | null;
+    industryIds: string[];
+    translations: DocumentTitleWrite[];
+  },
+): Promise<boolean> {
+  const exists = await prisma.document.findUnique({ where: { id }, select: { id: true } });
+  if (!exists) return false;
+  await prisma.$transaction([
+    prisma.document.update({
+      where: { id },
+      data: {
+        type: data.type,
+        isPublic: data.isPublic,
+        productId: data.productId ?? null,
+        manufacturerId: data.manufacturerId ?? null,
+      },
+    }),
+    prisma.documentTranslation.deleteMany({ where: { documentId: id } }),
+    prisma.documentTranslation.createMany({
+      data: data.translations.map((t) => ({ documentId: id, locale: t.locale, title: t.title })),
+    }),
+    prisma.documentIndustry.deleteMany({ where: { documentId: id } }),
+    prisma.documentIndustry.createMany({
+      data: data.industryIds.map((industryId) => ({ documentId: id, industryId })),
+    }),
+  ]);
+  return true;
+}
+
+/**
+ * Delete a document — the S3 object FIRST, then the row (translations +
+ * `DocumentIndustry` cascade), per the storage delete-ordering contract (a crash
+ * leaves an orphan object, never a row pointing at a gone object). No reference
+ * guard: products/industries link TO a document, so deleting one only removes it
+ * from those read lists. Returns the deleted fileKey, or null if already gone.
+ */
+export async function deleteDocument(id: string): Promise<{ fileKey: string } | null> {
+  const existing = await prisma.document.findUnique({ where: { id }, select: { fileKey: true } });
+  if (!existing) return null;
+  await deleteObject(existing.fileKey);
+  await prisma.document.delete({ where: { id } });
+  return { fileKey: existing.fileKey };
 }
