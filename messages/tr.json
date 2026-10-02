@@ -262,12 +262,32 @@
     "confirmSignoff": "GREENLIGHTHOUSE"
   },
   "Legal": {
-    "title": "Gizlilik Politikası",
-    "version": "Politika sürümü: {version}",
-    "intro": "Bu sayfa, tam hukuki metinler yayımlanana kadar geçerli olan, GREENLIGHTHOUSE'un gönderdiğiniz bilgileri nasıl kullandığına dair geçici bir özettir.",
-    "collect": "Bir proje talebi gönderdiğinizde formda girdiklerinizi saklarız: adınız, şirketiniz, iş e-postanız ve paylaştığınız sektör, zaman planı, proje açıklaması, ekipman, miktarlar, telefon, ülke ve tercih ettiğiniz yanıt dili ve eklediğiniz dosya (içeriği ve dosya adı) — onay verdiğiniz zaman ve size gösterilen bu metnin sürümüyle birlikte.",
-    "use": "Bu bilgileri tek bir amaçla kullanırız: projenizi incelemek ve teknik değerlendirme ile şartnameli bir teklifle yanıt vermek. Belgeleri forma bağlamayız, verilerinizi satmayız.",
-    "retention": "Talepler, projenin makul ölçüde takip gerektirebileceği süre boyunca ticari kayıt olarak saklanır. Bilgilerinizi sormak, düzeltmek veya sildirmek için iletişim sayfasını kullanın — her sayfanın altbilgisinde bağlantısı vardır."
+    "privacy": {
+      "title": "Gizlilik Politikası",
+      "version": "Politika sürümü: {version}",
+      "intro": "Bu politika, GREENLIGHTHOUSE'un bu site üzerinden gönderdiğiniz bilgileri nasıl işlediğini açıklar.",
+      "collect": "Bir proje talebi gönderdiğinizde formda girdiklerinizi saklarız: adınız, şirketiniz, iş e-postanız ve paylaştığınız sektör, zaman planı, proje açıklaması, ekipman, miktarlar, telefon, ülke ve tercih ettiğiniz yanıt dili ve eklediğiniz dosya (içeriği ve dosya adı) — onay verdiğiniz zaman ve size gösterilen bu metnin sürümüyle birlikte.",
+      "use": "Bu bilgileri tek bir amaçla kullanırız: projenizi incelemek ve teknik değerlendirme ile şartnameli bir teklifle yanıt vermek. Belgeleri forma bağlamayız, verilerinizi satmayız.",
+      "retention": "Talepler, projenin makul ölçüde takip gerektirebileceği süre boyunca ticari kayıt olarak saklanır.",
+      "rights": "Hakkınızda sakladığımız bilgileri teyit etmemizi, düzeltmemizi veya silmemizi isteyebilirsiniz. Bunlardan herhangi birini kullanmak için iletişim sayfasını kullanın — her sayfanın altbilgisinde bağlantısı vardır."
+    },
+    "cookies": {
+      "title": "Çerez Politikası",
+      "effective": "Yürürlük: {date}",
+      "intro": "Bu politika, bu sitenin kullandığı çerezleri açıklar.",
+      "essential": "Site bugün yalnızca zorunlu çerezler kullanır: dil tercihinizi hatırlayan bir çerez ve talep formunun çalışması için gereken kısa ömürlü oturum çerezleri. Bunlar sitenin işlemesi için gereklidir ve sizi izlemek için kullanılmaz.",
+      "noTracking": "Analitik, reklam veya başka zorunlu olmayan çerezler yerleştirmeyiz. Bu durum bir gün değişirse bu politika güncellenecek ve siz onay vermeden zorunlu olmayan hiçbir şey çalışmayacaktır."
+    },
+    "terms": {
+      "title": "Kullanım Şartları",
+      "effective": "Yürürlük: {date}",
+      "intro": "Bu şartlar, GREENLIGHTHOUSE web sitesini kullanımınızı düzenler.",
+      "content": "Bu sitedeki ürün bilgileri, teknik özellikler ve proje örnekleri genel bilgilendirme amaçlıdır. Bağlayıcı bir teklif değildir; bağlayıcı fiyat teklifi yalnızca talebinizin ardından yazılı bir teklifle verilir.",
+      "ip": "Sitenin içeriği, markası ve tasarımı GREENLIGHTHOUSE'a veya lisans verenlerine aittir ve izinsiz kopyalanamaz veya yeniden kullanılamaz.",
+      "liability": "Site olduğu gibi sunulur. Yasaların izin verdiği ölçüde GREENLIGHTHOUSE, sitenin genel içeriğine güvenmekten doğan zararlardan sorumlu değildir; herhangi bir proje ilişkisini yazılı teklif düzenler.",
+      "law": "Bu şartlar Türkiye Cumhuriyeti yasalarına tabidir.",
+      "contact": "Bu şartlarla ilgili sorularınız için iletişim sayfasını kullanın — her sayfanın altbilgisinde bağlantısı vardır."
+    }
   },
   "NotFound": {
     "title": "Sayfa bulunamadı",
