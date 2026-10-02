@@ -1,6 +1,7 @@
 import { AdminTopbar } from "@/components/admin/AdminTopbar";
 import { SiteSettingsForm } from "@/components/admin/settings/SiteSettingsForm";
 import { SlaEditor } from "@/components/admin/settings/SlaEditor";
+import { BulkImportForm } from "@/components/admin/settings/BulkImportForm";
 import { getSiteSettingsForEdit } from "@/server/repositories/site-settings";
 import { getSlaForEdit } from "@/server/repositories/sla";
 
@@ -46,6 +47,10 @@ export default async function SettingsPage(props: { params: Promise<{ locale: st
             Export full dataset (JSON)
           </a>
         </div>
+      </div>
+      <div className="border-t border-border-subtle">
+        <AdminTopbar title="Bulk import" subtitle="Operations · Product audit CSV / Excel (Story 4.10)" />
+        <BulkImportForm locale={locale} />
       </div>
     </>
   );

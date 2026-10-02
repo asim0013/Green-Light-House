@@ -1023,6 +1023,89 @@ export async function updateProduct(
 }
 
 /**
+ * Upsert a product from a bulk-import row (Story 4.10 — FR6), keyed by `slug`
+ * (idempotent). All in ONE transaction — scalars + translation-replace +
+ * industry-link-replace — so a row is all-or-nothing (no partial corruption).
+ *
+ * ⚠️ PRESERVES `media` AND OMITTED `attributes`. An import sheet carries no media
+ * column, and `updateProduct` would wipe `media` (and `attributes`) to the form's
+ * value — this path leaves `media` untouched (never in the update `data`) and
+ * only writes `attributes` when the sheet supplied them (`attributes !==
+ * undefined`), so a re-import cannot destroy a product's media-library links or
+ * its existing attribute set. Returns "created" | "updated".
+ */
+export async function upsertProductFromImport(data: {
+  slug: string;
+  model: string;
+  manufacturerId: string;
+  categoryId: string;
+  seriesId?: string;
+  status: "draft" | "published";
+  attributes?: Record<string, string>;
+  translations: { locale: Locale; name: string; description: string | null }[];
+  industryIds: string[];
+}): Promise<"created" | "updated"> {
+  const existing = await prisma.product.findUnique({
+    where: { slug: data.slug },
+    select: { id: true },
+  });
+  return prisma.$transaction(async (tx) => {
+    if (existing) {
+      await tx.product.update({
+        where: { id: existing.id },
+        data: {
+          model: data.model,
+          manufacturerId: data.manufacturerId,
+          categoryId: data.categoryId,
+          seriesId: data.seriesId ?? null,
+          status: data.status,
+          // `media` intentionally absent → preserved. `attributes` only when supplied.
+          ...(data.attributes !== undefined ? { attributes: data.attributes } : {}),
+        },
+      });
+      await tx.productTranslation.deleteMany({ where: { productId: existing.id } });
+      await tx.productTranslation.createMany({
+        data: data.translations.map((t) => ({
+          productId: existing.id,
+          locale: t.locale,
+          name: t.name,
+          description: t.description,
+        })),
+      });
+      await tx.productIndustry.deleteMany({ where: { productId: existing.id } });
+      if (data.industryIds.length > 0) {
+        await tx.productIndustry.createMany({
+          data: data.industryIds.map((industryId) => ({ productId: existing.id, industryId })),
+        });
+      }
+      return "updated";
+    }
+    await tx.product.create({
+      data: {
+        slug: data.slug,
+        model: data.model,
+        manufacturerId: data.manufacturerId,
+        categoryId: data.categoryId,
+        seriesId: data.seriesId ?? null,
+        status: data.status,
+        attributes: data.attributes ?? {},
+        media: [],
+        translations: {
+          create: data.translations.map((t) => ({
+            locale: t.locale,
+            name: t.name,
+            description: t.description,
+          })),
+        },
+        industries: { create: data.industryIds.map((industryId) => ({ industryId })) },
+      },
+      select: { id: true },
+    });
+    return "created";
+  });
+}
+
+/**
  * References that block a product delete. BOM lines / accessory pairings /
  * cross-references make it "in use"; documents are excluded on purpose — a
  * versioned datasheet `SetNull`s its product link and must survive (schema:239).
