@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
 import ExcelJS from "exceljs";
-import { parseSpreadsheet, ImportParseError } from "./parse";
+import { parseSpreadsheet, ImportParseError, cellToString } from "./parse";
 
 /** Build a real .xlsx buffer (round-trip: write with exceljs, then parse it). */
 async function makeXlsx(rows: string[][]): Promise<Uint8Array> {
@@ -40,6 +40,19 @@ describe("parseSpreadsheet", () => {
     const rows = await parseSpreadsheet(new TextEncoder().encode(csv), "csv");
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ slug: "fd-1", model: "M1", name_en: "Name one" });
+  });
+
+  it("cellToString never leaks '[object Object]' — error cells become empty", () => {
+    // The CONFIRMED review finding: an Excel error cell or an errored formula
+    // result must stringify to "" (so a required field then fails validation),
+    // never to the literal "[object Object]".
+    expect(cellToString({ error: "#N/A" } as never)).toBe("");
+    expect(cellToString({ formula: "1/0", result: { error: "#DIV/0!" } } as never)).toBe("");
+    // ...while good shapes still stringify correctly.
+    expect(cellToString({ formula: "A1+1", result: 42 } as never)).toBe("42");
+    expect(cellToString({ text: "Call", hyperlink: "tel:+1" } as never)).toBe("Call");
+    expect(cellToString({ richText: [{ text: "Fl" }, { text: "ame" }] } as never)).toBe("Flame");
+    expect(cellToString(null)).toBe("");
   });
 
   it("throws ImportParseError on a header-less file", async () => {

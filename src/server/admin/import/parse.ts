@@ -26,20 +26,36 @@ export class ImportParseError extends Error {
   }
 }
 
-/** exceljs cell values are a union; reduce each to a trimmed string for zod. */
-function cellToString(value: ExcelJS.CellValue): string {
+/**
+ * exceljs cell values are a union; reduce each to a trimmed string for zod.
+ *
+ * ⚠️ AN ERROR-VALUED CELL YIELDS `""`, NOT `"[object Object]"`. A direct error
+ * cell (`{ error: "#N/A" }`) or a formula whose result errored
+ * (`{ formula, result: { error: "#DIV/0!" } }`) has no usable text — stringifying
+ * it would write the literal `"[object Object]"` into whatever column it occupies
+ * (model/slug/name/attributes), silently importing garbage. Returning `""`
+ * instead means a REQUIRED field then fails validation (a row error) rather than
+ * persisting junk. Every unknown object shape also returns `""` — this function
+ * must never leak `"[object Object]"`. Exported for direct unit testing (exceljs
+ * cannot easily author an error cell via `writeBuffer`).
+ */
+export function cellToString(value: ExcelJS.CellValue): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "string") return value.trim();
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   if (value instanceof Date) return value.toISOString();
   if (typeof value === "object") {
-    // Rich text, formula result, hyperlink, or shared-string object shapes.
-    const v = value as { text?: unknown; result?: unknown; richText?: { text: string }[] };
+    const v = value as { text?: unknown; result?: unknown; error?: unknown; richText?: { text: string }[] };
     if (Array.isArray(v.richText)) return v.richText.map((r) => r.text).join("").trim();
-    if (v.result !== undefined && v.result !== null) return String(v.result).trim();
-    if (typeof v.text === "string") return v.text.trim();
+    if (v.error !== undefined) return ""; // a direct Excel error cell
+    if (v.result !== undefined && v.result !== null) {
+      if (v.result instanceof Date) return v.result.toISOString();
+      if (typeof v.result === "object") return ""; // an errored formula result (or other object)
+      return String(v.result).trim(); // a numeric/string/boolean formula result
+    }
+    if (typeof v.text === "string") return v.text.trim(); // hyperlink / shared-string text
   }
-  return String(value).trim();
+  return ""; // never "[object Object]"
 }
 
 /**

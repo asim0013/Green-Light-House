@@ -77,15 +77,20 @@ describe("processImport (integration)", () => {
     expect(renamed?.translations.find((t) => t.locale === "en")?.name).toBe("Renamed detector");
   });
 
-  it("PRESERVES existing media on an import update (the crux)", async (ctx) => {
+  it("PRESERVES existing media AND omitted attributes on an import update (the crux)", async (ctx) => {
     if (!dbReachable) return ctx.skip();
-    await processImport([row()]);
+    // Import WITH attributes first, so there is an attribute set to preserve.
+    await processImport([row({ attributes: '{"ip":"IP66"}' })]);
     // Simulate a media-library link set via the CRUD/picker.
     await prisma.product.update({ where: { slug: SLUG }, data: { media: ["asset-keep-1"] } });
-    // An import (no media column) must NOT wipe it.
+    // A re-import that OMITS media (no column) and OMITS attributes must wipe neither.
     await processImport([row({ name_en: "Detector v2" })]);
-    const after = await prisma.product.findUnique({ where: { slug: SLUG }, select: { media: true } });
+    const after = await prisma.product.findUnique({
+      where: { slug: SLUG },
+      select: { media: true, attributes: true },
+    });
     expect(after?.media).toEqual(["asset-keep-1"]);
+    expect(after?.attributes).toEqual({ ip: "IP66" }); // attributes preserved when the sheet omits them
   });
 
   it("errors a row with an unknown manufacturer slug — nothing written", async (ctx) => {
