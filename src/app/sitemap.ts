@@ -21,6 +21,8 @@ import { rfqSignals } from "@/server/rfq-page";
 import { contactSignals } from "@/server/contact-page";
 import { getContactDetails } from "@/server/repositories/site-settings";
 import { projectsIndexSignals, projectSignals, projectHref } from "@/server/project-page";
+import { listPublishedGuides } from "@/server/repositories/selection-guide";
+import { guidesIndexSignals, guideListItemSignals } from "@/server/guide-page";
 import { isValidSlug } from "@/lib/slug";
 
 /**
@@ -90,6 +92,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         productRows,
         services,
         allProjects,
+        guides,
       ] = await Promise.all([
         listPublishedProjects(locale, 1),
         listIndustries(locale),
@@ -116,6 +119,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         // rows — no per-project page read, so `/sitemap.xml` does not scale with
         // the project count the way the per-industry N+1 above still does.
         listPublishedProjects(locale),
+        // Published selection guides (Story 4.11) — one query; per-guide signals
+        // are computed from these rows (sectionCount is included) with no
+        // per-guide detail read.
+        listPublishedGuides(locale),
       ]);
 
       // ⚠️ THE SLA IS DELIBERATELY ABSENT FROM THIS ARRAY (Story 3.5), and the
@@ -195,6 +202,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           .filter((row) => isIndexable(signalsFromRow(locale, row)))
           .map((row) => row.slug),
         indexableIndustrySlugs: industrySlugs.filter((slug): slug is string => slug !== null),
+        // Guides (Story 4.11): the index + each published, populated guide. Same
+        // predicate (`guide*Signals`) the page's robots metadata uses. `isValidSlug`
+        // gates at the source — the sitemap does no XML escaping.
+        guidesIndexable: isIndexable(guidesIndexSignals(locale, guides)),
+        indexableGuideSlugs: guides
+          .filter((g) => isValidSlug(g.slug))
+          .filter((g) => isIndexable(guideListItemSignals(locale, g)))
+          .map((g) => g.slug),
       };
     }),
   );
@@ -222,6 +237,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       contactIndexable,
       projectsIndexable,
       indexableProjectSlugs,
+      guidesIndexable,
+      indexableGuideSlugs,
     }) => [
       ...(collectionsIndexable ? [entry(locale, "/")] : []),
       ...(indexIndexable ? [entry(locale, "/industries")] : []),
@@ -237,6 +254,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       ...indexableProductSlugs.map((slug) => entry(locale, productHref(slug))),
       // `projectHref`, not a template literal — same XML-escaping reason (Story 3.1).
       ...indexableProjectSlugs.map((slug) => entry(locale, projectHref(slug))),
+      // Guides (Story 4.11): slugs already `isValidSlug`-gated above, so `[a-z0-9-]`
+      // only — XML-safe to interpolate.
+      ...(guidesIndexable ? [entry(locale, "/guides")] : []),
+      ...indexableGuideSlugs.map((slug) => entry(locale, `/guides/${slug}`)),
     ],
   );
 }

@@ -72,6 +72,11 @@ describe("collection tags", () => {
     expect(isKnownTag(TAGS.settings)).toBe(true);
   });
 
+  it("names the extension Story 4.11 added for selection guides", () => {
+    expect(TAGS.guides).toBe("guides");
+    expect(isKnownTag(TAGS.guides)).toBe(true);
+  });
+
   it("lists every collection tag in ALL_COLLECTION_TAGS", () => {
     // ⚠️ A DELIBERATELY CLOSED SET. Every story that mints a tag must come here
     // and say so — that is the whole point, and it is why adding `sla` (Story
@@ -93,6 +98,7 @@ describe("collection tags", () => {
         "team",
         "media",
         "settings",
+        "guides",
       ].sort(),
     );
   });

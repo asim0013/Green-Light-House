@@ -79,6 +79,12 @@ export const COLLECTION_TAGS = {
    * `contact.ts`; they are never in this row and never behind this tag.
    */
   settings: "settings",
+  /**
+   * Extension (Story 4.11) — engineering selection guides. The public guides
+   * index + each guide detail read it; admin create/edit/delete purges it so an
+   * edit goes live without a deploy (FR5/FR40).
+   */
+  guides: "guides",
 } as const;
 
 export type CollectionTag = (typeof COLLECTION_TAGS)[keyof typeof COLLECTION_TAGS];

@@ -28,6 +28,11 @@ const SECTIONS = [
     label: "Team",
     desc: "Team members (public page arrives in Epic 5).",
   },
+  {
+    href: "/admin/content/guides",
+    label: "Selection guides",
+    desc: "SEO engineering guides — sections + recommended products (Story 4.11).",
+  },
 ];
 
 export default function ContentIndexPage() {
