@@ -148,6 +148,7 @@ model Category {
   children     Category[]            @relation("CategoryChildren")
   translations CategoryTranslation[]
   products     Product[]
+  guideLinks   SelectionGuideCategory[]
 
   @@map("categories")
 }
@@ -212,6 +213,7 @@ model Product {
   accessories     AccessoryCompatibility[] @relation("ProductAccessories")
   accessoryOf     AccessoryCompatibility[] @relation("AccessoryProduct")
   crossReferences CrossReference[]
+  guideLinks      SelectionGuideProduct[]
 
   @@map("products")
 }
@@ -845,4 +847,99 @@ model MediaAssetTranslation {
 
   @@unique([assetId, locale])
   @@map("media_asset_translations")
+}
+
+// --- Engineering selection guides (Story 4.11 — FR41/FR42/FR42a) ------------
+// An admin-authored, SEO-optimized content type: a guide with a rich intro,
+// ordered structured sections, and curated links to recommended products and
+// categories (internal-linking for search authority). Additive; no existing
+// model changes beyond back-relation fields on Product/Category.
+
+model SelectionGuide {
+  id        String        @id @default(cuid())
+  slug      String        @unique
+  status    PublishStatus @default(draft)
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  translations SelectionGuideTranslation[]
+  sections     SelectionGuideSection[]
+  products     SelectionGuideProduct[]
+  categories   SelectionGuideCategory[]
+
+  @@index([status])
+  @@map("selection_guides")
+}
+
+model SelectionGuideTranslation {
+  id              String         @id @default(cuid())
+  guideId         String         @map("guide_id")
+  locale          Locale
+  /// The guide's H1 + the anchor of the thin-content predicate (EN required).
+  title           String
+  /// Lead paragraph(s); rich text / markdown. Optional (EN fallback).
+  intro           String?
+  /// SEO meta description; optional (EN fallback), falls back to `intro` at render.
+  metaDescription String?        @map("meta_description")
+  guide           SelectionGuide @relation(fields: [guideId], references: [id], onDelete: Cascade)
+
+  @@unique([guideId, locale])
+  @@map("selection_guide_translations")
+}
+
+/// One ordered section of a guide. Ordered by `sort`. ⚠️ NO `@@unique([guideId,
+/// sort])` — the ProjectBomLine precedent: the editor replaces all sections on
+/// save (delete-then-create), deliberately avoiding the SlaStep deferrable-unique
+/// reorder complexity.
+model SelectionGuideSection {
+  id        String   @id @default(cuid())
+  guideId   String   @map("guide_id")
+  sort      Int
+  createdAt DateTime @default(now()) @map("created_at")
+
+  guide        SelectionGuide                     @relation(fields: [guideId], references: [id], onDelete: Cascade)
+  translations SelectionGuideSectionTranslation[]
+
+  @@index([guideId, sort])
+  @@map("selection_guide_sections")
+}
+
+model SelectionGuideSectionTranslation {
+  id        String                @id @default(cuid())
+  sectionId String                @map("section_id")
+  locale    Locale
+  heading   String
+  body      String
+  section   SelectionGuideSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([sectionId, locale])
+  @@map("selection_guide_section_translations")
+}
+
+/// Curated recommended products for a guide (internal SEO links). Ordered.
+model SelectionGuideProduct {
+  guideId   String @map("guide_id")
+  productId String @map("product_id")
+  sort      Int    @default(0)
+
+  guide   SelectionGuide @relation(fields: [guideId], references: [id], onDelete: Cascade)
+  product Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([guideId, productId])
+  @@index([guideId, sort])
+  @@map("selection_guide_products")
+}
+
+/// Curated recommended categories for a guide (internal SEO links). Ordered.
+model SelectionGuideCategory {
+  guideId    String @map("guide_id")
+  categoryId String @map("category_id")
+  sort       Int    @default(0)
+
+  guide    SelectionGuide @relation(fields: [guideId], references: [id], onDelete: Cascade)
+  category Category       @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([guideId, categoryId])
+  @@index([guideId, sort])
+  @@map("selection_guide_categories")
 }

@@ -3,6 +3,15 @@
     "title": "GREENLIGHTHOUSE",
     "description": "Proje tedariki için endüstriyel ve yangın güvenliği ekipmanları."
   },
+  "Guides": {
+    "title": "Seçim kılavuzları",
+    "lead": "Doğru ekipmanı seçmek için mühendislik rehberliği.",
+    "metaDescription": "GREENLIGHTHOUSE mühendislik seçim kılavuzları — doğru endüstriyel ve yangın güvenliği ekipmanını nasıl seçersiniz.",
+    "crumb": "Kılavuzlar",
+    "recommendedProducts": "Önerilen ürünler",
+    "recommendedCategories": "Kategorilere göz atın",
+    "empty": "Henüz yayımlanmış bir kılavuz yok."
+  },
   "Common": {
     "shownInEnglish": "İngilizce gösteriliyor"
   },
