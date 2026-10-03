@@ -164,7 +164,7 @@ function ChipLink({
     <Link
       href={href}
       aria-current={isActive ? "page" : undefined}
-      className={`inline-flex items-center gap-1.5 border px-2 py-1 font-mono text-[11px] uppercase tracking-wide transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 max-sm:min-h-11 ${
+      className={`inline-flex items-center gap-1.5 border px-2 py-1 font-mono text-[11px] uppercase tracking-wide transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 max-sm:min-h-11 ${
         emphasised
           ? "border-ink bg-surface font-semibold text-ink"
           : "border-muted bg-surface text-ink-2 hover:border-ink-2 hover:text-ink"

@@ -11,7 +11,7 @@
   --color-surface-2: #f5f7fa; /* inset panels, thumbnails, table headers, chips */
   --color-ink: #14181f; /* primary text + dark credibility/CTA bands */
   --color-ink-2: #5a6470; /* body copy, secondary text */
-  --color-muted: #8a93a0; /* tertiary labels, meta (LARGE / non-essential only) */
+  --color-muted: #656e7b; /* tertiary labels, meta — AA on white (5.16) & surface-2 (4.81); Story 5.4 darkened from #8a93a0 (2.89 on surface-2) per NFR3 */
   --color-accent: #0e2f57; /* deep navy — the single action color */
   --color-accent-soft: #5c86b5; /* steel — kickers on dark, secondary data accent */
   --color-brand: #159a5b; /* green — LOGO MARK ONLY + new/success dot */
@@ -26,7 +26,7 @@
   --color-status-new: #159a5b; /* green */
   --color-status-review: #c2870b; /* amber */
   --color-status-quoted: #0e2f57; /* navy (= accent) */
-  --color-status-closed: #8a93a0; /* muted */
+  --color-status-closed: #656e7b; /* muted (= --color-muted, darkened in Story 5.4) */
 
   /* Form validation (Story 3.2 — the first form). Status amber measures 3.10:1
      and fails AA for error text; this red clears 4.5:1 on BOTH surface and

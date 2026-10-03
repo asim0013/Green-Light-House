@@ -140,7 +140,7 @@ export function PrefillBanner({
         onClick={onClear}
         aria-label={t("prefillClearLabel")}
         // The ring is HAND-WRITTEN rather than borrowed from `buttonClasses`,
-        // which still carries `focus-visible:outline-none` — one of the 13
+        // which still carries `focus-visible:outline-hidden` — one of the 13
         // recorded offenders that breaks Windows forced-colors mode. Fixing that
         // token would change focus behaviour on every button on the site, a
         // blast radius Story 3.2 declined and 3.4 declines too.

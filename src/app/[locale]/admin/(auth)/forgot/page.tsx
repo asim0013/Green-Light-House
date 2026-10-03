@@ -6,7 +6,7 @@ import { buttonClasses } from "@/components/ui/buttonClasses";
  * exists — NFR6). No client JS.
  */
 const INPUT =
-  "w-full border border-border-subtle bg-surface px-3 py-2 text-[14px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2";
+  "w-full border border-border-subtle bg-surface px-3 py-2 text-[14px] text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2";
 
 export default async function AdminForgotPage(props: { params: Promise<{ locale: string }> }) {
   const { locale } = await props.params;

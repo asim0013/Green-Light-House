@@ -128,8 +128,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       ]);
 
       // ⚠️ THE SLA IS DELIBERATELY ABSENT FROM THIS ARRAY (Story 3.5), and the
-      // note belongs HERE as much as on the page. `[locale]/page.tsx` computes
-      // the same predicate for the homepage, and the robots side and the sitemap
+      // note belongs HERE as much as on the page. `[locale]/(public)/page.tsx`
+      // computes the same predicate for the homepage, and the robots side and the sitemap
       // side have silently drifted THREE times in this project (1.9, the 2.1
       // review, the 2.4 review). Since 3.5 the SLA is DB content with per-locale
       // rows, so it COULD be counted here — it must not be. It is site-wide

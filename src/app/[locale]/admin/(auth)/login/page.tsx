@@ -7,7 +7,7 @@ import { buttonClasses } from "@/components/ui/buttonClasses";
  * nor whether an account exists (NFR6).
  */
 const INPUT =
-  "w-full border border-border-subtle bg-surface px-3 py-2 text-[14px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2";
+  "w-full border border-border-subtle bg-surface px-3 py-2 text-[14px] text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2";
 
 export default async function AdminLoginPage(props: {
   params: Promise<{ locale: string }>;

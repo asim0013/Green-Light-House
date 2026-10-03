@@ -7,7 +7,7 @@ import { buttonClasses } from "@/components/ui/buttonClasses";
  * flag only — never says whether the email, token or expiry failed.
  */
 const INPUT =
-  "w-full border border-border-subtle bg-surface px-3 py-2 text-[14px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2";
+  "w-full border border-border-subtle bg-surface px-3 py-2 text-[14px] text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2";
 const MIN_PASSWORD = 12;
 
 export default async function AdminResetPage(props: {

@@ -14,17 +14,18 @@ export type KickerTone = "accent" | "ink" | "muted";
  *   tone              on white   on surface-2   on ink
  *   `accent`  #5C86B5   3.79 ❌     3.53 ❌       4.68 ✅  (only 4% over the floor)
  *   `ink`     #5A6470   6.01 ✅     5.60 ✅       2.95 ❌
- *   `muted`   #8A93A0   3.10 ❌     2.89 ❌       5.72 ✅
+ *   `muted`   #656E7B   5.16 ✅     4.81 ✅       3.45 ❌  (Story 5.4 darkened from #8A93A0)
  *
  * So `accent` (the default) is the DARK-BAND tone and `ink` is the light-surface
  * tone — including on `surface-2`, where every tone is worse than on white.
- * EXPERIENCE.md § Accessibility Floor anticipates exactly this and directs that
- * small labels carrying meaning "darken toward ink-2" — marked [VERIFY at build],
- * which is here.
+ * EXPERIENCE.md § Accessibility Floor directed that small labels carrying meaning
+ * "darken toward ink-2" [VERIFY at build]; Story 5.4 discharged it by darkening
+ * `--color-muted` itself, so `text-muted` now clears 4.5:1 on both light surfaces.
  *
- * `muted` fails on both light surfaces and cannot be rescued by the "large text"
- * exemption, because the 11px size is fixed here — it is retained only for the
- * dark band, where it passes.
+ * ⚠️ The `muted` tone is UNUSED (grep: no `tone="muted"` anywhere) and the darken
+ * INVERTED its safe surface — it now passes on light and FAILS on the dark band
+ * (3.45:1). On a dark band use `accent`; this branch is kept only so `KickerTone`
+ * stays stable, and must not be used on `ink`.
  */
 export function Kicker({
   children,

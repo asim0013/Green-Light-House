@@ -83,7 +83,7 @@ export function LanguageSwitcher({
               locale={loc}
               lang={loc}
               aria-current={isActive ? "page" : undefined}
-              className={`${RING[tone]} ${SIZE[size]} font-mono text-xs uppercase tracking-wide focus-visible:outline-none focus-visible:ring-2 ${
+              className={`${RING[tone]} ${SIZE[size]} font-mono text-xs uppercase tracking-wide focus-visible:outline-hidden focus-visible:ring-2 ${
                 isActive ? TONE[tone].active : TONE[tone].idle
               }`}
             >
