@@ -308,7 +308,9 @@
     "menu": "Menu",
     "close": "Close",
     "skipToContent": "Skip to content",
-    "contact": "Contact"
+    "contact": "Contact",
+    "quickActions": "Quick actions",
+    "callShort": "Call"
   },
   "Footer": {
     "tagline": "Industrial and fire-safety equipment for project supply.",

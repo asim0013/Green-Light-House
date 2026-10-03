@@ -16,6 +16,7 @@ import { ProductSpecTable } from "@/components/catalog/ProductSpecTable";
 import { ProductDocuments } from "@/components/catalog/ProductDocuments";
 import { ProductAnchorCard } from "@/components/catalog/ProductAnchorCard";
 import { ProductNotFound } from "@/components/catalog/ProductNotFound";
+import { MobileCtaBar } from "@/components/layout/MobileCtaBar";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { CONTAINER } from "@/components/layout/container";
 
@@ -196,6 +197,11 @@ export default async function ProductDetailPage(props: {
           <ProductAnchorCard product={product} sla={sla} phone={phone} />
         </div>
       </section>
+
+      {/* Story 5.5: the sticky mobile conversion bar. Last child so `sticky bottom-0`
+          pins over content on mobile, then yields to the footer. `lg:hidden` — the
+          ProductAnchorCard carries these CTAs on desktop. */}
+      <MobileCtaBar doorway="product" slug={product.slug} phone={phone} />
     </>
   );
 }

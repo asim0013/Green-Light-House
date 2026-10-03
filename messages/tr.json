@@ -308,7 +308,9 @@
     "menu": "Menü",
     "close": "Kapat",
     "skipToContent": "İçeriğe geç",
-    "contact": "İletişim"
+    "contact": "İletişim",
+    "quickActions": "Hızlı işlemler",
+    "callShort": "Ara"
   },
   "Footer": {
     "tagline": "Proje tedariki için endüstriyel ve yangın güvenliği ekipmanları.",
