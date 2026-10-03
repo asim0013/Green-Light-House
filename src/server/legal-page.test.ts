@@ -59,12 +59,22 @@ describe("legalSignals (Story 5.1 indexability predicate)", () => {
     expect(robotsFor(legalSignals("en", BOTH)).follow).toBe(true);
   });
 
-  it("robots and sitemap AGREE in all three locales, in both states", () => {
+  it("the robots side and the sitemap side read the SAME value FROM legalSignals, all locales/states", () => {
+    // ⚠️ WHAT THIS DOES AND DOES NOT PROVE (5.1 review, MEDIUM). This asserts that
+    // `robotsFor(legalSignals(...)).index` and `isIndexable(legalSignals(...))` —
+    // the computation each side performs — agree. Because both call the one
+    // predicate, this is close to tautological: it guards the LOGIC, not the
+    // WIRING. It CANNOT catch `sitemap.ts` hard-coding `legalIndexable: true` or a
+    // page dropping its `robots:` line (proven: that mutation left this suite
+    // green). That wiring-drift gate is owned by `e2e/legal.spec.ts`, which reads
+    // the served robots meta and the actual sitemap.xml.
     for (const locale of routing.locales) {
       for (const approvals of [LEGAL.approvals, BOTH]) {
-        const pageIndex = robotsFor(legalSignals(locale, approvals)).index; // page generateMetadata side
-        const sitemapIncludes = isIndexable(legalSignals(locale, approvals)); // sitemap.ts side
-        expect(pageIndex, `${locale} robots vs sitemap must agree`).toBe(sitemapIncludes);
+        const pageIndex = robotsFor(legalSignals(locale, approvals)).index;
+        const sitemapIncludes = isIndexable(legalSignals(locale, approvals));
+        expect(pageIndex, `${locale} robots vs sitemap computation must agree`).toBe(
+          sitemapIncludes,
+        );
       }
     }
   });

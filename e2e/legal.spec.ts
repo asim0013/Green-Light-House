@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { probeDbReady, warmUp } from "./dbReady";
 import { LEGAL } from "../src/config/legal";
+import { PRIVACY_POLICY_VERSION } from "../src/server/rfq/schema";
 
 /**
  * Story 5.1 — the three legal pages (`/privacy`, `/terms`, `/cookies`), end to end.
@@ -22,11 +23,7 @@ import { LEGAL } from "../src/config/legal";
 
 const INDEXABLE = LEGAL.approvals.legalReviewed && LEGAL.approvals.translationsReviewed;
 
-const PAGES = [
-  { path: "/privacy", hasVersionLine: true },
-  { path: "/terms", hasVersionLine: true },
-  { path: "/cookies", hasVersionLine: true },
-] as const;
+const PAGES = ["/privacy", "/terms", "/cookies"] as const;
 
 const LOCALES = ["en", "tr", "ru"] as const;
 
@@ -34,11 +31,11 @@ let dbReady = true;
 
 test.beforeAll(async ({ baseURL }) => {
   dbReady = await probeDbReady();
-  await warmUp(baseURL, ["/en/privacy", "/en/terms", "/en/cookies"]);
+  await warmUp(baseURL, ["/en/privacy", "/en/terms", "/en/cookies", "/en/rfq"]);
 });
 
 test.describe("legal pages render in every locale (AC1, AC2)", () => {
-  for (const { path } of PAGES) {
+  for (const path of PAGES) {
     test(`${path} renders an h1 and real body, no literal key path, in all three locales`, async ({
       page,
     }) => {
@@ -55,7 +52,7 @@ test.describe("legal pages render in every locale (AC1, AC2)", () => {
   }
 
   test("exactly one <h1> per legal page (a11y — AC1)", async ({ page }) => {
-    for (const { path } of PAGES) {
+    for (const path of PAGES) {
       await page.goto(`/en${path}`);
       await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
     }
@@ -63,17 +60,20 @@ test.describe("legal pages render in every locale (AC1, AC2)", () => {
 });
 
 test.describe("the privacy version line — the consent-stamp contract (AC3)", () => {
-  test("renders a version line that is no longer the stub", async ({ page }) => {
+  test("renders the EXACT version token consentVersion cites (not the stub)", async ({ page }) => {
     await page.goto("/en/privacy");
     const main = page.locator("main");
     await expect(main).toContainText(/Policy version:/i);
+    // The exact constant, so a wrong or hard-coded string fails here — the only
+    // exact-match guard after Story 5.1 retired the stub literal in rfq.spec.ts.
+    await expect(main).toContainText(PRIVACY_POLICY_VERSION);
     await expect(main).not.toContainText(/stub/i);
   });
 });
 
 test.describe("robots and the sitemap agree, in all three locales, in whatever state the gates are in (AC5)", () => {
   test("every legal page's robots tag matches its config state", async ({ page }) => {
-    for (const { path } of PAGES) {
+    for (const path of PAGES) {
       for (const locale of LOCALES) {
         await page.goto(`/${locale}${path}`);
         await expect(
@@ -89,7 +89,7 @@ test.describe("robots and the sitemap agree, in all three locales, in whatever s
     const res = await request.get("/sitemap.xml");
     expect(res.status()).toBe(200);
     const xml = await res.text();
-    for (const { path } of PAGES) {
+    for (const path of PAGES) {
       for (const locale of LOCALES) {
         const listed = xml.includes(`/${locale}${path}<`);
         expect(
@@ -104,15 +104,22 @@ test.describe("robots and the sitemap agree, in all three locales, in whatever s
 });
 
 test.describe("reachability — footer and RFQ links resolve (AC1)", () => {
-  test("all three legal links in the footer resolve", async ({ page }) => {
+  test("the footer carries all three legal links, and each resolves", async ({ page }) => {
+    // ⚠️ VISIT A WARMED (public) PAGE, NOT `/en`. The footer is one shared layout
+    // component rendered site-wide, so proving the links on any page proves the
+    // slot — and the homepage is a heavy streaming route whose shell cold-compiles
+    // slowly under `next dev`, which flaked a 60s click here. `/en/privacy` is in
+    // warmUp. `<footer>` maps to the `contentinfo` role (contact.spec convention).
     for (const { path, label } of [
       { path: "/privacy", label: "Privacy Policy" },
       { path: "/terms", label: "Terms of Use" },
       { path: "/cookies", label: "Cookies" },
     ]) {
-      await page.goto("/en");
+      await page.goto("/en/privacy");
       const footer = page.getByRole("contentinfo");
-      await footer.getByRole("link", { name: label, exact: true }).click();
+      const link = footer.getByRole("link", { name: label, exact: true });
+      await expect(link).toBeVisible();
+      await link.click();
       await page.waitForURL(new RegExp(`/en${path}$`));
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     }

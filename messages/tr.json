@@ -275,7 +275,7 @@
       "title": "Çerez Politikası",
       "effective": "Yürürlük: {date}",
       "intro": "Bu politika, bu sitenin kullandığı çerezleri açıklar.",
-      "essential": "Site bugün yalnızca zorunlu çerezler kullanır: dil tercihinizi hatırlayan bir çerez ve talep formunun çalışması için gereken kısa ömürlü oturum çerezleri. Bunlar sitenin işlemesi için gereklidir ve sizi izlemek için kullanılmaz.",
+      "essential": "Site bugün yalnızca tek bir zorunlu çerez kullanır: dil tercihinizi hatırlar. Sitenin doğru dili göstermesi için gereklidir ve sizi izlemek için kullanılmaz.",
       "noTracking": "Analitik, reklam veya başka zorunlu olmayan çerezler yerleştirmeyiz. Bu durum bir gün değişirse bu politika güncellenecek ve siz onay vermeden zorunlu olmayan hiçbir şey çalışmayacaktır."
     },
     "terms": {

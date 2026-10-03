@@ -6,6 +6,9 @@ import { cleanPdf, eicarPdf, plainZip } from "../scripts/attachment-fixtures";
 // The seeded SLA copy, from the module the seed writes from. NEVER retyped:
 // `e2e/` is inside the AC5 hygiene gate sweep.
 import { slaTextFor } from "../scripts/sla-fixtures";
+// The consent-version constant — imported, never pinned, so a bump (Story 5.1
+// graduated the stub to `privacy-2026-10-v1`) cannot leave a stale literal here.
+import { PRIVACY_POLICY_VERSION } from "../src/server/rfq/schema";
 
 /**
  * Story 3.2 — the RFQ form and its persist-first write path, end to end.
@@ -282,7 +285,7 @@ test.describe("persist-first submission (AC7, AC12c)", () => {
     expect(row!.locale).toBe("en");
     expect(row!.consent).toBe(true);
     expect(row!.consentAt).not.toBeNull();
-    expect(row!.consentVersion).toBe("privacy-2026-08-stub-r4:en");
+    expect(row!.consentVersion).toBe(`${PRIVACY_POLICY_VERSION}:en`);
     // Task 0 #7: no pre-fill exists yet, so source is the DB default.
     expect(row!.source).toBe("direct");
   });
@@ -627,22 +630,25 @@ test.describe("the 3.4 seam holds (AC8) + endpoint edges via direct requests", (
   });
 });
 
-test.describe("the /privacy stub (AC9)", () => {
-  test("resolves in all three locales, noindex, and shows the version token consentVersion cites", async ({
+test.describe("the /privacy policy version line (AC9; Story 5.1)", () => {
+  test("resolves in all three locales, noindex while unreviewed, and shows the token consentVersion cites", async ({
     page,
   }) => {
     for (const locale of ["en", "tr", "ru"]) {
       await page.goto(`/${locale}/privacy`);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-      // The stub's robots declaration — noindex BY INTENT (placeholder).
+      // noindex while `LEGAL.approvals` are unset (both default false, Story 5.1).
       // `.first()`: the suite's convention for a locator that can legally
-      // match twice (3.2 review).
+      // match twice (3.2 review). The full robots⟺sitemap agreement, in both
+      // approval states, is owned by `e2e/legal.spec.ts`.
       const robots = page.locator('meta[name="robots"]').first();
       await expect(robots).toHaveAttribute("content", /noindex/);
       // The version line carries the EXACT token the endpoint writes into
-      // Lead.consentVersion — anchored, not substring (3.2 review): a page
-      // rendering privacy-2026-08-stub-r4-WRONG must fail here.
-      await expect(page.locator('p[translate="no"]')).toHaveText(/privacy-2026-08-stub-r4$/);
+      // Lead.consentVersion — anchored, not substring (3.2 review), and derived
+      // from the constant so the bump cannot strand a literal here.
+      await expect(page.locator('p[translate="no"]')).toHaveText(
+        new RegExp(`${PRIVACY_POLICY_VERSION}$`),
+      );
     }
   });
 });
