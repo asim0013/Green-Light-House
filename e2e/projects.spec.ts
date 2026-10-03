@@ -209,10 +209,17 @@ test.describe("the project detail page (AC2, AC11, AC15)", () => {
     // list omits the project surfaces — if 3.1 does not emit it, no story does.
     // Locale-prefixed: next-intl's Link renders /en/rfq, matching every shipped
     // rfqHref assertion (e.g. home.spec.ts's allowlist).
-    const doorway = page.locator('a[href="/en/rfq?project=lng-terminal-fire-gas-upgrade"]');
+    // Select by FR22's label, not by href alone: Story 5.5's sticky `MobileCtaBar`
+    // also carries `?project=<slug>` (a mobile doorway) but with a generic
+    // "Request Project Quote" label, so an href-only locator now matches two. This
+    // asserts the CTA BAND's labelled doorway specifically.
+    const doorway = page.getByRole("link", { name: "I have a similar project" });
     await expect(doorway).toHaveCount(1);
-    // Task 0 #2: FR22's exact label, in the CTA band.
-    await expect(doorway).toContainText("I have a similar project");
+    // Task 0 #2: FR22's exact label, in the CTA band, pointing at the doorway.
+    await expect(doorway).toHaveAttribute(
+      "href",
+      "/en/rfq?project=lng-terminal-fire-gas-upgrade",
+    );
 
     // INVERTED BY STORY 3.4 (its Task 0 #20, an Asim decision). Story 3.1 held
     // this copy back because the site must not promise behaviour it does not

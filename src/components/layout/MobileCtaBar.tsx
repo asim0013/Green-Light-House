@@ -57,8 +57,11 @@ export function MobileCtaBar({
         </Link>
         <a
           href={`tel:${phone.phone}`}
-          // The display number is contained in the accessible name (WCAG 2.5.3).
-          aria-label={`${t("phoneLabel")}: ${phone.phoneDisplay}`}
+          // WCAG 2.5.3 (label in name): the accessible name STARTS WITH the
+          // visible label (`callShort`) so voice control works in every locale —
+          // `phoneLabel` ("Bizi arayın"/"Позвонить нам") does NOT contain the
+          // visible "Ara"/"Позвонить". The display number follows for context.
+          aria-label={`${t("callShort")}: ${phone.phoneDisplay}`}
           className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 border-[1.5px] border-ink bg-surface px-5 font-body text-[15px] font-semibold text-ink hover:bg-surface-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
         >
           <Phone size={16} aria-hidden />

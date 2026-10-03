@@ -46,7 +46,19 @@ const page = await browser.newPage();
 const rows = [];
 
 // Homepage — LCP + interactivity.
-await page.goto(`${BASE}/en`, { waitUntil: "load" });
+const homeResp = await page.goto(`${BASE}/en`, { waitUntil: "load" });
+
+// ⚠️ REFUSE A DEV BUILD — a `next dev` number is meaningless. Dev serves chunks
+// under `/_next/static/development/` and injects react-refresh; prod does not.
+const html = (await homeResp?.text()) ?? "";
+if (html.includes("/_next/static/development/") || html.includes("react-refresh")) {
+  console.error(
+    `${BASE} is a DEV build (next dev). Perf must be measured against 'next start'. Aborting.`,
+  );
+  await browser.close();
+  process.exit(2);
+}
+
 const homeLcp = await lcpOf(page);
 const home = await navTiming(page);
 rows.push({ page: "/en (home)", lcp_ms: homeLcp, ...home });
@@ -65,17 +77,26 @@ await browser.close();
 console.table(rows);
 
 // Gross-regression guards only (not the AC targets).
+let failed = false;
+
+// A failed/absent LCP measurement (-1) must FAIL, never pass vacuously.
+for (const r of rows) {
+  if (r.lcp_ms < 0) {
+    console.error(`MEASUREMENT FAILED: no LCP entry for ${r.page} (got ${r.lcp_ms})`);
+    failed = true;
+  }
+  if (r.lcp_ms > 4000) {
+    console.error(`GROSS REGRESSION: ${r.page} LCP ${r.lcp_ms}ms > 4000ms`);
+    failed = true;
+  }
+  if (r.load > 3000) {
+    console.error(`GROSS REGRESSION: ${r.page} load ${r.load}ms > 3000ms`);
+    failed = true;
+  }
+}
+
 const home_ = rows[0];
 const search_ = rows[2];
-let failed = false;
-if (home_.lcp_ms > 4000) {
-  console.error(`GROSS REGRESSION: home LCP ${home_.lcp_ms}ms > 4000ms`);
-  failed = true;
-}
-if (search_.load > 3000) {
-  console.error(`GROSS REGRESSION: search load ${search_.load}ms > 3000ms`);
-  failed = true;
-}
 console.log(
   `\nAC targets (informational, machine-dependent): home LCP < 2500ms (got ${home_.lcp_ms}), ` +
     `search < 1000ms (load ${search_.load}, ttfb ${search_.ttfb}).`,
