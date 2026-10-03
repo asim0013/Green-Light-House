@@ -262,12 +262,32 @@
     "confirmSignoff": "GREENLIGHTHOUSE"
   },
   "Legal": {
-    "title": "Privacy Policy",
-    "version": "Policy version: {version}",
-    "intro": "This is a provisional summary of how GREENLIGHTHOUSE handles the details you submit, in place until the full legal pages are published.",
-    "collect": "When you send a project inquiry, we store what you enter in the form: your name, company, work email, and any industry, timeline, project description, equipment, quantities, phone number, country and preferred reply language you provide, plus any file you attach (its contents and its filename) — together with the time of your consent and the version of this text you were shown.",
-    "use": "We use these details for one purpose: to review your project and reply with a technical review and a specced proposal. We never gate documents behind forms and we never sell your data.",
-    "retention": "Inquiries are kept as business records for as long as the project may reasonably need follow-up. To ask about, correct or remove your details, use the contact page — it is linked in the footer of every page."
+    "privacy": {
+      "title": "Privacy Policy",
+      "version": "Policy version: {version}",
+      "intro": "This policy explains how GREENLIGHTHOUSE handles the details you submit through this site.",
+      "collect": "When you send a project inquiry, we store what you enter in the form: your name, company, work email, and any industry, timeline, project description, equipment, quantities, phone number, country and preferred reply language you provide, plus any file you attach (its contents and its filename) — together with the time of your consent and the version of this text you were shown.",
+      "use": "We use these details for one purpose: to review your project and reply with a technical review and a specced proposal. We never gate documents behind forms and we never sell your data.",
+      "retention": "Inquiries are kept as business records for as long as the project may reasonably need follow-up.",
+      "rights": "You can ask us to confirm what we hold about you, to correct it, or to remove it. To exercise any of these, use the contact page — it is linked in the footer of every page."
+    },
+    "cookies": {
+      "title": "Cookie Policy",
+      "effective": "Effective: {date}",
+      "intro": "This policy explains the cookies this site uses.",
+      "essential": "Today the site uses only one essential cookie: it remembers your language choice. It is required for the site to show the right language and is not used to track you.",
+      "noTracking": "We set no analytics, advertising or other non-essential cookies. If that ever changes, this policy will be updated and nothing non-essential will run until you have agreed to it."
+    },
+    "terms": {
+      "title": "Terms of Use",
+      "effective": "Effective: {date}",
+      "intro": "These terms govern your use of the GREENLIGHTHOUSE website.",
+      "content": "Product information, specifications and project examples on this site are provided for general guidance. They are not a binding offer; a binding quotation is issued only in a written proposal following your inquiry.",
+      "ip": "The site's content, branding and design belong to GREENLIGHTHOUSE or its licensors and may not be copied or reused without permission.",
+      "liability": "The site is provided as is. To the extent permitted by law, GREENLIGHTHOUSE is not liable for loss arising from reliance on the site's general content; a written proposal governs any project engagement.",
+      "law": "These terms are governed by the laws of the Republic of Türkiye.",
+      "contact": "For questions about these terms, use the contact page — it is linked in the footer of every page."
+    }
   },
   "NotFound": {
     "title": "Page not found",

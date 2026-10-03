@@ -23,6 +23,7 @@ import { getContactDetails } from "@/server/repositories/site-settings";
 import { projectsIndexSignals, projectSignals, projectHref } from "@/server/project-page";
 import { listPublishedGuides } from "@/server/repositories/selection-guide";
 import { guidesIndexSignals, guideListItemSignals } from "@/server/guide-page";
+import { legalSignals } from "@/server/legal-page";
 import { isValidSlug } from "@/lib/slug";
 
 /**
@@ -55,12 +56,13 @@ export const dynamic = "force-dynamic";
  * publishes it here with no code change, which is why the emitter is gated
  * rather than commented out.
  *
- * The nav and footer in `src/config/site.ts` still point at About and the legal
- * pages, which do not exist until Epic 5 — listing them would publish a sitemap
- * of 404s. `/privacy` DOES exist (the 3.2 consent stub) and is deliberately
- * absent here: it is a noindex placeholder (`isPlaceholder` — see its page),
- * and this omission and its robots tag follow from that same fact. Each later
- * story extends the loop below as its surface lands.
+ * The nav/footer `/about` still 404s (no story owns it) — listing it would
+ * publish a sitemap of 404s, so it stays out. The three LEGAL pages — `/privacy`,
+ * `/terms`, `/cookies` — now exist (Story 5.1) and are listed here, gated by the
+ * SINGLE `legalSignals` predicate their pages' robots metadata also use: they are
+ * `noindex` AND absent until BOTH `LEGAL.approvals` gates are set, then they
+ * self-lift together, exactly like `/contact`. One review lifts all three. Each
+ * later story extends the loop below as its surface lands.
  *
  * FR42a ("the sitemap lists only populated pages") is enforced with the SAME
  * predicate the page's `robots` metadata uses — `isIndexable` for the collection
@@ -210,6 +212,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           .filter((g) => isValidSlug(g.slug))
           .filter((g) => isIndexable(guideListItemSignals(locale, g)))
           .map((g) => g.slug),
+        // Legal pages (Story 5.1): `/privacy`, `/terms`, `/cookies` share ONE
+        // predicate — the same `legalSignals` their generateMetadata uses — and
+        // one review (both `LEGAL.approvals`) lifts all three. noindex + absent
+        // until then, self-lifting after, exactly like /contact. Locale-invariant,
+        // so the single flag covers all three paths in this locale.
+        legalIndexable: isIndexable(legalSignals(locale)),
       };
     }),
   );
@@ -239,6 +247,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       indexableProjectSlugs,
       guidesIndexable,
       indexableGuideSlugs,
+      legalIndexable,
     }) => [
       ...(collectionsIndexable ? [entry(locale, "/")] : []),
       ...(indexIndexable ? [entry(locale, "/industries")] : []),
@@ -258,6 +267,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       // only — XML-safe to interpolate.
       ...(guidesIndexable ? [entry(locale, "/guides")] : []),
       ...indexableGuideSlugs.map((slug) => entry(locale, `/guides/${slug}`)),
+      // Legal pages (Story 5.1): all three gated by the one `legalSignals` review.
+      ...(legalIndexable
+        ? [entry(locale, "/privacy"), entry(locale, "/terms"), entry(locale, "/cookies")]
+        : []),
     ],
   );
 }

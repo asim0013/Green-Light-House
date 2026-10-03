@@ -70,8 +70,13 @@ export type TimelineKey = (typeof TIMELINE_KEYS)[number];
  * placeholder. It now points at /contact, which Story 3.8 made footer-linked on
  * every page. A wrong instruction on how to exercise a data right is a defect in
  * the disclosure itself, so it bumps the version like any other `Legal` change.
+ * `v1` (Story 5.1): the stub GRADUATED to the real policy — `Legal` was
+ * restructured into `Legal.privacy`/`Legal.cookies`/`Legal.terms`, the privacy
+ * copy was expanded, and data-subject rights moved into `Legal.privacy.rights`
+ * (still routed to /contact, no phone). A whole-policy rewrite is the largest
+ * possible `Legal` change, so the stub naming is retired here.
  */
-export const PRIVACY_POLICY_VERSION = "privacy-2026-08-stub-r4";
+export const PRIVACY_POLICY_VERSION = "privacy-2026-10-v1";
 
 /**
  * Code points no legitimate buyer input contains, and which this stack cannot
@@ -203,7 +208,7 @@ const equipmentItem = z.discriminatedUnion(
  * - `uiLocale` is the locale of the page the consent text was SHOWN in. It
  *   exists because FR44 wants "which policy text was shown" and the reply
  *   language above can legitimately differ from it (an EN page, an RU reply).
- *   The server composes `consentVersion = "privacy-2026-08-stub:<uiLocale>"`
+ *   The server composes `consentVersion = "${PRIVACY_POLICY_VERSION}:<uiLocale>"`
  *   from it — the client never supplies a `consentVersion` string, which would
  *   let a direct POST write arbitrary text into the column.
  * - `consent` is `z.literal(true)`: refusal is a field-level 422 issue like any

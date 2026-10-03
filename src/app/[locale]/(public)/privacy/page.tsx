@@ -4,33 +4,31 @@ import { setRequestLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { alternatesFor, robotsFor } from "@/lib/seo";
+import { legalSignals } from "@/server/legal-page";
 import { PRIVACY_POLICY_VERSION } from "@/server/rfq/schema";
-import { CONTAINER } from "@/components/layout/container";
+import { LegalDocument } from "@/components/legal/LegalDocument";
 
 /**
- * The `/privacy` STUB (Story 3.2, Task 0 #1 / AC9) — a short, real, versioned
- * data-use page, shipped so the RFQ consent checkbox links to something true.
- *
- * ⚠️ STORY 5.1 REPLACES THIS FILE with the full legal set. Until then:
+ * `/privacy` — the privacy policy (Story 5.1 — FR43). Replaced the Story 3.2
+ * noindex stub with the real data-use policy.
  *
  * - The version token is LOAD-BEARING: `POST /api/rfq` stamps
- *   `Lead.consentVersion` with it (plus the UI locale), so FR44's "which
- *   policy text was shown" has an honest answer. It is ONE shared constant —
- *   `PRIVACY_POLICY_VERSION` in `@/server/rfq/schema` — consumed here and by
- *   the route, so the two cannot drift; any wording change to the `Legal`
- *   namespace must bump that constant (the 3.2 review's `-r2` bump, adding
- *   `industry`/`timeline` to the disclosure, is the worked example).
- * - `noindex` BY INTENT, and absent from the sitemap: a legal placeholder is
- *   thin content on purpose. The signal is `isPlaceholder` — the honest FR42a
- *   reason — declared inline because both surfaces (this robots tag, the
- *   sitemap's omission) follow from the same fact: a placeholder can never be
- *   indexable, so there is no second predicate to drift from. `follow` stays
- *   true (robotsFor), so the footer links out of here still get crawled.
+ *   `Lead.consentVersion` with it (plus the UI locale), so FR44's "which policy
+ *   text was shown" has an honest answer. It is ONE shared constant —
+ *   `PRIVACY_POLICY_VERSION` in `@/server/rfq/schema` — consumed here and by the
+ *   route, so the two cannot drift; any wording change to `Legal.privacy` must
+ *   bump that constant (its docstring carries the rule and the r2/r3/r4/v1 log).
+ * - Indexability via `legalSignals` — the ONE predicate shared by this page's
+ *   robots, `/terms`, `/cookies` and `sitemap.ts`. `noindex` + absent from the
+ *   sitemap until BOTH human review gates (`LEGAL.approvals`) are set, then
+ *   self-lifting with no code change. `follow` stays true (robotsFor), so the
+ *   policy's links out are still crawled.
+ * - Data-subject requests route to `/contact` (footer-linked on every page), NOT
+ *   to a phone number — see `Legal.privacy.rights`.
  *
- * No DB read — the content is entirely messages-driven — but the route keeps
- * the uniform `force-dynamic` skeleton: a `generateStaticParams` here would be
- * the one non-dynamic public page, and uniformity is what the build gate's
- * reasoning rests on.
+ * No DB read — content is entirely messages-driven — but the route keeps the
+ * uniform `force-dynamic` skeleton (a `generateStaticParams` here would be the
+ * one non-dynamic public page, and uniformity is what the build gate rests on).
  */
 export const dynamic = "force-dynamic";
 
@@ -43,12 +41,12 @@ export async function generateMetadata(props: {
   const { locale } = await props.params;
   if (!hasLocale(routing.locales, locale)) return {};
 
-  const t = await getTranslations({ locale, namespace: "Legal" });
+  const t = await getTranslations({ locale, namespace: "Legal.privacy" });
 
   return {
     title: t("title"),
     alternates: alternatesFor(locale, "/privacy"),
-    robots: robotsFor({ locale, itemCount: 1, isPlaceholder: true }),
+    robots: robotsFor(legalSignals(locale)),
   };
 }
 
@@ -59,25 +57,15 @@ export default async function PrivacyPage(props: { params: Promise<{ locale: str
   }
   setRequestLocale(locale);
 
-  const t = await getTranslations({ locale, namespace: "Legal" });
+  const t = await getTranslations({ locale, namespace: "Legal.privacy" });
 
   return (
-    <div className={`${CONTAINER} max-w-[72ch] py-10 md:py-14`}>
-      <h1 className="font-heading text-[28px] font-bold leading-tight tracking-tight text-ink md:text-[34px]">
-        {t("title")}
-      </h1>
-      <p
-        className="mt-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2"
-        translate="no"
-      >
-        {t("version", { version: POLICY_VERSION })}
-      </p>
-      <div className="mt-6 flex flex-col gap-4 text-[15px] leading-relaxed text-ink-2">
-        <p>{t("intro")}</p>
-        <p>{t("collect")}</p>
-        <p>{t("use")}</p>
-        <p>{t("retention")}</p>
-      </div>
-    </div>
+    <LegalDocument title={t("title")} versionLine={t("version", { version: POLICY_VERSION })}>
+      <p>{t("intro")}</p>
+      <p>{t("collect")}</p>
+      <p>{t("use")}</p>
+      <p>{t("retention")}</p>
+      <p>{t("rights")}</p>
+    </LegalDocument>
   );
 }
