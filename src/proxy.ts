@@ -26,7 +26,51 @@ import { protectedAdminLocale } from "./lib/auth/admin-path";
  */
 const handleI18nRouting = createMiddleware(routing);
 
+/**
+ * The per-request Content-Security-Policy (Story 5.7 — NFR6).
+ *
+ * ⚠️ NONCE, not `'unsafe-inline'`, for scripts. Next's App Router emits inline
+ * RSC-flight `<script>`s; a nonce lets them run while blocking injected inline
+ * script (the real XSS defence). `'strict-dynamic'` lets those trusted scripts
+ * load the chunks they need without an allowlist. `style-src 'unsafe-inline'` is
+ * accepted: `next/font` injects inline `<style>`, and inline styles are a low XSS
+ * risk. No third-party origins — FR46 forbids them, and the maps link is an
+ * outbound `<a>`, not a fetch. `frame-ancestors 'none'` pairs with the static
+ * `X-Frame-Options: DENY` in `next.config`.
+ */
+function buildCsp(nonce: string): string {
+  // ⚠️ DEV ONLY loosening — NEVER reaches production. `next dev` needs React's
+  // dev-mode `eval()` (`'unsafe-eval'`) and the HMR websocket (`ws:` in
+  // connect-src); production uses neither (React never evals in prod, there is no
+  // HMR socket). Gated on NODE_ENV so the SHIPPED policy stays strict.
+  const isDev = process.env.NODE_ENV === "development";
+  const scriptExtra = isDev ? " 'unsafe-eval'" : "";
+  const connectExtra = isDev ? " ws: http://localhost:*" : "";
+  return [
+    `default-src 'self'`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${scriptExtra}`,
+    `style-src 'self' 'unsafe-inline'`,
+    `img-src 'self' data: blob:`,
+    `font-src 'self'`,
+    `connect-src 'self'${connectExtra}`,
+    `frame-ancestors 'none'`,
+    `base-uri 'self'`,
+    `form-action 'self'`,
+    `object-src 'none'`,
+  ].join("; ");
+}
+
 export default async function proxy(request: NextRequest) {
+  // A fresh nonce per request. Set it on the INCOMING request headers: next-intl
+  // clones `request.headers` into the rewrite/next it forwards (verified in its
+  // source), so `x-nonce` + the CSP reach the renderer, and Next reads the CSP
+  // request header to apply the nonce to its inline scripts. Edge-safe
+  // (`crypto.randomUUID` is a Web Crypto API available in the edge runtime).
+  const nonce = crypto.randomUUID();
+  const csp = buildCsp(nonce);
+  request.headers.set("x-nonce", nonce);
+  request.headers.set("content-security-policy", csp);
+
   const response = handleI18nRouting(request);
 
   const locale = protectedAdminLocale(request.nextUrl.pathname);
@@ -37,10 +81,14 @@ export default async function proxy(request: NextRequest) {
       url.pathname = `/${locale}/admin/login`;
       url.search = "";
       url.searchParams.set("next", request.nextUrl.pathname);
-      return NextResponse.redirect(url);
+      const redirect = NextResponse.redirect(url);
+      redirect.headers.set("content-security-policy", csp);
+      return redirect;
     }
   }
 
+  // Enforce on the response the browser sees.
+  response.headers.set("content-security-policy", csp);
   return response;
 }
 
