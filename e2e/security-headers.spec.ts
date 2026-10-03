@@ -48,17 +48,21 @@ test.describe("security headers (AC1)", () => {
     expect(h["x-frame-options"]).toMatch(/DENY/);
   });
 
-  test("the CSP nonce in the header matches the nonce Next put on its scripts", async ({
-    request,
-  }) => {
-    const res = await request.get("/en");
-    const csp = res.headers()["content-security-policy"] ?? "";
-    const headerNonce = csp.match(/'nonce-([\w+/=-]+)'/)?.[1];
-    const body = await res.text();
-    const scriptNonce = body.match(/nonce="([\w+/=-]+)"/)?.[1];
-    expect(headerNonce, "no nonce in CSP header").toBeTruthy();
-    expect(scriptNonce, "Next did not nonce its scripts").toBeTruthy();
-    // Equal ⇒ the browser will run Next's scripts (no white screen).
-    expect(scriptNonce).toBe(headerNonce);
+  test("the CSP nonce matches the script nonce AND is fresh per request", async ({ request }) => {
+    const nonceOf = async () => {
+      const res = await request.get("/en");
+      const csp = res.headers()["content-security-policy"] ?? "";
+      const headerNonce = csp.match(/'nonce-([\w+/=-]+)'/)?.[1];
+      const scriptNonce = (await res.text()).match(/nonce="([\w+/=-]+)"/)?.[1];
+      expect(headerNonce, "no nonce in CSP header").toBeTruthy();
+      expect(scriptNonce, "Next did not nonce its scripts").toBeTruthy();
+      // Equal within a request ⇒ the browser runs Next's scripts (no white screen).
+      expect(scriptNonce).toBe(headerNonce);
+      return headerNonce;
+    };
+    const first = await nonceOf();
+    const second = await nonceOf();
+    // Per-request ⇒ a static/reused nonce (which defeats the CSP) fails here.
+    expect(second, "nonce is not fresh per request").not.toBe(first);
   });
 });

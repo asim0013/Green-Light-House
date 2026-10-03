@@ -28,8 +28,8 @@ where it is enforced, and the test that keeps it honest. Updated 2026-10-04.
 |---|---|---|---|
 | HTTPS (HSTS header) | ✅ header shipped; redirect = owner action | `next.config.ts`; deploy | `e2e/security-headers.spec.ts` |
 | Inputs validated at all boundaries | ✅ | zod on `/api/rfq` (schema.ts), `/api/revalidate`, admin document/media routes; safe FormData coercion + Origin + rate-limit + length on the auth routes | route `.test.ts` + `rfq.spec.ts` |
-| No price/PII public (FR2) | ✅ | React auto-escaping; no prices in the model surfaced publicly | `seo.spec.ts` + `product-detail.spec.ts` currency sweep (`/[$€₺]\s?\d/`) |
-| Unpublished non-enumerable | ✅ | repositories filter `status: "published"` / `publishedAt` (product.ts, project.ts, selection-guide.ts); pages `notFound()` on null | `selection-guide.integration.test.ts` ("hides a draft…"), `repository.integration.test.ts`, catalog/content-write integration tests |
+| No price/PII public (FR2) | ✅ | React auto-escaping; no prices in the model surfaced publicly | currency sweep (`/[$€₺]\s?\d/`) in `product-detail.spec.ts`, `catalog.spec.ts`, `home.spec.ts`, `industries.spec.ts`, `services.spec.ts`, `documents.spec.ts` |
+| Unpublished non-enumerable | ✅ | repositories filter `status: "published"` / `publishedAt` (product.ts, project.ts, selection-guide.ts). A draft/unknown product or project renders a 200 **noindex soft-404 body IDENTICAL to a nonexistent slug** (it never leaks the draft's name); guides return a real 404. Either way the item is non-enumerable. | `selection-guide.integration.test.ts` ("hides a draft…"), `repository.integration.test.ts`, catalog/content-write integration tests |
 | Admin auth lockout | ✅ | `login:rl:` rate-limit before verify; non-enumerable forgot/reset; single-use hashed expiring token; `jose` HS256 cookie, AUTH_SECRET≥32 fail-closed | `lib/auth/*.test.ts`, `rate-limit.test.ts` |
 | RFQ rate-limit | ✅ | `src/lib/rate-limit.ts` keyed `rfq:rl:*`, IPv6 /64, fail-open+log, in `api/rfq/route.ts` | `rate-limit.test.ts`, `rfq.spec.ts` |
 | Attachment scanning | ✅ | `src/lib/clamav.ts` scan-before-parse + quarantine (3.7b) | `clamav.test.ts` |

@@ -58,8 +58,12 @@ const nextConfig: NextConfig = {
         source: "/:path*",
         headers: [
           {
+            // No `preload`: that submits the apex + ALL subdomains to the browser
+            // preload list — a hard-to-reverse 2-year commitment — while the hosting
+            // topology/domain (OQ7) is still open. Adding `preload` (and registering)
+            // is a deliberate owner step once HTTPS on every subdomain is confirmed.
             key: "Strict-Transport-Security",
-            value: "max-age=63072000; includeSubDomains; preload",
+            value: "max-age=63072000; includeSubDomains",
           },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "DENY" },
