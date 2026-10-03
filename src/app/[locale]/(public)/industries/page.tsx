@@ -85,7 +85,7 @@ export default async function IndustriesPage(props: { params: Promise<{ locale: 
                 <li key={industry.id}>
                   <Link
                     href={`/industries/${industry.slug}`}
-                    className="flex h-full flex-col border border-border-subtle bg-surface p-5 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+                    className="flex h-full flex-col border border-border-subtle bg-surface p-5 transition-colors hover:bg-surface-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
                   >
                     <span className="font-heading text-base font-semibold text-ink">
                       <span lang={industry.isFallback ? "en" : undefined}>{industry.name}</span>

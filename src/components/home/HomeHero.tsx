@@ -74,7 +74,7 @@ export function HomeHero({
                 <a
                   href={`tel:${phone.phone}`}
                   aria-label={`${tNav("phoneLabel")}: ${phone.phoneDisplay}`}
-                  className="inline-flex min-h-11 items-center gap-2 whitespace-nowrap font-data text-[15px] text-ink hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+                  className="inline-flex min-h-11 items-center gap-2 whitespace-nowrap font-data text-[15px] text-ink hover:text-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
                 >
                   <Phone size={16} aria-hidden />
                   {phone.phoneDisplay}

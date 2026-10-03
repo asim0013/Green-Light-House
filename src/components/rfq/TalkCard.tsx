@@ -63,7 +63,7 @@ export function TalkCard({ phone = SITE }: { phone?: SitePhone }) {
         href={`tel:${phone.phone}`}
         aria-label={`${tNav("phoneLabel")}: ${phone.phoneDisplay}`}
         translate="no"
-        className="mt-3 flex min-h-11 items-center font-data text-[22px] font-semibold tracking-tight text-ink hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+        className="mt-3 flex min-h-11 items-center font-data text-[22px] font-semibold tracking-tight text-ink hover:text-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
       >
         {phone.phoneDisplay}
       </a>

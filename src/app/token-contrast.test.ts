@@ -90,4 +90,13 @@ describe("token contrast — the WCAG AA contract (Story 5.4)", () => {
   it("white button text on the accent fill meets AA", () => {
     expect(contrast("#ffffff", T["accent"])).toBeGreaterThanOrEqual(AA_NORMAL);
   });
+
+  // UI-component / non-text contrast is 3:1 (WCAG 1.4.11). `muted` is used as a
+  // BORDER (SearchForm) and a placeholder; axe does not contrast-check either, so
+  // this is the only guard for those uses. The 5.4 darken clears it comfortably.
+  it("muted as a UI boundary (SearchForm border, placeholder) meets 1.4.11 on both light surfaces", () => {
+    const UI_MIN = 3;
+    expect(contrast(T["muted"], T["surface"])).toBeGreaterThanOrEqual(UI_MIN);
+    expect(contrast(T["muted"], T["surface-2"])).toBeGreaterThanOrEqual(UI_MIN);
+  });
 });

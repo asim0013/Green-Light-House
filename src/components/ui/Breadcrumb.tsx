@@ -46,7 +46,7 @@ export function Breadcrumb({ items }: { items: readonly Crumb[] }) {
                   <Link
                     href={item.href}
                     lang={item.isFallback ? "en" : undefined}
-                    className="text-ink-2 underline-offset-4 hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+                    className="text-ink-2 underline-offset-4 hover:text-ink hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
                   >
                     {item.label}
                   </Link>

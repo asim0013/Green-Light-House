@@ -4,7 +4,7 @@ export type ButtonVariant = "primary" | "secondary" | "onDarkPrimary" | "onDarkS
 // action color on light; on dark bands the primary inverts to white fill + ink label
 // and the secondary is a white hairline. Never green, never a navy button on dark.
 const BASE =
-  "inline-flex items-center justify-center font-body text-[15px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center justify-center font-body text-[15px] font-semibold transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 const PADDED = "px-5 py-[13px]";
 
 // Focus ring per surface: navy on light, white on the ink band (a navy ring on

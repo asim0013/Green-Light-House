@@ -146,7 +146,7 @@ export function SiteHeader({ phone = SITE }: { phone?: SitePhone }) {
           aria-controls="mobile-menu"
           aria-label={open ? t("close") : t("menu")}
           onClick={() => setOpen((v) => !v)}
-          className="-mr-2 inline-flex size-11 shrink-0 items-center justify-center text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent xl:hidden"
+          className="-mr-2 inline-flex size-11 shrink-0 items-center justify-center text-ink focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent xl:hidden"
         >
           {open ? <X size={24} aria-hidden /> : <Menu size={24} aria-hidden />}
         </button>

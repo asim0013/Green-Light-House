@@ -91,7 +91,7 @@ export function AdminSidebar({ adminEmail, locale }: { adminEmail: string; local
           <input type="hidden" name="locale" value={locale} />
           <button
             type="submit"
-            className="font-mono text-[10px] uppercase tracking-[0.1em] text-[#9AA6B4] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            className="font-mono text-[10px] uppercase tracking-[0.1em] text-[#9AA6B4] hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white"
           >
             Sign out
           </button>
