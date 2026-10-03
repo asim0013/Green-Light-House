@@ -12,7 +12,7 @@ tokens:
     surface-2: "#F5F7FA"      # inset panels, thumbnails, table headers, chips
     ink: "#14181F"            # primary text; also the dark credibility bands
     ink-2: "#5A6470"          # secondary text, body copy
-    muted: "#8A93A0"          # tertiary labels, meta, placeholder (LARGE / non-essential only)
+    muted: "#656E7B"          # tertiary labels, meta, placeholder — DARKENED in Story 5.4 from #8A93A0 (which failed AA: 2.89:1 on surface-2). #656E7B clears 4.5:1 on white (5.16) and surface-2 (4.81); the "LARGE/non-essential only" caveat is retired. Canonical value lives in src/app/globals.css + src/app/token-contrast.test.ts.
     accent: "#0E2F57"         # deep navy — primary CTAs, links, emphasis, active nav
     accent-soft: "#5C86B5"    # steel — kickers on dark, secondary data accent
     brand: "#159A5B"          # green — LOGO MARK ONLY + "new/success" status
@@ -25,7 +25,7 @@ tokens:
     status-new: "#159A5B"     # green
     status-review: "#C2870B"  # amber
     status-quoted: "#0E2F57"  # navy (= accent)
-    status-closed: "#8A93A0"  # muted
+    status-closed: "#656E7B"  # muted (darkened in Story 5.4, = --color-muted)
     error: "#B42318"          # form validation — error text + invalid-control borders (Story 3.2; 4.5:1+ on surface AND surface-2)
   typography:
     fontFamily:
