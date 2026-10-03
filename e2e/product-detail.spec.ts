@@ -115,9 +115,13 @@ test.describe("a populated product page (AC1, AC5)", () => {
     // carries the product slug. The RFQ opens with this product AND its
     // category already loaded as removable chips. A bare /en/rfq here would
     // mean the doorway regressed to a context-free link.
-    await expect(page.locator('main a[href="/en/rfq"]')).toHaveCount(0);
-    await expect(page.locator('main a[href="/en/rfq?product=fd-9500"]')).toHaveCount(1);
-    await expect(page.locator('main a[href^="tel:"]')).toHaveCount(1);
+    // `main section`, not `main`: Story 5.5 added the sticky `MobileCtaBar` as
+    // `main > nav` (a doorway + tel: duplicated for mobile, `lg:hidden` but still
+    // in the DOM). Scoping to the content sections asserts the ANCHOR CARD's
+    // single doorway + phone, excluding the bar.
+    await expect(page.locator('main section a[href="/en/rfq"]')).toHaveCount(0);
+    await expect(page.locator('main section a[href="/en/rfq?product=fd-9500"]')).toHaveCount(1);
+    await expect(page.locator('main section a[href^="tel:"]')).toHaveCount(1);
 
     // `innerText`, not textContent: the latter includes <script>, and React flight
     // data makes any currency regex match on every RSC page.

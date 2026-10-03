@@ -22,6 +22,7 @@ import { PRODUCT_LIMIT, PROJECT_LIMIT } from "@/server/industry-page";
 import { FallbackNotice } from "@/components/i18n/FallbackNotice";
 import { Breadcrumb, type Crumb, Kicker } from "@/components/ui";
 import { CONTAINER } from "@/components/layout/container";
+import { MobileCtaBar } from "@/components/layout/MobileCtaBar";
 
 /**
  * `/[locale]/projects/<slug>` — one delivered project (Story 3.1, FR21).
@@ -298,6 +299,11 @@ export default async function ProjectDetailPage(props: {
       )}
 
       <ProjectCta projectSlug={project.slug} sla={sla} phone={phone} />
+
+      {/* Story 5.5: sticky mobile conversion bar — last child so `sticky bottom-0`
+          pins over content then yields to the footer. `lg:hidden` — ProjectCta +
+          ProjectFactsCard carry these on desktop. */}
+      <MobileCtaBar doorway="project" slug={project.slug} phone={phone} />
     </>
   );
 }
