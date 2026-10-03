@@ -40,6 +40,38 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/**": ["./cache-handler.js"],
   },
+
+  // Static security response headers (Story 5.7 — NFR6). These carry NO per-request
+  // nonce, so they live here (applying to EVERY route — pages, /api and assets —
+  // which the `proxy.ts` matcher cannot, since it excludes /api). The nonce-based
+  // Content-Security-Policy is set per request in `proxy.ts`; it is deliberately
+  // NOT duplicated here.
+  //
+  // - HSTS is the HEADER half of "HTTPS enforced"; the actual TLS termination +
+  //   HTTP→HTTPS redirect is the deploy layer (owner action, see owner-actions §0).
+  //   Browsers ignore HSTS over plain http, so it is harmless in local dev.
+  // - `X-Frame-Options: DENY` + the CSP's `frame-ancestors 'none'` are belt and
+  //   braces — this site embeds nothing and must never be framed (clickjacking).
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=63072000; includeSubDomains; preload",
+          },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=(), browsing-topics=()",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 // next-intl plugin — points at the request config that loads per-locale messages.
