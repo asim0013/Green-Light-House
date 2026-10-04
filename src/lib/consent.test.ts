@@ -1,14 +1,20 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   CONSENT_COOKIE,
   parseConsent,
   consentCookieString,
+  readConsent,
+  writeConsent,
+  isSecureContext,
+  isConsentChoice,
   type ConsentChoice,
 } from "./consent";
 
 /**
- * The consent primitive (Story 5.2 — FR46). Pure parse/serialize so it is testable
- * without a DOM; `readConsent`/`writeConsent` are the thin `document.cookie` wrappers.
+ * The consent primitive (Story 5.2 — FR46). Pure parse/serialize + the
+ * `document.cookie` wrappers. The vitest default env is jsdom (vitest.config.mts),
+ * so `readConsent`/`writeConsent` are exercised against a real cookie jar here
+ * (review 5.2 #2 — these were previously untested).
  */
 
 describe("parseConsent", () => {
@@ -25,13 +31,24 @@ describe("parseConsent", () => {
   });
 });
 
+describe("isConsentChoice", () => {
+  it("accepts only the two exact literals", () => {
+    expect(isConsentChoice("granted")).toBe(true);
+    expect(isConsentChoice("denied")).toBe(true);
+    for (const v of [undefined, null, "", "GRANTED", "granted ", "maybe", 1]) {
+      expect(isConsentChoice(v)).toBe(false);
+    }
+  });
+});
+
 describe("consentCookieString", () => {
   it("is an essential, Lax, 180-day, path-root cookie", () => {
     const s = consentCookieString("granted", { secure: false });
     expect(s.startsWith(`${CONSENT_COOKIE}=granted`)).toBe(true);
-    expect(s).toContain("Path=/");
-    expect(s).toContain("SameSite=Lax");
-    expect(s).toMatch(/Max-Age=\d{6,}/); // ~180 days
+    // Exact, not a prefix: `Path=/admin` must NOT satisfy this (review 5.2 #7).
+    expect(s).toContain("; Path=/;");
+    expect(s).toContain("; SameSite=Lax");
+    expect(s).toContain("; Max-Age=15552000"); // exactly 180 days — a 10-year value must fail
     expect(s).not.toContain("HttpOnly"); // the client analytics loader must read it
   });
 
@@ -45,5 +62,31 @@ describe("consentCookieString", () => {
       const cookie = consentCookieString(c, { secure: false }).split(";")[0];
       expect(parseConsent(cookie)).toBe(c);
     }
+  });
+});
+
+describe("isSecureContext", () => {
+  it("is true only for https", () => {
+    expect(isSecureContext("https:")).toBe(true);
+    expect(isSecureContext("http:")).toBe(false);
+    expect(isSecureContext(undefined)).toBe(false);
+  });
+});
+
+describe("readConsent / writeConsent (jsdom cookie jar)", () => {
+  beforeEach(() => {
+    // Expire any prior value so each case starts from "no choice".
+    document.cookie = `${CONSENT_COOKIE}=; Max-Age=0; Path=/`;
+  });
+
+  it("returns null when nothing is stored (no implicit consent)", () => {
+    expect(readConsent()).toBeNull();
+  });
+
+  it("persists a choice that readConsent then returns", () => {
+    writeConsent("granted");
+    expect(readConsent()).toBe("granted");
+    writeConsent("denied");
+    expect(readConsent()).toBe("denied");
   });
 });

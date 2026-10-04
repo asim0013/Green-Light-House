@@ -343,7 +343,7 @@
   },
   "Consent": {
     "label": "Çerez onayı",
-    "message": "Bu site, dilinizi ve tercihlerinizi hatırlamak için zorunlu çerezler kullanır. Onayınızla, siteyi iyileştirmek için gizliliğe duyarlı, çerezsiz analiz de kullanırız.",
+    "message": "Bu site, dilinizi ve tercihlerinizi hatırlamak için zorunlu çerezler kullanır. Onayınızla, siteyi iyileştirmek için gizliliğe duyarlı, çerezsiz analiz de kullanabiliriz.",
     "learnMore": "Daha fazla bilgi",
     "accept": "Kabul et",
     "decline": "Reddet",

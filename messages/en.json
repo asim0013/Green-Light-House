@@ -343,7 +343,7 @@
   },
   "Consent": {
     "label": "Cookie consent",
-    "message": "This site uses essential cookies to remember your language and choices. With your consent we also use privacy-friendly, cookieless analytics to improve it.",
+    "message": "This site uses essential cookies to remember your language and choices. With your consent we can also use privacy-friendly, cookieless analytics to improve it.",
     "learnMore": "Learn more",
     "accept": "Accept",
     "decline": "Decline",

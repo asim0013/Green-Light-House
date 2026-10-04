@@ -4,7 +4,7 @@ import { SiteHeader } from "@/components/layout/SiteHeader";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { ConsentBanner } from "@/components/consent/ConsentBanner";
 import { getSitePhone } from "@/server/repositories/site-settings";
-import { CONSENT_COOKIE } from "@/lib/consent";
+import { CONSENT_COOKIE, isConsentChoice } from "@/lib/consent";
 
 /**
  * The PUBLIC chrome (Story 4.1 refactor). Moved out of `[locale]/layout.tsx` so
@@ -27,8 +27,10 @@ export default async function PublicLayout({ children }: { children: ReactNode }
   // Story 5.2: decide the consent banner's initial visibility on the SERVER (read
   // the cookie) so there is no flash of a banner that then vanishes. Show it only
   // when the visitor has made no choice yet (privacy-first default = denied).
+  // Show the bar only when no valid choice is recorded. ONE predicate shared with
+  // the client parser (`isConsentChoice`) so server and client never disagree.
   const consent = (await cookies()).get(CONSENT_COOKIE)?.value;
-  const showConsent = consent !== "granted" && consent !== "denied";
+  const showConsent = !isConsentChoice(consent);
   return (
     <>
       <SiteHeader phone={phone} />
