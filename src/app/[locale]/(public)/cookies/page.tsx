@@ -9,15 +9,17 @@ import { LEGAL_EFFECTIVE } from "@/config/legal";
 import { LegalDocument } from "@/components/legal/LegalDocument";
 
 /**
- * `/cookies` — cookie policy (Story 5.1 — FR43, FR46-adjacent). Describes only
- * the cookies actually set TODAY: essential only — the language-preference cookie
- * (`NEXT_LOCALE`) and the consent-choice cookie (`glh-consent`, Story 5.2). No
- * analytics, no non-essential tracking exists yet. (The admin session cookie is
- * staff-only, never set for a public buyer, so it is out of scope here.)
+ * `/cookies` — cookie policy (Story 5.1 — FR43, FR46). Essential cookies only —
+ * the language-preference cookie (`NEXT_LOCALE`) and the consent-choice cookie
+ * (`glh-consent`, Story 5.2); the admin session cookie is staff-only and out of
+ * scope. The `noTracking` paragraph also discloses the Story 5.8 analytics: it is
+ * COOKIELESS (so the "no non-essential cookies" statement stays true), consent-
+ * gated, and collects no personal data — honest whether or not a Plausible host is
+ * provisioned, because it runs only with consent.
  *
- * ⚠️ FORWARD DEPENDENCY. When Story 5.8 (analytics) lands, THIS copy and its
- * effective date must gain the analytics category — see `deferred-work.md`. Do
- * not promise analytics here before it ships.
+ * ⚠️ Still born `noindex` until `LEGAL.approvals.translationsReviewed` flips: the
+ * analytics paragraph is machine-drafted TR/RU like the rest, so a native reviewer
+ * must pass it before the page is advertised (owner-actions §3).
  *
  * Shares the `legalSignals` predicate with `/privacy`, `/terms` and `sitemap.ts`;
  * effective line from `LEGAL_EFFECTIVE`; uniform `force-dynamic`, no DB read.

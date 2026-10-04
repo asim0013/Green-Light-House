@@ -276,7 +276,7 @@
       "effective": "Effective: {date}",
       "intro": "This policy explains the cookies this site uses.",
       "essential": "The site uses essential cookies only: one remembers your language choice, and one remembers your cookie-consent choice. Both are needed for the site to work as you have set it and are not used to track you.",
-      "noTracking": "We set no analytics, advertising or other non-essential cookies. If that ever changes, this policy will be updated and nothing non-essential will run until you have agreed to it."
+      "noTracking": "This site sets no non-essential cookies. With your consent, we use a privacy-friendly, cookieless analytics tool to understand which pages and actions are useful — it sets no cookies and collects no personal data or cross-site identifiers. Without your consent it does not run, and you can change your choice at any time using “Cookie settings” in the footer."
     },
     "terms": {
       "title": "Terms of Use",

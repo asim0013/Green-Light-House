@@ -1,6 +1,9 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { slaTextFor, SLA_ARROW_BADGE } from "../../../scripts/sla-fixtures";
+import { trackEvent, EVENT_RFQ } from "@/lib/analytics/track";
 import type { SlaContent } from "@/server/repositories/sla";
 
 /**
@@ -34,6 +37,7 @@ import type { SlaContent } from "@/server/repositories/sla";
  */
 
 vi.mock("next-intl", () => ({
+  useLocale: () => "en",
   useTranslations: () => {
     const t = (key: string, values?: Record<string, unknown>) =>
       values ? `${key}:${Object.values(values).join(",")}` : key;
@@ -47,6 +51,12 @@ vi.mock("@/i18n/navigation", () => ({
     <a href={href}>{children}</a>
   ),
 }));
+
+// Story 5.8: the RFQ conversion fire. Mocked so the markup tests stay unaffected
+// (effects don't run under renderToStaticMarkup) and the interaction test can assert it.
+vi.mock("@/lib/analytics/track", () => ({ trackEvent: vi.fn(), EVENT_RFQ: "RFQ" }));
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const { RfqConfirmation } = await import("./RfqConfirmation");
 
@@ -75,6 +85,8 @@ const render = (sla: SlaContent | null) =>
   renderToStaticMarkup(<RfqConfirmation reference="GLH-RFQ-1042" sla={sla} />);
 
 describe("RfqConfirmation — the eighth SLA surface", () => {
+  beforeEach(() => vi.clearAllMocks());
+
   it("renders the content model's three steps, not a hard-coded promise", () => {
     // P5: pass `sla={null}` here and this reddens.
     //
@@ -166,6 +178,25 @@ describe("RfqConfirmation — the eighth SLA surface", () => {
     const html = render(EN);
     expect(html).not.toContain('lang="en"');
     expect(html).not.toContain("shownInEnglish");
+  });
+
+  it("fires exactly one RFQ conversion event on mount — path+locale, no reference (Story 5.8)", () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+    try {
+      act(() => root.render(<RfqConfirmation reference="GLH-RFQ-1042" sla={EN} />));
+      expect(trackEvent).toHaveBeenCalledTimes(1);
+      const [name, props] = (trackEvent as unknown as { mock: { calls: unknown[][] } }).mock.calls[0];
+      expect(name).toBe(EVENT_RFQ);
+      expect(props).toHaveProperty("locale", "en");
+      expect(props).toHaveProperty("path");
+      // P5: the reference must NEVER be in the payload (no PII).
+      expect(JSON.stringify(props)).not.toContain("GLH-RFQ-1042");
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
   });
 
   it("renders the card WITHOUT a stepper when the model is empty (AC8)", () => {

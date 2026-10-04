@@ -11,6 +11,14 @@
  */
 export const CONSENT_COOKIE = "glh-consent";
 
+/**
+ * Dispatched on `window` whenever the choice changes (Story 5.8). The analytics
+ * loader listens so a visitor who clicks Accept/Decline AFTER page load is honored
+ * live — no reload (FR46 right to change; AC4). Decoupled: the loader never imports
+ * the banner and vice-versa.
+ */
+export const CONSENT_CHANGED_EVENT = "glh:consent-changed";
+
 export type ConsentChoice = "granted" | "denied";
 
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 180; // ~180 days
@@ -53,9 +61,12 @@ export function readConsent(): ConsentChoice | null {
   return parseConsent(document.cookie);
 }
 
-/** Persist a choice — client only. */
+/** Persist a choice — client only. Announces the change so live listeners (analytics) react without a reload. */
 export function writeConsent(choice: ConsentChoice): void {
   if (typeof document === "undefined") return;
   const secure = isSecureContext(typeof location !== "undefined" ? location.protocol : undefined);
   document.cookie = consentCookieString(choice, { secure });
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(CONSENT_CHANGED_EVENT, { detail: choice }));
+  }
 }

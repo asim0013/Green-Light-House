@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   CONSENT_COOKIE,
+  CONSENT_CHANGED_EVENT,
   parseConsent,
   consentCookieString,
   readConsent,
@@ -88,5 +89,18 @@ describe("readConsent / writeConsent (jsdom cookie jar)", () => {
     expect(readConsent()).toBe("granted");
     writeConsent("denied");
     expect(readConsent()).toBe("denied");
+  });
+
+  it("dispatches CONSENT_CHANGED_EVENT with the new choice (Story 5.8 live seam)", () => {
+    const seen: unknown[] = [];
+    const onChange = (e: Event) => seen.push((e as CustomEvent).detail);
+    window.addEventListener(CONSENT_CHANGED_EVENT, onChange);
+    try {
+      writeConsent("granted");
+      writeConsent("denied");
+    } finally {
+      window.removeEventListener(CONSENT_CHANGED_EVENT, onChange);
+    }
+    expect(seen).toEqual(["granted", "denied"]);
   });
 });
