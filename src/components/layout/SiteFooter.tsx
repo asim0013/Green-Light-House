@@ -3,6 +3,7 @@ import { Link } from "@/i18n/navigation";
 import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 import { DarkBand, Kicker } from "@/components/ui";
 import { NAV_ITEMS, FOOTER_CONTACT, FOOTER_LEGAL } from "@/config/site";
+import { ConsentSettingsButton } from "@/components/consent/ConsentSettingsButton";
 import { CONTAINER } from "./container";
 import { BrandMark } from "./BrandMark";
 
@@ -58,6 +59,10 @@ export function SiteFooter() {
                     </Link>
                   </li>
                 ))}
+                {/* Story 5.2: re-open the consent bar to change a prior choice. */}
+                <li>
+                  <ConsentSettingsButton />
+                </li>
               </ul>
             </nav>
           </div>

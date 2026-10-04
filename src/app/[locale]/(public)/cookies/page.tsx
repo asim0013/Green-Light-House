@@ -10,13 +10,14 @@ import { LegalDocument } from "@/components/legal/LegalDocument";
 
 /**
  * `/cookies` — cookie policy (Story 5.1 — FR43, FR46-adjacent). Describes only
- * the cookies actually set TODAY: essential only (a language-preference cookie
- * and the inquiry form's short-lived session cookies). No analytics, no
- * non-essential tracking exists yet.
+ * the cookies actually set TODAY: essential only — the language-preference cookie
+ * (`NEXT_LOCALE`) and the consent-choice cookie (`glh-consent`, Story 5.2). No
+ * analytics, no non-essential tracking exists yet. (The admin session cookie is
+ * staff-only, never set for a public buyer, so it is out of scope here.)
  *
- * ⚠️ FORWARD DEPENDENCY. When Story 5.2 (consent banner) and Story 5.8
- * (analytics) land, THIS copy and its effective date must be updated — see
- * `deferred-work.md`. Do not promise a banner or analytics here before they ship.
+ * ⚠️ FORWARD DEPENDENCY. When Story 5.8 (analytics) lands, THIS copy and its
+ * effective date must gain the analytics category — see `deferred-work.md`. Do
+ * not promise analytics here before it ships.
  *
  * Shares the `legalSignals` predicate with `/privacy`, `/terms` and `sitemap.ts`;
  * effective line from `LEGAL_EFFECTIVE`; uniform `force-dynamic`, no DB read.

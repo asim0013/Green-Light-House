@@ -65,6 +65,8 @@ describe("MobileCtaBar (Story 5.5)", () => {
     expect(html).toMatch(/<nav[^>]+aria-label=/);
     expect(html).toContain("lg:hidden");
     expect(html).toContain("sticky");
-    expect(html).toContain("bottom-0");
+    // Lifts above the Story 5.2 consent bar when it is open, flush (0px) otherwise
+    // (review 5.2 #5). `0px` fallback = bottom-0 behaviour when no bar is present.
+    expect(html).toContain("bottom-[var(--glh-consent-h,0px)]");
   });
 });

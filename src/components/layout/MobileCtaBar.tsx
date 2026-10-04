@@ -33,6 +33,12 @@ import type { SitePhone } from "@/config/site";
  * `pb-[env(safe-area-inset-bottom)]`: clear the iOS home indicator so the Call
  * button is not under the gesture bar. Focus: the 5.4 `outline-hidden` + ring
  * convention, never `outline-none`.
+ *
+ * ⚠️ `bottom-[var(--glh-consent-h,0px)]` (review 5.2 #5): the Story 5.2 consent bar
+ * is `fixed bottom-0 z-50` and would otherwise cover this bar on a phone, blocking
+ * the Quote/Call buttons for a visitor who has not yet chosen. The consent bar
+ * publishes its height to that CSS var while open; this bar lifts by that amount so
+ * both stack and stay tappable. The var is `0px` when the bar is closed (flush).
  */
 export function MobileCtaBar({
   doorway,
@@ -49,7 +55,7 @@ export function MobileCtaBar({
   return (
     <nav
       aria-label={t("quickActions")}
-      className="sticky bottom-0 z-40 border-t border-border-subtle bg-surface pb-[env(safe-area-inset-bottom)] lg:hidden"
+      className="sticky bottom-[var(--glh-consent-h,0px)] z-40 border-t border-border-subtle bg-surface pb-[env(safe-area-inset-bottom)] transition-[bottom] duration-150 lg:hidden"
     >
       <div className="flex items-stretch gap-3 px-4 py-3">
         <Link href={rfqHref} className={`${buttonClasses("primary")} min-h-11 flex-1`}>
