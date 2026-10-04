@@ -86,12 +86,9 @@ test("mobile: the open consent bar publishes its height so the CTA bar can clear
   // A detail page carries a MobileCtaBar (Story 5.5). With no consent choice yet,
   // the fixed consent bar (z-50) would otherwise occlude the sticky CTA bar (z-40),
   // blocking Request-quote / Call for a visitor who never chooses (review 5.2 #5).
-  // The fix is a published CSS var the CTA bar lifts by. The BROWSER-only half —
-  // the bar measuring itself and publishing its TRUE height — is proven here;
-  // that the CTA bar CONSUMES the var (`bottom-[var(--glh-consent-h,0px)]`) is proven
-  // by MobileCtaBar.test.tsx (a revert to `bottom-0` reddens there).
-  // `getComputedStyle(sticky).bottom` is NOT used — it reflects scroll-dependent
-  // sticky layout, not the CSS var, so it is unreliable.
+  // The fix is a published CSS var the CTA bar lifts by. Proven here in BOTH halves:
+  // the bar publishes its TRUE height, and the CTA bar's resolved `bottom` actually
+  // equals it. (MobileCtaBar.test.tsx additionally pins the class string.)
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/en/products/as-60");
   const bar = page.getByRole("region", { name: "Cookie consent" });
@@ -111,6 +108,19 @@ test("mobile: the open consent bar publishes its height so the CTA bar can clear
     };
   });
   expect(Math.abs(varH - boxH), `published ${varH}px == bar height ${boxH}px`).toBeLessThanOrEqual(1);
+  // ...and the CTA bar really LIFTS by it. POLLED, with the var and `bottom` read in
+  // one snapshot: MobileCtaBar animates `bottom` over 150ms (`transition-[bottom]`),
+  // so a one-shot read lands mid-transition. That transition — not sticky layout, as
+  // an earlier comment here wrongly claimed — is why the one-shot version flaked
+  // (Story 5.8 review F6). A `bottom-0` CTA bar reads 0 ⇒ Infinity ⇒ red.
+  const ctaGap = () =>
+    page.evaluate(() => {
+      const nav = document.querySelector('nav[aria-label="Quick actions"]');
+      const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--glh-consent-h")) || 0;
+      const b = nav ? parseFloat(getComputedStyle(nav).bottom) || 0 : 0;
+      return b > 0 ? Math.abs(b - v) : Number.POSITIVE_INFINITY;
+    });
+  await expect.poll(ctaGap, { message: "CTA bar's bottom equals the published consent height" }).toBeLessThanOrEqual(1);
   // Dismiss ⇒ the var collapses so the CTA bar returns flush to the bottom.
   await bar.getByRole("button", { name: "Decline" }).click();
   await expect(bar).toBeHidden();
