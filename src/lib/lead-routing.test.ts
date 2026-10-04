@@ -2,6 +2,7 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import ts from "typescript";
 
 /**
  * Story 5.3 (FR47, AC2) — the leads-store split is only correct if the ROUTING is
@@ -9,16 +10,26 @@ import { readFileSync } from "node:fs";
  * access on the catalog client sends personal data to the wrong jurisdiction (or
  * backs up an empty table).
  *
- * TWO LAYERS, honestly scoped (review MED-1 showed the first version of this gate
- * was evadable by aliasing, destructuring, brackets, split calls and `.mjs`):
+ * TWO LAYERS, honestly scoped (two review rounds showed text-only gates are evadable):
  *  1. THE TYPE SYSTEM is the primary guard. `prisma` is typed
- *     `Omit<PrismaClient, "lead">` (src/lib/db.ts), so every direct route to
- *     `lead` on the catalog client — alias, destructure, bracket, split line —
- *     is a compile error in TypeScript.
- *  2. THIS TEXT GATE covers what the types cannot see: plain JS files
- *     (`.js/.mjs/.cjs`), raw SQL against `leads` / `lead_reference_seq` on the
- *     catalog client (even across lines), and interactive `$transaction`
- *     callbacks — Prisma types their `tx` as a full client, `lead` included.
+ *     `Omit<PrismaClient, "lead">` (src/lib/db.ts), so every direct TypeScript route
+ *     to `lead` on the catalog client — alias, destructure, bracket, split line —
+ *     is a compile error.
+ *  2. THIS TEXT GATE covers what the types cannot see:
+ *     - plain JS files (`.js/.mjs/.cjs`): ANY `<x>.lead` except `leadsDb.lead`;
+ *     - raw SQL on the catalog client whose ARGUMENT mentions `leads` or
+ *       `lead_reference_seq` — template, `Prisma.sql`, across lines;
+ *     - `<x>.lead` anywhere inside a catalog `prisma.$transaction(…)` call, whatever
+ *       the callback's form (Prisma types its `tx` as a full client).
+ *
+ * KNOWN RESIDUAL HOLES (accepted, documented in docs/data-residency.md as "strong
+ * guards, not a proof"): an explicit `as any`/`as unknown as` cast in TypeScript; a
+ * `$transaction` handler defined elsewhere and passed by name; `$queryRawUnsafe(sql)`
+ * where the SQL is built in a variable. Code review remains part of the control.
+ *
+ * Comments are removed with the TypeScript SCANNER (template- and regex-literal
+ * aware), not a regex — a regex stripper let `"//"` or `"src/*"` inside a string
+ * swallow the code after it (re-review GATE-2).
  *
  * Scanned: src/, scripts/, worker/ — tests included (their cleanups must hit the
  * right store too). The e2e harness builds its own clients via
@@ -33,11 +44,74 @@ const files = execFileSync(
   .split("\n")
   .filter((f) => /\.(ts|tsx|mts|cts|js|mjs|cjs)$/.test(f) && !f.endsWith("lead-routing.test.ts"));
 
+const isPlainJs = (f: string) => /\.(js|mjs|cjs)$/.test(f);
+
+/** Tokens after which a `/` starts a REGEX literal rather than a division. */
+const DIVISION_PRECEDERS = new Set<ts.SyntaxKind>([
+  ts.SyntaxKind.Identifier,
+  ts.SyntaxKind.NumericLiteral,
+  ts.SyntaxKind.StringLiteral,
+  ts.SyntaxKind.CloseParenToken,
+  ts.SyntaxKind.CloseBracketToken,
+  ts.SyntaxKind.CloseBraceToken,
+  ts.SyntaxKind.ThisKeyword,
+  ts.SyntaxKind.TemplateTail,
+  ts.SyntaxKind.NoSubstitutionTemplateLiteral,
+]);
+
 /**
- * The file's CODE: block and line comments removed (comments legitimately name
- * `prisma.lead` when explaining history — and a `/* x *\/ prisma.lead` line must
- * NOT be mistaken for a comment). `//` preceded by `:` is kept (URLs).
+ * The source with every comment replaced by a space, using the TypeScript scanner.
+ * Handles template literals (re-scans the text after each `${…}`) and regex
+ * literals (re-scans `/` when it cannot be a division), so strings, templates and
+ * regexes containing `//` or `/*` are kept intact.
  */
+export function stripComments(src: string, jsx: boolean): string {
+  const scanner = ts.createScanner(
+    ts.ScriptTarget.Latest,
+    false,
+    jsx ? ts.LanguageVariant.JSX : ts.LanguageVariant.Standard,
+    src,
+  );
+  let out = "";
+  let prev = ts.SyntaxKind.Unknown;
+  const templateBraceDepth: number[] = [];
+  let braceDepth = 0;
+  for (let kind = scanner.scan(); kind !== ts.SyntaxKind.EndOfFileToken; kind = scanner.scan()) {
+    if (
+      kind === ts.SyntaxKind.SingleLineCommentTrivia ||
+      kind === ts.SyntaxKind.MultiLineCommentTrivia
+    ) {
+      out += " ";
+      continue;
+    }
+    if (kind === ts.SyntaxKind.TemplateHead) {
+      templateBraceDepth.push(braceDepth);
+    } else if (kind === ts.SyntaxKind.OpenBraceToken) {
+      braceDepth++;
+    } else if (kind === ts.SyntaxKind.CloseBraceToken) {
+      if (
+        templateBraceDepth.length &&
+        templateBraceDepth[templateBraceDepth.length - 1] === braceDepth
+      ) {
+        kind = scanner.reScanTemplateToken(false);
+        if (kind === ts.SyntaxKind.TemplateTail) templateBraceDepth.pop();
+      } else {
+        braceDepth--;
+      }
+    } else if (
+      (kind === ts.SyntaxKind.SlashToken || kind === ts.SyntaxKind.SlashEqualsToken) &&
+      !DIVISION_PRECEDERS.has(prev)
+    ) {
+      kind = scanner.reScanSlashToken();
+    }
+    out += scanner.getTokenText();
+    if (kind !== ts.SyntaxKind.WhitespaceTrivia && kind !== ts.SyntaxKind.NewLineTrivia) {
+      prev = kind;
+    }
+  }
+  return out;
+}
+
 function code(file: string): string {
   let src: string;
   try {
@@ -45,31 +119,46 @@ function code(file: string): string {
   } catch {
     return ""; // listed but deleted in the working tree
   }
-  return src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
+  return stripComments(src, /\.(tsx|jsx)$/.test(file));
 }
 
 const sources = files.map((f) => ({ f, src: code(f) }));
 
-/** `f: snippet` for every match of `re` (global) in the comment-free code. */
-function hits(re: RegExp, accept: (m: RegExpExecArray) => boolean = () => true): string[] {
-  const out: string[] = [];
-  for (const { f, src } of sources) {
-    for (const m of src.matchAll(re)) {
-      if (accept(m)) out.push(`${f}: ${m[0].replace(/\s+/g, " ").slice(0, 120)}`);
-    }
-  }
-  return out;
-}
-
-/** The text from an opening paren at `start` to its matching close (strings ignored — good enough here). */
+/** From the bracket at `start`, the text up to its matching close — string/template contents skipped. */
 function balanced(src: string, start: number): string {
+  const open = src[start];
+  const close = open === "(" ? ")" : open === "<" ? ">" : "}";
   let depth = 0;
   for (let i = start; i < src.length; i++) {
-    if (src[i] === "(") depth++;
-    else if (src[i] === ")" && --depth === 0) return src.slice(start, i + 1);
+    const c = src[i];
+    if (c === '"' || c === "'" || c === "`") {
+      // skip a string/template literal (escapes honoured; nested ${} not needed for depth)
+      for (i++; i < src.length && src[i] !== c; i++) if (src[i] === "\\") i++;
+      continue;
+    }
+    if (c === open) depth++;
+    else if (c === close && --depth === 0) return src.slice(start, i + 1);
   }
   return src.slice(start);
 }
+
+/** The argument text of a call/tagged template starting at `i` (after optional generics). */
+function argumentText(src: string, i: number): string {
+  while (/\s/.test(src[i] ?? "")) i++;
+  if (src[i] === "<") {
+    i += balanced(src, i).length;
+    while (/\s/.test(src[i] ?? "")) i++;
+  }
+  if (src[i] === "`") {
+    let j = i + 1;
+    for (; j < src.length && src[j] !== "`"; j++) if (src[j] === "\\") j++;
+    return src.slice(i, j + 1);
+  }
+  if (src[i] === "(") return balanced(src, i);
+  return "";
+}
+
+const snippet = (s: string) => s.replace(/\s+/g, " ").slice(0, 120);
 
 describe("leads-store routing (Story 5.3)", () => {
   it("scans a real file set (the gate is not vacuous)", () => {
@@ -79,31 +168,76 @@ describe("leads-store routing (Story 5.3)", () => {
     expect((repo.match(/\bleadsDb\.lead\b/g) ?? []).length).toBeGreaterThanOrEqual(10);
   });
 
-  it('no Lead access through the catalog client in ANY file, incl. plain JS (`prisma.lead` / `prisma["lead"]`)', () => {
-    expect(hits(/\bprisma\s*(\.\s*lead\b|\[\s*["'`]lead["'`]\s*\])/g)).toEqual([]);
+  it("the comment stripper keeps code that follows `//` or `/*` inside strings, templates and regexes", () => {
+    const src = [
+      'const u = "//"; prisma.lead.findMany();',
+      "const g = 'src/*'; x();",
+      "const t = `a // ${b} /* c`; y();",
+      "const r = /\\/\\//; z(); // real comment",
+      "/* block */ w();",
+    ].join("\n");
+    const out = stripComments(src, false);
+    for (const kept of ["prisma.lead.findMany()", "x()", "y()", "z()", "w()", '"//"', "'src/*'"]) {
+      expect(out).toContain(kept);
+    }
+    expect(out).not.toContain("real comment");
+    expect(out).not.toContain("block");
+  });
+
+  it('no Lead access through the catalog client (`prisma.lead` / `prisma["lead"]`)', () => {
+    const out: string[] = [];
+    for (const { f, src } of sources) {
+      for (const m of src.matchAll(/\bprisma\s*(\.\s*lead\b|\[\s*["'`]lead["'`]\s*\])/g))
+        out.push(`${f}: ${snippet(m[0])}`);
+    }
+    expect(out).toEqual([]);
+  });
+
+  it("plain JS files (no type layer): no `<x>.lead` except `leadsDb.lead`", () => {
+    const out: string[] = [];
+    for (const { f, src } of sources.filter((s) => isPlainJs(s.f))) {
+      for (const m of src.matchAll(
+        /\b(?!leadsDb\b)[A-Za-z_$][\w$]*\s*\)?\s*(\.\s*lead\b|\[\s*["'`]lead["'`]\s*\])/g,
+      )) {
+        out.push(`${f}: ${snippet(m[0])}`);
+      }
+    }
+    expect(out).toEqual([]);
   });
 
   it("leadsDb is used for the Lead model and its sequence ONLY — never the catalog", () => {
-    expect(hits(/\bleadsDb\s*\.\s*(?!lead\b|\$queryRaw\b|\$disconnect\b)\w+/g)).toEqual([]);
-  });
-
-  it("raw SQL on leads / lead_reference_seq never runs on the catalog client — even across lines", () => {
-    expect(
-      hits(
-        /\bprisma\s*\.\s*\$(queryRaw|executeRaw)\w*\s*(<[^>]*>)?\s*(`[^`]*`|\(\s*(`[^`]*`|"[^"]*"|'[^']*')[^)]*\))/g,
-        (m) => /lead_reference_seq|\bleads\b/.test(m[0]),
-      ),
-    ).toEqual([]);
-  });
-
-  it("no catalog-client $transaction callback touches Lead (Prisma types `tx` with `lead`)", () => {
     const out: string[] = [];
     for (const { f, src } of sources) {
-      for (const m of src.matchAll(/\bprisma\s*\.\s*\$transaction\s*\(/g)) {
-        const body = balanced(src, m.index! + m[0].length - 1);
-        const param = body.match(/^\(\s*async\s*\(?\s*(\w+)/)?.[1];
-        if (param && new RegExp(`\\b${param}\\s*\\.\\s*lead\\b`).test(body))
-          out.push(`${f}: ${param}.lead`);
+      for (const m of src.matchAll(
+        /\bleadsDb\s*\.\s*(?!lead\b|\$queryRaw\b|\$disconnect\b)[\w$]+/g,
+      )) {
+        out.push(`${f}: ${snippet(m[0])}`);
+      }
+    }
+    expect(out).toEqual([]);
+  });
+
+  it("raw SQL on leads / lead_reference_seq never runs on the catalog client (any argument form)", () => {
+    const out: string[] = [];
+    for (const { f, src } of sources) {
+      for (const m of src.matchAll(/\bprisma\s*\.\s*\$(queryRaw|executeRaw)[\w$]*/g)) {
+        const arg = argumentText(src, m.index! + m[0].length);
+        if (/lead_reference_seq|\bleads\b/.test(arg)) out.push(`${f}: ${snippet(m[0] + arg)}`);
+      }
+    }
+    expect(out).toEqual([]);
+  });
+
+  it("no catalog `prisma.$transaction(…)` touches Lead, whatever the callback's form", () => {
+    const out: string[] = [];
+    for (const { f, src } of sources) {
+      for (const m of src.matchAll(/\bprisma\s*\.\s*\$transaction\s*(?=[(<])/g)) {
+        const body = argumentText(src, m.index! + m[0].length);
+        for (const hit of body.matchAll(
+          /\b(?!leadsDb\b)[A-Za-z_$][\w$]*\s*(\.\s*lead\b|\[\s*["'`]lead["'`]\s*\])/g,
+        )) {
+          out.push(`${f}: ${snippet(hit[0])}`);
+        }
       }
     }
     expect(out).toEqual([]);

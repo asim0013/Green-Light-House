@@ -138,13 +138,18 @@ describe("leads store residency (Story 5.3)", () => {
 
   it("the honeypot's sequence draw comes from the LEADS database's sequence", async (ctx) => {
     if (!ready) return ctx.skip();
+    // The REGIONAL sequence must advance by exactly one, and the burned value must be
+    // that new value. Only the regional sequence is read — nothing else draws from it
+    // — so this is race-free AND discriminating whatever state the main sequence is
+    // in. (Re-review RES-1: equality with the regional value ALONE was vacuous on a
+    // pristine main database — both sequences sat at 2000, so a mis-routed draw
+    // matched. A draw on main leaves the regional sequence unmoved ⇒ red.)
+    const before = await seqValue(regional);
     const fake = await repo.burnLeadReference();
     expect(fake).toMatch(/^GLH-RFQ-\d+$/);
-    // The burned value IS the regional sequence's current value. A draw on the main
-    // database would return the MAIN sequence's value (thousands ahead of a freshly
-    // migrated one), so this equality alone discriminates — no assertion on the
-    // main sequence, which other test files advance concurrently (review LOW-5).
-    expect(BigInt(fake.replace("GLH-RFQ-", ""))).toBe(await seqValue(regional));
+    const after = await seqValue(regional);
+    expect(after).toBe(before + BigInt(1));
+    expect(BigInt(fake.replace("GLH-RFQ-", ""))).toBe(after);
   });
 
   it("reads go to the leads database too — a row seeded ONLY there is visible to the repository", async (ctx) => {

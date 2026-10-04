@@ -94,6 +94,12 @@ Switching the setting does **not** move rows. On a live site:
 1. Stop the app and worker (or put the site in maintenance) so no reference is drawn
    mid-move.
 2. Copy the rows: `pg_dump --data-only -t leads "<main url>" | psql "<leads url>"`.
+
+   ⚠️ **Strip `?schema=public` first.** The app's URLs carry Prisma's `?schema=…`
+   query parameter (see `.env.example`); `pg_dump` and `psql` (libpq) reject it with
+   `invalid URI query parameter: "schema"`. For these tools use the same URL
+   without it — e.g. `postgresql://glh:…@host:5432/greenlighthouse`. The same
+   applies to running the `SELECT`/`setval` statements below with `psql`.
 3. Copy the sequence **exactly**, including `is_called`. On the MAIN database:
 
    ```sql
