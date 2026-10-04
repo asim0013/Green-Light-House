@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { probeDbReady, warmUp } from "./dbReady";
+import { resolveLeadsDatabaseUrl } from "../src/lib/leads-db-url";
 import { CONTACT, configuredChannels, isFullyConfigured, mapsUrl } from "../src/config/contact";
 import { slaTextFor } from "../scripts/sla-fixtures";
 
@@ -71,14 +72,25 @@ interface PrismaLike {
   $disconnect(): Promise<void>;
 }
 
-async function withPrisma<T>(fn: (db: PrismaLike) => Promise<T>): Promise<T> {
+/**
+ * `store` (Story 5.3): Lead rows live in the LEADS store, which LEADS_DATABASE_URL may
+ * put in a different database from the catalog. Lead calls pass "leads".
+ */
+async function withPrisma<T>(
+  fn: (db: PrismaLike) => Promise<T>,
+  store: "catalog" | "leads" = "catalog",
+): Promise<T> {
   try {
     (process as NodeJS.Process & { loadEnvFile?: (p?: string) => void }).loadEnvFile?.(".env");
   } catch {
     // ambient env
   }
   const { PrismaClient } = await import("@prisma/client");
-  const db = new PrismaClient() as unknown as PrismaLike;
+  const db = (
+    store === "leads"
+      ? new PrismaClient({ datasources: { db: { url: resolveLeadsDatabaseUrl() } } })
+      : new PrismaClient()
+  ) as unknown as PrismaLike;
   try {
     return await fn(db);
   } finally {
@@ -108,6 +120,7 @@ test.afterAll(async ({}, testInfo) => {
         email: { startsWith: `${E2E_EMAIL_PREFIX}w${testInfo.workerIndex}-p${process.pid}-` },
       },
     }),
+    "leads",
   );
 });
 
@@ -448,7 +461,7 @@ test.describe("a submission FROM /contact reaches Postgres (AC2)", () => {
     await expect(heading).toBeVisible();
 
     const reference = await page.getByText(/^GLH-RFQ-\d+$/).innerText();
-    const row = await withPrisma((db) => db.lead.findUnique({ where: { reference } }));
+    const row = await withPrisma((db) => db.lead.findUnique({ where: { reference } }), "leads");
     expect(row, `no lead row for on-screen reference ${reference}`).not.toBeNull();
     expect(row!.email).toBe(email);
     expect(row!.source).toBe("direct");

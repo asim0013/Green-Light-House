@@ -3,7 +3,7 @@ import { Queue, Worker, type Job } from "bullmq";
 import { createEmailTransport } from "@/lib/email";
 import { RFQ_QUEUE_NAME } from "@/lib/queue";
 import { handleJob, registerSweepScheduler } from "@/server/queue/worker-runtime";
-import { prisma } from "@/lib/db";
+import { prisma, leadsDb } from "@/lib/db";
 
 /**
  * The GREENLIGHTHOUSE worker (Story 3.3 — FR29).
@@ -142,7 +142,9 @@ async function shutdown(signal: string): Promise<void> {
   try {
     await worker.close();
     await schedulerConnection.quit();
-    await prisma.$disconnect();
+    // Both pools (Story 5.3): the leads store may be a separate regional database.
+    // When it is not, leadsDb IS prisma and the second call is a no-op.
+    await Promise.all([prisma.$disconnect(), leadsDb.$disconnect()]);
   } catch (error) {
     console.error("[worker] error during shutdown:", error);
   } finally {

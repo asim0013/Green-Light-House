@@ -2,7 +2,7 @@ import IORedis from "ioredis";
 import { Queue } from "bullmq";
 import { RFQ_JOB_NAME, RFQ_JOB_OPTIONS, RFQ_QUEUE_NAME } from "../src/lib/queue";
 import { findLeadsAwaitingNotification } from "../src/server/repositories/lead";
-import { prisma } from "../src/lib/db";
+import { leadsDb } from "../src/lib/db";
 
 /**
  * Operator tools for the RFQ queue (Story 3.3, AC10).
@@ -84,7 +84,7 @@ export async function listFailed(): Promise<void> {
   try {
     await listFailedInner();
   } finally {
-    await prisma.$disconnect();
+    await leadsDb.$disconnect();
   }
 }
 
@@ -102,7 +102,7 @@ async function listFailedInner(): Promise<void> {
     // rather than one per job.
     const ids = jobs.map((job) => (job.data as { leadId?: string }).leadId).filter(Boolean);
     const rows = ids.length
-      ? await prisma.lead.findMany({
+      ? await leadsDb.lead.findMany({
           where: { id: { in: ids as string[] } },
           select: { id: true, reference: true },
         })
@@ -189,7 +189,7 @@ export async function replayUnnotified(): Promise<void> {
 
   if (leads.length === 0) {
     console.log("[queue:replay] no leads awaiting notification.");
-    await prisma.$disconnect();
+    await leadsDb.$disconnect();
     return;
   }
 
@@ -238,7 +238,7 @@ export async function replayUnnotified(): Promise<void> {
         ` (already queued: ${alreadyQueued}, failed: ${failed}).`,
     );
   });
-  await prisma.$disconnect();
+  await leadsDb.$disconnect();
 }
 
 const COMMANDS: Record<string, () => Promise<void>> = {

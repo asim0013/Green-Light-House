@@ -1,5 +1,5 @@
 import type { Prisma, LeadStatus, LeadSource, Locale } from "@prisma/client";
-import { prisma } from "@/lib/db";
+import { leadsDb } from "@/lib/db";
 import { deleteObject } from "@/lib/storage";
 import {
   PENDING_MAX_AGE_MS,
@@ -16,6 +16,14 @@ import {
 
 /**
  * Lead writes (Story 3.2 — FR27/FR29's persist-first half).
+ *
+ * ⚠️ EVERY ACCESS HERE GOES THROUGH `leadsDb`, NEVER `prisma` (Story 5.3 — FR47
+ * data residency). Leads are the site's personal data; `LEADS_DATABASE_URL` may put
+ * them in a different region from the catalog. That includes the raw
+ * `nextval('lead_reference_seq')` honeypot draw: on the wrong connection it would
+ * advance the CATALOG database's sequence, and a burned "fake" reference could then
+ * equal a real lead's reference in the leads database. `lead-routing.test.ts`
+ * fails on any `prisma.lead` / catalog-on-`leadsDb` use.
  *
  * UNCACHED, DELIBERATELY, IN BOTH DIRECTIONS. Persist-first is a durability
  * property, not a cache property: success IS the Prisma commit, so there is no
@@ -103,7 +111,7 @@ export interface CreatedLead {
  * JOB. Two different surfaces; only one of them is public.
  */
 export async function createLead(data: LeadCreateData): Promise<CreatedLead> {
-  return prisma.lead.create({ data, select: { id: true, reference: true } });
+  return leadsDb.lead.create({ data, select: { id: true, reference: true } });
 }
 
 /**
@@ -116,7 +124,7 @@ export async function createLead(data: LeadCreateData): Promise<CreatedLead> {
  * (schema.prisma's `Lead.reference` note): never diagnose one as a lost lead.
  */
 export async function burnLeadReference(): Promise<string> {
-  const rows = await prisma.$queryRaw<{ nextval: bigint }[]>`SELECT nextval('lead_reference_seq')`;
+  const rows = await leadsDb.$queryRaw<{ nextval: bigint }[]>`SELECT nextval('lead_reference_seq')`;
   return `GLH-RFQ-${rows[0].nextval}`;
 }
 
@@ -138,10 +146,10 @@ export async function burnLeadReference(): Promise<string> {
  * writes the rationale down rather than leaving the ordering to be rediscovered.
  */
 export async function deleteLeadWithAttachment(id: string): Promise<void> {
-  const lead = await prisma.lead.findUnique({ where: { id }, select: { attachmentKey: true } });
+  const lead = await leadsDb.lead.findUnique({ where: { id }, select: { attachmentKey: true } });
   if (!lead) return;
   if (lead.attachmentKey) await deleteObject(lead.attachmentKey);
-  await prisma.lead.delete({ where: { id } });
+  await leadsDb.lead.delete({ where: { id } });
 }
 
 /**
@@ -158,7 +166,7 @@ export async function deleteLeadWithAttachment(id: string): Promise<void> {
  */
 export async function expireStalePendingScans(now: Date = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - PENDING_MAX_AGE_MS);
-  const result = await prisma.lead.updateMany({
+  const result = await leadsDb.lead.updateMany({
     where: { attachmentScanStatus: "pending", createdAt: { lt: cutoff } },
     data: { attachmentScanStatus: "failed", attachmentScannedAt: now },
   });
@@ -227,7 +235,7 @@ export type LeadForEmail = Prisma.LeadGetPayload<{ select: typeof LEAD_EMAIL_SEL
 /** Re-read a lead for sending. `null` when the row is gone — a job for a
  *  deleted lead must COMPLETE, not retry until the attempt budget burns out. */
 export async function findLeadForEmail(id: string): Promise<LeadForEmail | null> {
-  return prisma.lead.findUnique({ where: { id }, select: LEAD_EMAIL_SELECT });
+  return leadsDb.lead.findUnique({ where: { id }, select: LEAD_EMAIL_SELECT });
 }
 
 /**
@@ -247,14 +255,14 @@ export async function markDeliverySent(id: string, kind: DeliveryKind, at: Date)
   // failed, and any reason-based recovery predicate — including the widened one
   // below — would keep re-finding a lead that is already done. The other kind's
   // entry is preserved, for the same reason `recordDeliveryFailure` accumulates.
-  const existing = await prisma.lead.findUnique({
+  const existing = await leadsDb.lead.findUnique({
     where: { id },
     select: { deliveryFailureReason: true },
   });
   const kept = (existing?.deliveryFailureReason ?? "")
     .split(";")
     .filter((part) => part.trim() !== "" && part.split(":")[0] !== kind);
-  await prisma.lead.update({
+  await leadsDb.lead.update({
     where: { id },
     data: {
       ...(kind === "notify" ? { notifiedAt: at } : { confirmationSentAt: at }),
@@ -273,7 +281,7 @@ export async function markDeliverySent(id: string, kind: DeliveryKind, at: Date)
  * other. Re-recording the same kind replaces just that kind's entry.
  */
 export async function recordDeliveryFailure(id: string, reason: string): Promise<void> {
-  const existing = await prisma.lead.findUnique({
+  const existing = await leadsDb.lead.findUnique({
     where: { id },
     select: { deliveryFailureReason: true },
   });
@@ -281,7 +289,7 @@ export async function recordDeliveryFailure(id: string, reason: string): Promise
   const kept = (existing?.deliveryFailureReason ?? "")
     .split(";")
     .filter((part) => part.trim() !== "" && part.split(":")[0] !== kind);
-  await prisma.lead.update({
+  await leadsDb.lead.update({
     where: { id },
     data: { deliveryFailureReason: [...kept, reason].join(";") },
   });
@@ -311,7 +319,7 @@ export interface AdminLeadRow {
 
 /** All leads for the admin list, newest-first, optional status filter. Uses `@@index([status, createdAt])`. */
 export async function listLeadsForAdmin(filter?: LeadStatus): Promise<AdminLeadRow[]> {
-  const rows = await prisma.lead.findMany({
+  const rows = await leadsDb.lead.findMany({
     where: filter ? { status: filter } : undefined,
     orderBy: { createdAt: "desc" },
     select: {
@@ -367,7 +375,7 @@ export interface AdminLeadDetail {
 
 /** One lead fully projected for the detail view (frozen parsers), or null. */
 export async function getLeadForAdmin(id: string): Promise<AdminLeadDetail | null> {
-  const lead = await prisma.lead.findUnique({ where: { id } });
+  const lead = await leadsDb.lead.findUnique({ where: { id } });
   if (!lead) return null;
   return {
     id: lead.id,
@@ -402,7 +410,7 @@ export async function getLeadForAdmin(id: string): Promise<AdminLeadDetail | nul
 export async function getServableLeadAttachment(
   id: string,
 ): Promise<{ storageKey: string; name: string; mime: string | null } | null> {
-  const lead = await prisma.lead.findUnique({
+  const lead = await leadsDb.lead.findUnique({
     where: { id },
     select: {
       attachmentKey: true,
@@ -432,7 +440,7 @@ function isRecordNotFound(error: unknown): boolean {
 /** Set a lead's status (Story 4.7). Returns false if the lead is gone (incl. a delete race). */
 export async function updateLeadStatus(id: string, status: LeadStatus): Promise<boolean> {
   try {
-    await prisma.lead.update({ where: { id }, data: { status } });
+    await leadsDb.lead.update({ where: { id }, data: { status } });
     return true;
   } catch (error) {
     if (isRecordNotFound(error)) return false;
@@ -468,7 +476,7 @@ export interface LeadExportRow {
 
 /** All leads flattened for CSV export (equipment → a `labelOf`-joined string), newest-first. */
 export async function listLeadsForExport(filter?: LeadStatus): Promise<LeadExportRow[]> {
-  const rows = await prisma.lead.findMany({
+  const rows = await leadsDb.lead.findMany({
     where: filter ? { status: filter } : undefined,
     orderBy: { createdAt: "desc" },
   });
@@ -523,7 +531,7 @@ export async function findLeadsAwaitingNotification(
   olderThan: Date,
   limit = 100,
 ): Promise<{ id: string; reference: string; createdAt: Date }[]> {
-  return prisma.lead.findMany({
+  return leadsDb.lead.findMany({
     where: {
       notifiedAt: null,
       createdAt: { lt: olderThan },

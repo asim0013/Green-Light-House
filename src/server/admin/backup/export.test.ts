@@ -7,15 +7,17 @@ import { describe, it, expect, vi } from "vitest";
  * assembler touches (and, crucially, that `adminUser` is NEVER among them), the
  * meta envelope, and that no credential/approval field can appear in the output.
  */
+/** Models read through the CATALOG client vs the LEADS store (Story 5.3). */
 const accessed = new Set<string>();
+const accessedLeads = new Set<string>();
 vi.mock("@/lib/db", () => {
-  const models: Record<string, { findMany: () => Promise<unknown[]>; findUnique: () => Promise<null> }> = {};
-  return {
-    prisma: new Proxy(
+  const recorder = (seen: Set<string>) => {
+    const models: Record<string, { findMany: () => Promise<unknown[]>; findUnique: () => Promise<null> }> = {};
+    return new Proxy(
       {},
       {
         get(_t, key: string) {
-          accessed.add(key);
+          seen.add(key);
           models[key] ??= {
             findMany: () => Promise.resolve([]),
             findUnique: () => Promise.resolve(null),
@@ -23,8 +25,9 @@ vi.mock("@/lib/db", () => {
           return models[key];
         },
       },
-    ),
+    );
   };
+  return { prisma: recorder(accessed), leadsDb: recorder(accessedLeads) };
 });
 
 const { buildDatasetExport } = await import("./export");
@@ -32,10 +35,12 @@ const { buildDatasetExport } = await import("./export");
 describe("buildDatasetExport", () => {
   it("NEVER reads AdminUser (no credentials in a downloadable backup)", async () => {
     accessed.clear();
+    accessedLeads.clear();
     await buildDatasetExport();
     // The security invariant: the assembler must not query the admin_users table.
     // P5: add `prisma.adminUser.findMany(...)` to the assembler and this reddens.
     expect(accessed.has("adminUser")).toBe(false);
+    expect(accessedLeads.has("adminUser")).toBe(false);
     // ...and it DID read the content/catalog/lead models it is supposed to.
     for (const model of [
       "industry",
@@ -56,10 +61,14 @@ describe("buildDatasetExport", () => {
       "teamMember",
       "mediaAsset",
       "siteSettings",
-      "lead",
     ]) {
       expect(accessed.has(model), `assembler should read ${model}`).toBe(true);
     }
+    // Story 5.3: leads come from the LEADS store, never the catalog client — with the
+    // stores split, a catalog read would back up an EMPTY table.
+    // P5: change the assembler back to `prisma.lead.findMany` and BOTH lines redden.
+    expect(accessedLeads.has("lead"), "leads read from the leads store").toBe(true);
+    expect(accessed.has("lead"), "leads NOT read from the catalog client").toBe(false);
   });
 
   it("emits a versioned meta envelope and every data collection", async () => {
