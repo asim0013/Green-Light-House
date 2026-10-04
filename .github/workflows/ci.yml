@@ -184,6 +184,10 @@ jobs:
       # Separate suite: the caching proof needs a PRODUCTION server, because
       # `next dev` does not engage the incremental cache handler at all.
       - run: npm run test:e2e:caching
+      # Story 5.8: analytics WITH both build-time values set, against a local
+      # Plausible stub — proves the consent gate + the same-origin pipe + the shipped
+      # CSP end to end. The main suite can only prove the unprovisioned default.
+      - run: npm run test:e2e:analytics
 
       - name: Upload Playwright report on failure
         if: failure()

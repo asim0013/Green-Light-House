@@ -48,7 +48,13 @@ export function RfqConfirmation({
   // successful submission (persist-first, client-state swap), so it is the right
   // and only place to record the RFQ conversion. No-op unless consent is granted;
   // path+locale only, never the reference or any PII (AC3).
+  // `firedRef` (review F9): React Strict Mode double-invokes effects in dev, which
+  // would double-count during staging checks; the ref survives that remount, so the
+  // event fires once per mounted confirmation in every mode.
+  const firedRef = useRef(false);
   useEffect(() => {
+    if (firedRef.current) return;
+    firedRef.current = true;
     trackEvent(EVENT_RFQ, { path: location.pathname, locale });
   }, [locale]);
 

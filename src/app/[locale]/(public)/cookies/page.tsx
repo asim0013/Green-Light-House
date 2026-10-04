@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { alternatesFor, robotsFor } from "@/lib/seo";
 import { legalSignals } from "@/server/legal-page";
-import { LEGAL_EFFECTIVE } from "@/config/legal";
+import { COOKIES_EFFECTIVE } from "@/config/legal";
 import { LegalDocument } from "@/components/legal/LegalDocument";
 
 /**
@@ -22,7 +22,8 @@ import { LegalDocument } from "@/components/legal/LegalDocument";
  * must pass it before the page is advertised (owner-actions §3).
  *
  * Shares the `legalSignals` predicate with `/privacy`, `/terms` and `sitemap.ts`;
- * effective line from `LEGAL_EFFECTIVE`; uniform `force-dynamic`, no DB read.
+ * effective line from `COOKIES_EFFECTIVE` (its own, day-granular — the copy is
+ * fingerprinted in `legal.test.ts`); uniform `force-dynamic`, no DB read.
  */
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,7 @@ export default async function CookiesPage(props: { params: Promise<{ locale: str
   const t = await getTranslations({ locale, namespace: "Legal.cookies" });
 
   return (
-    <LegalDocument title={t("title")} versionLine={t("effective", { date: LEGAL_EFFECTIVE })}>
+    <LegalDocument title={t("title")} versionLine={t("effective", { date: COOKIES_EFFECTIVE })}>
       <p>{t("intro")}</p>
       <p>{t("essential")}</p>
       <p>{t("noTracking")}</p>

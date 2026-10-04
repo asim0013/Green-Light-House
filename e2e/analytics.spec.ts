@@ -11,13 +11,13 @@ import { probeDbReady, warmUp } from "./dbReady";
  * unprovisioned deploy is therefore silent (AC6), and the env gate is the OUTER
  * guard sitting in front of the consent gate.
  *
- * The ENABLED path (script injected on `granted` → same-origin proxied path, the
- * event POST, no CSP violation) is proven by the UNIT suite — `Analytics.test.tsx`
- * (injection + `data-domain`/`data-api`/`src`), `track.test.ts` (consent-guarded
- * send, no PII) and `RfqConfirmation.test.tsx` (the one RFQ fire) — and is confirmed
- * in staging once `PLAUSIBLE_HOST` is provisioned (owner action). It cannot be
- * exercised here without a provisioned host, and this suite says so rather than
- * faking a pass.
+ * ⚠️ THIS SUITE CANNOT TELL A WORKING CONSENT GATE FROM A BROKEN ONE — with
+ * analytics off, both pass (review F3). The ENABLED path (consent gate, live
+ * Accept/revoke, the same-origin pipe through the build-time rewrite, the PII-free
+ * Phone event, the shipped CSP) is proven by `e2e/analytics-enabled.spec.ts`, which
+ * runs from `playwright.analytics.config.ts` against a production build with both
+ * values set and a local Plausible stub (`npm run test:e2e:analytics`). The RFQ fire
+ * is unit-proven in `RfqConfirmation.test.tsx` (an e2e RFQ would write a lead).
  */
 let dbReady = true;
 const isAnalyticsPath = (url: string) => /\/hive\/|\/api\/hive\//.test(new URL(url).pathname);

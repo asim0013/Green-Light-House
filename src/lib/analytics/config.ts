@@ -7,9 +7,14 @@
  *
  * ⚠️ Safe default OFF: analytics exists only when the data-domain is configured,
  * so dev + CI + every un-provisioned environment run with it fully disabled.
- * `PLAUSIBLE_HOST` (the server-side rewrite target) must be set together with
+ * `PLAUSIBLE_HOST` (the rewrite target) must be set together with
  * `NEXT_PUBLIC_ANALYTICS_DOMAIN`; if the domain is set but the host is not, the
  * proxied paths simply 404 and the site is unaffected (no events, no crash).
+ *
+ * ⚠️ BOTH ARE BUILD-TIME (review F1): the domain is inlined into the client bundle
+ * and `rewrites()` is baked into routes-manifest.json. Enabling analytics in the
+ * Docker image therefore needs the Dockerfile build args (wired in compose), and a
+ * rebuild — setting them only in the runtime env does nothing.
  */
 
 /**
