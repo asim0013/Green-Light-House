@@ -17,8 +17,19 @@ const globalForPrisma = globalThis as unknown as {
 const log: ("warn" | "error")[] =
   process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"];
 
-/** The main store: the catalog and everything that is not personal data. */
-export const prisma = globalForPrisma.prisma ?? new PrismaClient({ log });
+const basePrisma = globalForPrisma.prisma ?? new PrismaClient({ log });
+
+/**
+ * The main store: the catalog and everything that is not buyer personal data.
+ *
+ * ⚠️ TYPED WITHOUT `lead` (Story 5.3 review MED-1). `prisma.lead`, `prisma["lead"]`,
+ * `const { lead } = prisma`, `const db = prisma; db.lead` and a call split across
+ * lines are all COMPILE errors — the type system blocks every direct route to the
+ * Lead model through the catalog client, which a text scan cannot. Leads go
+ * through `leadsDb`. (An interactive `$transaction` callback's `tx` is typed by
+ * Prisma itself and still has `lead`; `lead-routing.test.ts` covers that hole.)
+ */
+export const prisma: Omit<PrismaClient, "lead"> = basePrisma;
 
 /**
  * What the leads store may be used for: the `Lead` model, the raw draw from
@@ -44,9 +55,9 @@ export const leadsDb: LeadsClient =
   globalForPrisma.leadsDb ??
   (leadsStoreIsSeparate()
     ? new PrismaClient({ log, datasources: { db: { url: resolveLeadsDatabaseUrl()! } } })
-    : prisma);
+    : basePrisma);
 
 if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
+  globalForPrisma.prisma = basePrisma;
   globalForPrisma.leadsDb = leadsDb as PrismaClient;
 }

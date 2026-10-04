@@ -17,9 +17,17 @@ import { PrismaClient } from "@prisma/client";
  *     store could mint a "fake" reference equal to a real one).
  *
  * The throwaway is created with CREATE DATABASE from the main connection (`glh` is
- * the bootstrap superuser in docker-compose and CI) and DROPPED in afterAll.
- * `greenlighthouse` is only ever READ here — two counts and a sequence read.
- * Skips locally if Postgres is unreachable; throws in CI.
+ * the bootstrap superuser in docker-compose and CI) and DROPPED in afterAll; a
+ * stale `glh_residency_*` left by a KILLED run (older than an hour) is swept first.
+ *
+ * On a CORRECT run `greenlighthouse` is only READ (counts, a row lookup). If routing
+ * is BROKEN, this test's own writes land there instead — by design that is what
+ * reddens it — so `afterAll` deletes this run's rows (unique per-run email) from the
+ * main database. A mis-routed honeypot draw also burns one main-sequence value: a
+ * sanctioned gap, never a lost lead. (Review LOW-5 corrected an earlier "only ever
+ * read" claim that was false under mis-routing.)
+ *
+ * Skips locally if Postgres is unreachable or the role lacks CREATEDB; throws in CI.
  */
 const MAIN_URL = process.env.DATABASE_URL ?? "";
 const DB_NAME = `glh_residency_${process.pid}_${Date.now()}`;
@@ -40,7 +48,9 @@ const savedLeadsUrl = process.env.LEADS_DATABASE_URL;
 
 /** last_value of lead_reference_seq on a given database. */
 async function seqValue(db: PrismaClient): Promise<bigint> {
-  const rows = await db.$queryRaw<{ last_value: bigint }[]>`SELECT last_value FROM lead_reference_seq`;
+  const rows = await db.$queryRaw<
+    { last_value: bigint }[]
+  >`SELECT last_value FROM lead_reference_seq`;
   return rows[0].last_value;
 }
 
@@ -53,7 +63,25 @@ beforeAll(async () => {
     ready = false;
     return;
   }
-  await main.$executeRawUnsafe(`CREATE DATABASE "${DB_NAME}"`);
+  // Sweep throwaways left by a KILLED earlier run (afterAll never ran). The name
+  // embeds its creation time; only those older than an hour are touched, so a
+  // concurrently running copy of this test is never dropped from under itself.
+  const stale = await main.$queryRaw<{ datname: string }[]>`
+    SELECT datname FROM pg_database WHERE datname LIKE 'glh_residency_%'`;
+  for (const { datname } of stale) {
+    const born = Number(datname.split("_").pop());
+    if (Number.isFinite(born) && Date.now() - born > 60 * 60 * 1000) {
+      await main.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${datname}" WITH (FORCE)`);
+    }
+  }
+  try {
+    await main.$executeRawUnsafe(`CREATE DATABASE "${DB_NAME}"`);
+  } catch (err) {
+    // A non-superuser role without CREATEDB cannot run this proof here.
+    if (process.env.CI) throw err;
+    ready = false;
+    return;
+  }
   created = true;
   // The full schema + lead_reference_seq, via the real migrations.
   execFileSync(process.execPath, ["node_modules/prisma/build/index.js", "migrate", "deploy"], {
@@ -81,7 +109,8 @@ afterAll(async () => {
   if (created) await main.$executeRawUnsafe(`DROP DATABASE IF EXISTS "${DB_NAME}" WITH (FORCE)`);
   // Safety net: if routing were broken, this test's OWN rows land in the main
   // database. Remove only those (unique per-run email) so a red run never pollutes it.
-  if (ready) await main.lead.deleteMany({ where: { email: { startsWith: `zzz-residency-${DB_NAME}` } } });
+  if (ready)
+    await main.lead.deleteMany({ where: { email: { startsWith: `zzz-residency-${DB_NAME}` } } });
   await main?.$disconnect();
 }, 60_000);
 
@@ -107,13 +136,15 @@ describe("leads store residency (Story 5.3)", () => {
     expect(await main.lead.count({ where: { email: EMAIL } })).toBe(before);
   });
 
-  it("the honeypot's sequence draw advances the LEADS database's sequence only", async (ctx) => {
+  it("the honeypot's sequence draw comes from the LEADS database's sequence", async (ctx) => {
     if (!ready) return ctx.skip();
-    const mainBefore = await seqValue(main);
     const fake = await repo.burnLeadReference();
     expect(fake).toMatch(/^GLH-RFQ-\d+$/);
+    // The burned value IS the regional sequence's current value. A draw on the main
+    // database would return the MAIN sequence's value (thousands ahead of a freshly
+    // migrated one), so this equality alone discriminates — no assertion on the
+    // main sequence, which other test files advance concurrently (review LOW-5).
     expect(BigInt(fake.replace("GLH-RFQ-", ""))).toBe(await seqValue(regional));
-    expect(await seqValue(main)).toBe(mainBefore);
   });
 
   it("reads go to the leads database too — a row seeded ONLY there is visible to the repository", async (ctx) => {

@@ -22,8 +22,10 @@ import {
  * them in a different region from the catalog. That includes the raw
  * `nextval('lead_reference_seq')` honeypot draw: on the wrong connection it would
  * advance the CATALOG database's sequence, and a burned "fake" reference could then
- * equal a real lead's reference in the leads database. `lead-routing.test.ts`
- * fails on any `prisma.lead` / catalog-on-`leadsDb` use.
+ * equal a real lead's reference in the leads database. Guarded in two layers:
+ * `prisma` is TYPED without `lead` (so any direct route is a compile error), and
+ * `lead-routing.test.ts` covers what types cannot see — plain JS files, raw SQL on
+ * `leads`/the sequence, and `$transaction` callbacks.
  *
  * UNCACHED, DELIBERATELY, IN BOTH DIRECTIONS. Persist-first is a durability
  * property, not a cache property: success IS the Prisma commit, so there is no

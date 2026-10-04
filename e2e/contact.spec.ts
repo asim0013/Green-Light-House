@@ -86,11 +86,9 @@ async function withPrisma<T>(
     // ambient env
   }
   const { PrismaClient } = await import("@prisma/client");
-  const db = (
-    store === "leads"
-      ? new PrismaClient({ datasources: { db: { url: resolveLeadsDatabaseUrl() } } })
-      : new PrismaClient()
-  ) as unknown as PrismaLike;
+  const db = (store === "leads"
+    ? new PrismaClient({ datasources: { db: { url: resolveLeadsDatabaseUrl() } } })
+    : new PrismaClient()) as unknown as PrismaLike;
   try {
     return await fn(db);
   } finally {
@@ -114,12 +112,13 @@ test.afterAll(async ({}, testInfo) => {
   // Per-worker, per-process — the whole-prefix sweep is `e2e/global-teardown.ts`,
   // where nothing is in flight (the 3.2 review proved a whole-prefix deleteMany
   // here races the other workers under fullyParallel).
-  await withPrisma((db) =>
-    db.lead.deleteMany({
-      where: {
-        email: { startsWith: `${E2E_EMAIL_PREFIX}w${testInfo.workerIndex}-p${process.pid}-` },
-      },
-    }),
+  await withPrisma(
+    (db) =>
+      db.lead.deleteMany({
+        where: {
+          email: { startsWith: `${E2E_EMAIL_PREFIX}w${testInfo.workerIndex}-p${process.pid}-` },
+        },
+      }),
     "leads",
   );
 });
