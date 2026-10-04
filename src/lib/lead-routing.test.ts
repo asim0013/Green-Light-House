@@ -25,7 +25,11 @@ import ts from "typescript";
  * KNOWN RESIDUAL HOLES (accepted, documented in docs/data-residency.md as "strong
  * guards, not a proof"): an explicit `as any`/`as unknown as` cast in TypeScript; a
  * `$transaction` handler defined elsewhere and passed by name; `$queryRawUnsafe(sql)`
- * where the SQL is built in a variable. Code review remains part of the control.
+ * where the SQL is built in a variable; the catalog client imported under an ALIAS
+ * (`import { prisma as db }`) and then used for raw SQL or a `$transaction` (its
+ * typed `.lead` access is still a compile error); a nested template inside a raw-SQL
+ * template; and `const { lead } = prisma` in a plain-JS file. The 5.3 final review
+ * found the last four; none occurs in the tree. Code review remains part of the control.
  *
  * Comments are removed with the TypeScript SCANNER (template- and regex-literal
  * aware), not a regex — a regex stripper let `"//"` or `"src/*"` inside a string
@@ -222,7 +226,8 @@ describe("leads-store routing (Story 5.3)", () => {
     for (const { f, src } of sources) {
       for (const m of src.matchAll(/\bprisma\s*\.\s*\$(queryRaw|executeRaw)[\w$]*/g)) {
         const arg = argumentText(src, m.index! + m[0].length);
-        if (/lead_reference_seq|\bleads\b/.test(arg)) out.push(`${f}: ${snippet(m[0] + arg)}`);
+        // Case-insensitive: SQL keywords and unquoted identifiers are (FROM LEADS).
+        if (/lead_reference_seq|\bleads\b/i.test(arg)) out.push(`${f}: ${snippet(m[0] + arg)}`);
       }
     }
     expect(out).toEqual([]);

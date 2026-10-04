@@ -28,8 +28,12 @@ const basePrisma = globalForPrisma.prisma ?? new PrismaClient({ log });
  * Lead model through the catalog client, which a text scan cannot. Leads go
  * through `leadsDb`. (An interactive `$transaction` callback's `tx` is typed by
  * Prisma itself and still has `lead`; `lead-routing.test.ts` covers that hole.)
+ *
+ * `$extends` is omitted too (5.3 final review): it returns a NEW client typed WITH
+ * `lead`, so `prisma.$extends({}).lead` would compile. Nothing uses it; if a client
+ * extension is ever needed, extend `basePrisma` here and re-apply this narrowing.
  */
-export const prisma: Omit<PrismaClient, "lead"> = basePrisma;
+export const prisma: Omit<PrismaClient, "lead" | "$extends"> = basePrisma;
 
 /**
  * What the leads store may be used for: the `Lead` model, the raw draw from
