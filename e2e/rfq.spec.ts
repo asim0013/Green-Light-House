@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { probeDbReady, warmUp } from "./dbReady";
+import { resolveLeadsDatabaseUrl } from "../src/lib/leads-db-url";
 import { probeClamavReady } from "./clamavReady";
 import { storageKeyExists, listStorageKeys, deleteStorageKey } from "./storageReady";
 import { cleanPdf, eicarPdf, plainZip } from "../scripts/attachment-fixtures";
@@ -79,6 +80,7 @@ interface PrismaLike {
   $disconnect(): Promise<void>;
 }
 
+/** Every use in this spec is the Lead model, so it opens the LEADS store (Story 5.3). */
 async function withPrisma<T>(fn: (db: PrismaLike) => Promise<T>): Promise<T> {
   try {
     (process as NodeJS.Process & { loadEnvFile?: (p?: string) => void }).loadEnvFile?.(".env");
@@ -86,7 +88,9 @@ async function withPrisma<T>(fn: (db: PrismaLike) => Promise<T>): Promise<T> {
     // ambient env
   }
   const { PrismaClient } = await import("@prisma/client");
-  const db = new PrismaClient() as unknown as PrismaLike;
+  const db = new PrismaClient({
+    datasources: { db: { url: resolveLeadsDatabaseUrl() } },
+  }) as unknown as PrismaLike;
   try {
     return await fn(db);
   } finally {

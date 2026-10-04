@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { prisma } from "@/lib/db";
+import { prisma, leadsDb } from "@/lib/db";
 import { queryIndustries, queryIndustryBySlug } from "./industry";
 import { queryPublishedProjects, queryProjectBySlug, queryProjectPrefill } from "./project";
 import {
@@ -63,7 +63,7 @@ const LEAD_EMAIL_PREFIX = "zzz-int-test-lead-";
 async function cleanup() {
   // Order matters: products reference the manufacturer and categories, and the
   // join rows cascade from their owning side.
-  await prisma.lead.deleteMany({ where: { email: { startsWith: LEAD_EMAIL_PREFIX } } });
+  await leadsDb.lead.deleteMany({ where: { email: { startsWith: LEAD_EMAIL_PREFIX } } });
   await prisma.document.deleteMany({ where: { slug: { startsWith: DOCUMENT_PREFIX } } });
   await prisma.service.deleteMany({ where: { slug: { startsWith: SERVICE_PREFIX } } });
   await prisma.project.deleteMany({ where: { slug: { startsWith: PROJECT_PREFIX } } });
@@ -1390,7 +1390,7 @@ describe("Story 3.0 — Lead foundations (integration)", () => {
 
   it("mints a human-quotable reference in the GLH-RFQ-<digits> format", async (ctx) => {
     if (!dbReachable) return ctx.skip();
-    const lead = await prisma.lead.create({ data: baseLead() });
+    const lead = await leadsDb.lead.create({ data: baseLead() });
     // FORMAT, not value: the sequence's position is not this test's business.
     expect(lead.reference).toMatch(/^GLH-RFQ-\d{4,}$/);
   });
@@ -1414,7 +1414,7 @@ describe("Story 3.0 — Lead foundations (integration)", () => {
    */
   it("stores the reference default WITHOUT lpad, in Postgres's canonical form", async (ctx) => {
     if (!dbReachable) return ctx.skip();
-    const rows = await prisma.$queryRaw<{ expr: string | null }[]>`
+    const rows = await leadsDb.$queryRaw<{ expr: string | null }[]>`
       SELECT pg_get_expr(d.adbin, d.adrelid) AS expr
       FROM pg_attrdef d
       JOIN pg_attribute a ON a.attrelid = d.adrelid AND a.attnum = d.adnum
@@ -1460,22 +1460,22 @@ describe("Story 3.0 — Lead foundations (integration)", () => {
 
   it("enforces uniqueness on reference", async (ctx) => {
     if (!dbReachable) return ctx.skip();
-    const first = await prisma.lead.create({ data: baseLead() });
+    const first = await leadsDb.lead.create({ data: baseLead() });
     await expect(
-      prisma.lead.create({ data: { ...baseLead(), reference: first.reference } }),
+      leadsDb.lead.create({ data: { ...baseLead(), reference: first.reference } }),
     ).rejects.toThrow();
   });
 
   it("gives distinct leads distinct references", async (ctx) => {
     if (!dbReachable) return ctx.skip();
-    const a = await prisma.lead.create({ data: baseLead() });
-    const b = await prisma.lead.create({ data: baseLead() });
+    const a = await leadsDb.lead.create({ data: baseLead() });
+    const b = await leadsDb.lead.create({ data: baseLead() });
     expect(a.reference).not.toBe(b.reference);
   });
 
   it("defaults every new Epic 3 column to null — null means 'not yet', never 'failed'", async (ctx) => {
     if (!dbReachable) return ctx.skip();
-    const lead = await prisma.lead.create({ data: baseLead() });
+    const lead = await leadsDb.lead.create({ data: baseLead() });
     expect(lead.timeline).toBeNull();
     expect(lead.attachmentName).toBeNull();
     expect(lead.attachmentMime).toBeNull();
@@ -1491,7 +1491,7 @@ describe("Story 3.0 — Lead foundations (integration)", () => {
   it("accepts every AttachmentScanStatus value the FR32a state machine needs", async (ctx) => {
     if (!dbReachable) return ctx.skip();
     for (const attachmentScanStatus of ["pending", "clean", "infected", "failed"] as const) {
-      const lead = await prisma.lead.create({
+      const lead = await leadsDb.lead.create({
         data: { ...baseLead(), attachmentScanStatus },
       });
       expect(lead.attachmentScanStatus, attachmentScanStatus).toBe(attachmentScanStatus);
@@ -1500,11 +1500,11 @@ describe("Story 3.0 — Lead foundations (integration)", () => {
 
   it("accepts the widened LeadSource values, and `direct` is still the default", async (ctx) => {
     if (!dbReachable) return ctx.skip();
-    const fallthrough = await prisma.lead.create({ data: baseLead() });
+    const fallthrough = await leadsDb.lead.create({ data: baseLead() });
     expect(fallthrough.source).toBe("direct");
 
     for (const source of ["project", "product", "industry", "search", "service"] as const) {
-      const lead = await prisma.lead.create({ data: { ...baseLead(), source } });
+      const lead = await leadsDb.lead.create({ data: { ...baseLead(), source } });
       expect(lead.source, source).toBe(source);
     }
   });

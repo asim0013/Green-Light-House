@@ -21,8 +21,10 @@ const update = vi.fn();
 const deleteLead = vi.fn();
 const deleteObject = vi.fn();
 
+// Story 5.3: the repository must use the LEADS store. There is deliberately NO
+// `prisma` here — a regression to `prisma.lead` fails with "No prisma export".
 vi.mock("@/lib/db", () => ({
-  prisma: {
+  leadsDb: {
     lead: {
       updateMany: (args: unknown) => updateMany(args),
       findUnique: (args: unknown) => findUnique(args),

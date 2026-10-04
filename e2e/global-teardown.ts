@@ -21,7 +21,10 @@ export default async function globalTeardown() {
   }
   try {
     const { PrismaClient } = await import("@prisma/client");
-    const db = new PrismaClient();
+    // The LEADS store (Story 5.3): LEADS_DATABASE_URL may put leads in a different
+    // database; a census of the catalog database would then report a silent 0.
+    const { resolveLeadsDatabaseUrl } = await import("../src/lib/leads-db-url");
+    const db = new PrismaClient({ datasources: { db: { url: resolveLeadsDatabaseUrl() } } });
     try {
       const leftover = await db.lead.count({
         where: { email: { startsWith: "zzz-e2e-lead-" } },

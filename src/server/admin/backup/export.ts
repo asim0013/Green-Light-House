@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/db";
+import { prisma, leadsDb } from "@/lib/db";
 
 /**
  * Full-dataset export / backup (Story 4.9 — FR36c).
@@ -138,7 +138,10 @@ export async function buildDatasetExport(): Promise<DatasetExport> {
     }),
     prisma.mediaAsset.findMany({ orderBy: { id: "asc" }, include: { translations: localeOrder } }),
     prisma.siteSettings.findUnique({ where: { id: "singleton" } }),
-    prisma.lead.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
+    // Story 5.3: leads come from the leads store, which may be a different
+    // (regional) database — reading `prisma.lead` here would back up an EMPTY table
+    // once the stores are split.
+    leadsDb.lead.findMany({ orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
   ]);
 
   return {

@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/db";
+import { prisma, leadsDb } from "@/lib/db";
 import {
   createLead,
   listLeadsForAdmin,
@@ -26,7 +26,7 @@ const uid = () => globalThis.crypto.randomUUID();
 
 beforeAll(async () => {
   try {
-    await prisma.$queryRaw`SELECT 1`;
+    await leadsDb.$queryRaw`SELECT 1`;
   } catch (err) {
     if (process.env.CI) throw err;
     dbReachable = false;
@@ -34,8 +34,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (dbReachable) for (const id of leadIds) await prisma.lead.deleteMany({ where: { id } });
-  await prisma.$disconnect();
+  if (dbReachable) for (const id of leadIds) await leadsDb.lead.deleteMany({ where: { id } });
+  await Promise.all([prisma.$disconnect(), leadsDb.$disconnect()]);
 });
 
 async function makeLead() {
@@ -79,7 +79,7 @@ describe("admin lead reads (verification)", () => {
     if (!dbReachable) return ctx.skip();
     const id = await makeLead();
     // Simulate a terminal notify failure recorded after send (send-state columns).
-    await prisma.lead.update({
+    await leadsDb.lead.update({
       where: { id },
       data: { notifiedAt: new Date(), deliveryFailureReason: "confirm:transport" },
     });
@@ -129,7 +129,7 @@ describe("admin lead reads (verification)", () => {
     expect((await getLeadForAdmin(id))?.status).toBe("quoted");
 
     // Flip to failed → not servable (attachment route would 404).
-    await prisma.lead.update({ where: { id }, data: { attachmentScanStatus: "failed" } });
+    await leadsDb.lead.update({ where: { id }, data: { attachmentScanStatus: "failed" } });
     expect(await getServableLeadAttachment(id)).toBeNull();
     expect((await getLeadForAdmin(id))?.attachment.state).toBe("failed");
 
