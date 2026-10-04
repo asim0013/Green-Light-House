@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { act } from "react";
+import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { slaTextFor, SLA_ARROW_BADGE } from "../../../scripts/sla-fixtures";
 import { trackEvent, EVENT_RFQ } from "@/lib/analytics/track";
@@ -193,6 +193,26 @@ describe("RfqConfirmation — the eighth SLA surface", () => {
       expect(props).toHaveProperty("path");
       // P5: the reference must NEVER be in the payload (no PII).
       expect(JSON.stringify(props)).not.toContain("GLH-RFQ-1042");
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  it("fires ONCE under React.StrictMode's double effect invocation (5.8 review F9)", () => {
+    // P5: delete the `firedRef` guard and this reddens (2 calls).
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+    try {
+      act(() =>
+        root.render(
+          <StrictMode>
+            <RfqConfirmation reference="GLH-RFQ-1042" sla={EN} />
+          </StrictMode>,
+        ),
+      );
+      expect(trackEvent).toHaveBeenCalledTimes(1);
     } finally {
       act(() => root.unmount());
       container.remove();
