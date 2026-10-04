@@ -1,7 +1,10 @@
 import type { ReactNode } from "react";
+import { cookies } from "next/headers";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { SiteFooter } from "@/components/layout/SiteFooter";
+import { ConsentBanner } from "@/components/consent/ConsentBanner";
 import { getSitePhone } from "@/server/repositories/site-settings";
+import { CONSENT_COOKIE } from "@/lib/consent";
 
 /**
  * The PUBLIC chrome (Story 4.1 refactor). Moved out of `[locale]/layout.tsx` so
@@ -21,6 +24,11 @@ export const dynamic = "force-dynamic";
 
 export default async function PublicLayout({ children }: { children: ReactNode }) {
   const phone = await getSitePhone();
+  // Story 5.2: decide the consent banner's initial visibility on the SERVER (read
+  // the cookie) so there is no flash of a banner that then vanishes. Show it only
+  // when the visitor has made no choice yet (privacy-first default = denied).
+  const consent = (await cookies()).get(CONSENT_COOKIE)?.value;
+  const showConsent = consent !== "granted" && consent !== "denied";
   return (
     <>
       <SiteHeader phone={phone} />
@@ -34,6 +42,7 @@ export default async function PublicLayout({ children }: { children: ReactNode }
         {children}
       </main>
       <SiteFooter />
+      <ConsentBanner initialShow={showConsent} />
     </>
   );
 }

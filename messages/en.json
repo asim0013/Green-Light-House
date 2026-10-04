@@ -275,7 +275,7 @@
       "title": "Cookie Policy",
       "effective": "Effective: {date}",
       "intro": "This policy explains the cookies this site uses.",
-      "essential": "Today the site uses only one essential cookie: it remembers your language choice. It is required for the site to show the right language and is not used to track you.",
+      "essential": "The site uses essential cookies only: one remembers your language choice, and one remembers your cookie-consent choice. Both are needed for the site to work as you have set it and are not used to track you.",
       "noTracking": "We set no analytics, advertising or other non-essential cookies. If that ever changes, this policy will be updated and nothing non-essential will run until you have agreed to it."
     },
     "terms": {
@@ -340,5 +340,13 @@
     "taxNo": "Tax no.",
     "mersisNo": "MERSIS no.",
     "formKicker": "Send the project"
+  },
+  "Consent": {
+    "label": "Cookie consent",
+    "message": "This site uses essential cookies to remember your language and choices. With your consent we also use privacy-friendly, cookieless analytics to improve it.",
+    "learnMore": "Learn more",
+    "accept": "Accept",
+    "decline": "Decline",
+    "settings": "Cookie settings"
   }
 }

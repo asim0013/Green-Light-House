@@ -275,7 +275,7 @@
       "title": "Çerez Politikası",
       "effective": "Yürürlük: {date}",
       "intro": "Bu politika, bu sitenin kullandığı çerezleri açıklar.",
-      "essential": "Site bugün yalnızca tek bir zorunlu çerez kullanır: dil tercihinizi hatırlar. Sitenin doğru dili göstermesi için gereklidir ve sizi izlemek için kullanılmaz.",
+      "essential": "Site yalnızca zorunlu çerezler kullanır: biri dil tercihinizi, biri çerez onayı tercihinizi hatırlar. İkisi de sitenin ayarladığınız gibi çalışması için gereklidir ve sizi izlemek için kullanılmaz.",
       "noTracking": "Analitik, reklam veya başka zorunlu olmayan çerezler yerleştirmeyiz. Bu durum bir gün değişirse bu politika güncellenecek ve siz onay vermeden zorunlu olmayan hiçbir şey çalışmayacaktır."
     },
     "terms": {
@@ -340,5 +340,13 @@
     "taxNo": "Vergi kimlik no",
     "mersisNo": "MERSIS no",
     "formKicker": "Projeyi gönderin"
+  },
+  "Consent": {
+    "label": "Çerez onayı",
+    "message": "Bu site, dilinizi ve tercihlerinizi hatırlamak için zorunlu çerezler kullanır. Onayınızla, siteyi iyileştirmek için gizliliğe duyarlı, çerezsiz analiz de kullanırız.",
+    "learnMore": "Daha fazla bilgi",
+    "accept": "Kabul et",
+    "decline": "Reddet",
+    "settings": "Çerez ayarları"
   }
 }
