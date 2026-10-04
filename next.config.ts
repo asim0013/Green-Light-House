@@ -52,6 +52,23 @@ const nextConfig: NextConfig = {
   //   Browsers ignore HSTS over plain http, so it is harmless in local dev.
   // - `X-Frame-Options: DENY` + the CSP's `frame-ancestors 'none'` are belt and
   //   braces — this site embeds nothing and must never be framed (clickjacking).
+  // Same-origin proxy for cookieless Plausible (Story 5.8 — Decision 1). The script
+  // and event endpoint are served from THIS origin and rewritten to PLAUSIBLE_HOST,
+  // so the strict Story 5.7 CSP ('self' + 'strict-dynamic', connect-src 'self') needs
+  // NO third-party origin. Host unset ⇒ no rewrite ⇒ analytics fully off (dev/CI).
+  //
+  // ⚠️ Paths MUST match `src/lib/analytics/config.ts` (ANALYTICS_SCRIPT_PATH /
+  // ANALYTICS_EVENT_PATH). The script path is dotted and the event path is under
+  // /api, so BOTH are excluded by the proxy.ts matcher — never locale-routed.
+  async rewrites() {
+    const host = process.env.PLAUSIBLE_HOST?.replace(/\/+$/, "");
+    if (!host) return [];
+    return [
+      { source: "/hive/js/script.js", destination: `${host}/js/script.js` },
+      { source: "/api/hive/event", destination: `${host}/api/event` },
+    ];
+  },
+
   async headers() {
     return [
       {

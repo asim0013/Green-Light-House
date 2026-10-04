@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { SiteHeader } from "@/components/layout/SiteHeader";
 import { SiteFooter } from "@/components/layout/SiteFooter";
 import { ConsentBanner } from "@/components/consent/ConsentBanner";
+import { Analytics } from "@/components/analytics/Analytics";
 import { getSitePhone } from "@/server/repositories/site-settings";
 import { CONSENT_COOKIE, isConsentChoice } from "@/lib/consent";
 
@@ -45,6 +46,9 @@ export default async function PublicLayout({ children }: { children: ReactNode }
       </main>
       <SiteFooter />
       <ConsentBanner initialShow={showConsent} />
+      {/* Story 5.8: consent-gated, cookieless analytics. Renders nothing; loads the
+          proxied Plausible script only after consent. Public segment only. */}
+      <Analytics />
     </>
   );
 }

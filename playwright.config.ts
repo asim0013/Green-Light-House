@@ -15,7 +15,10 @@ export default defineConfig({
   // `playwright.caching.config.ts` via `npm run test:e2e:caching`.
   // NOT because "dev never engages the cache handler" — that was wrong; dev both
   // reads and writes through it (Story 1.8 review).
-  testIgnore: /caching\.spec\.ts/,
+  // `analytics-enabled.spec.ts` (Story 5.8) needs a build WITH the analytics values
+  // baked in plus a Plausible stub, so it runs from `playwright.analytics.config.ts`
+  // via `npm run test:e2e:analytics`. This suite proves the unprovisioned default.
+  testIgnore: /(caching|analytics-enabled)\.spec\.ts/,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

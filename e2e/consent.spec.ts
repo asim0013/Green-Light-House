@@ -81,40 +81,49 @@ test("the footer 'Cookie settings' control re-opens the bar after a choice", asy
   await expect(page.getByRole("region", { name: "Cookie consent" })).toBeVisible();
 });
 
-test("mobile: the sticky CTA bar lifts above the consent bar (375px)", async ({ page }, testInfo) => {
+test("mobile: the open consent bar publishes its height so the CTA bar can clear it (375px)", async ({ page }, testInfo) => {
   if (!dbReady) testInfo.skip();
   // A detail page carries a MobileCtaBar (Story 5.5). With no consent choice yet,
-  // the fixed consent bar (z-50) would otherwise occlude the sticky CTA bar (z-40)
-  // and block Request-quote / Call for a visitor who never chooses (review 5.2 #5).
-  // We assert the MECHANISM (robust; geometry is scroll/sticky-dependent): the open
-  // bar publishes a positive `--glh-consent-h`, and the CTA bar's computed `bottom`
-  // equals it — i.e. it is lifted exactly clear of the bar. Old `bottom-0` ⇒ "0px" ⇒ red.
+  // the fixed consent bar (z-50) would otherwise occlude the sticky CTA bar (z-40),
+  // blocking Request-quote / Call for a visitor who never chooses (review 5.2 #5).
+  // The fix is a published CSS var the CTA bar lifts by. Proven here in BOTH halves:
+  // the bar publishes its TRUE height, and the CTA bar's resolved `bottom` actually
+  // equals it. (MobileCtaBar.test.tsx additionally pins the class string.)
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/en/products/as-60");
-  const cta = page.getByRole("navigation", { name: "Quick actions" });
-  await expect(page.getByRole("region", { name: "Cookie consent" })).toBeVisible();
-  await expect(cta).toBeAttached();
+  const bar = page.getByRole("region", { name: "Cookie consent" });
+  await expect(bar).toBeVisible();
   const readVar = () =>
     page.evaluate(
       () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--glh-consent-h")) || 0,
     );
-  // After hydration the banner's effect measures itself → positive height.
-  await expect.poll(readVar, { message: "consent bar publishes its height" }).toBeGreaterThan(0);
-  // Read the var AND the CTA's resolved `bottom` in ONE snapshot — the banner height
-  // can still be settling (font reflow), and the CTA always tracks the CURRENT var,
-  // so two separate reads race. Atomic read ⇒ they resolve the same value.
-  const { h, bottom } = await page.evaluate(() => {
-    const nav = document.querySelector('nav[aria-label="Quick actions"]');
+  await expect.poll(readVar, { message: "consent bar publishes a positive height" }).toBeGreaterThan(0);
+  // The published height equals the bar's REAL rendered height (so the CTA lifts by
+  // exactly the right amount). Atomic read so a still-settling height can't race.
+  const { varH, boxH } = await page.evaluate(() => {
+    const el = document.querySelector('[aria-label="Cookie consent"]') as HTMLElement | null;
     return {
-      h: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--glh-consent-h")) || 0,
-      bottom: nav ? parseFloat(getComputedStyle(nav).bottom) || 0 : -1,
+      varH: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--glh-consent-h")) || 0,
+      boxH: el ? el.getBoundingClientRect().height : -1,
     };
   });
-  expect(bottom, `CTA bar lifted to bottom=${bottom}px, matching var ${h}px`).toBeGreaterThan(0);
-  expect(Math.abs(bottom - h), "CTA sits flush above the bar").toBeLessThanOrEqual(1);
-  // Dismiss ⇒ the var collapses and the CTA bar returns flush to the bottom.
-  await page.getByRole("region", { name: "Cookie consent" }).getByRole("button", { name: "Decline" }).click();
-  await expect(page.getByRole("region", { name: "Cookie consent" })).toBeHidden();
+  expect(Math.abs(varH - boxH), `published ${varH}px == bar height ${boxH}px`).toBeLessThanOrEqual(1);
+  // ...and the CTA bar really LIFTS by it. POLLED, with the var and `bottom` read in
+  // one snapshot: MobileCtaBar animates `bottom` over 150ms (`transition-[bottom]`),
+  // so a one-shot read lands mid-transition. That transition — not sticky layout, as
+  // an earlier comment here wrongly claimed — is why the one-shot version flaked
+  // (Story 5.8 review F6). A `bottom-0` CTA bar reads 0 ⇒ Infinity ⇒ red.
+  const ctaGap = () =>
+    page.evaluate(() => {
+      const nav = document.querySelector('nav[aria-label="Quick actions"]');
+      const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--glh-consent-h")) || 0;
+      const b = nav ? parseFloat(getComputedStyle(nav).bottom) || 0 : 0;
+      return b > 0 ? Math.abs(b - v) : Number.POSITIVE_INFINITY;
+    });
+  await expect.poll(ctaGap, { message: "CTA bar's bottom equals the published consent height" }).toBeLessThanOrEqual(1);
+  // Dismiss ⇒ the var collapses so the CTA bar returns flush to the bottom.
+  await bar.getByRole("button", { name: "Decline" }).click();
+  await expect(bar).toBeHidden();
   await expect.poll(readVar, { message: "var collapses to 0 after dismissal" }).toBe(0);
 });
 

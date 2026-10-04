@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { SlaStepper } from "@/components/sla/SlaStepper";
+import { trackEvent, EVENT_RFQ } from "@/lib/analytics/track";
 import type { SlaContent } from "@/server/repositories/sla";
 
 /**
@@ -36,11 +37,26 @@ export function RfqConfirmation({
   sla: SlaContent | null;
 }) {
   const t = useTranslations("Rfq");
+  const locale = useLocale();
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     headingRef.current?.focus();
   }, []);
+
+  // Story 5.8 (FR31 measurement half): this surface mounts EXACTLY once per
+  // successful submission (persist-first, client-state swap), so it is the right
+  // and only place to record the RFQ conversion. No-op unless consent is granted;
+  // path+locale only, never the reference or any PII (AC3).
+  // `firedRef` (review F9): React Strict Mode double-invokes effects in dev, which
+  // would double-count during staging checks; the ref survives that remount, so the
+  // event fires once per mounted confirmation in every mode.
+  const firedRef = useRef(false);
+  useEffect(() => {
+    if (firedRef.current) return;
+    firedRef.current = true;
+    trackEvent(EVENT_RFQ, { path: location.pathname, locale });
+  }, [locale]);
 
   return (
     <section className="border border-border-subtle bg-surface p-5 md:p-6">

@@ -10,6 +10,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # Story 5.8 (review F1): both analytics values are BUILD-TIME. The domain is
+      # inlined into the client bundle (NEXT_PUBLIC_) and `rewrites()` is baked into
+      # routes-manifest.json, so `env_file` at runtime cannot switch analytics on.
+      # Compose interpolates these from the project `.env`; empty = analytics off.
+      # Changing either REQUIRES `docker compose build app`.
+      args:
+        NEXT_PUBLIC_ANALYTICS_DOMAIN: ${NEXT_PUBLIC_ANALYTICS_DOMAIN:-}
+        PLAUSIBLE_HOST: ${PLAUSIBLE_HOST:-}
     ports:
       - "3000:3000"
     env_file: .env

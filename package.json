@@ -22,6 +22,7 @@
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
     "test:e2e:caching": "playwright test --config=playwright.caching.config.ts",
+    "test:e2e:analytics": "playwright test --config=playwright.analytics.config.ts",
     "worker": "node --env-file=.env --import tsx worker/index.ts",
     "queue:failed": "node --env-file=.env --import tsx scripts/queue-ops.ts failed",
     "queue:retry": "node --env-file=.env --import tsx scripts/queue-ops.ts retry",
