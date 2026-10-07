@@ -12,6 +12,10 @@ const nextConfig: NextConfig = {
   // Standalone output for the Docker runtime image (Dockerfile runner stage).
   output: "standalone",
 
+  // No `X-Powered-By: Next.js` — it tells a scanner which exploits to try and
+  // tells a visitor nothing (launch review).
+  poweredByHeader: false,
+
   // Enables `app/global-not-found.tsx` (Story 1.9). Still experimental in 16.2.12,
   // and adopted deliberately: this app's root layout is a TOP-LEVEL DYNAMIC SEGMENT
   // (`app/[locale]/layout.tsx`), which Next's own docs name as the case where a 404

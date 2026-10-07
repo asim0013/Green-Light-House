@@ -181,10 +181,39 @@ describe("HomeManufacturers", () => {
 });
 
 describe("HomeCredibility", () => {
-  it("renders the capability statement and cert marks", () => {
-    const html = renderToStaticMarkup(<HomeCredibility />);
+  /** A model row with only cert marks set — everything else falls back to messages. */
+  const withCerts = (certMarks: string[]) => ({
+    kicker: null,
+    title: null,
+    lead: null,
+    noPrices: null,
+    credibilityTitle: null,
+    capability: null,
+    ctaTitle: null,
+    industriesTitle: null,
+    industriesSub: null,
+    categoriesTitle: null,
+    manufacturersTitle: null,
+    certMarks,
+    isFallback: false,
+  });
+
+  it("renders the capability statement and the admin-entered cert marks", () => {
+    const html = renderToStaticMarkup(<HomeCredibility content={withCerts(["ZZZ-CERT"])} />);
     expect(html).toContain("capability");
-    expect(html).toContain("ISO 9001");
+    expect(html).toContain("ZZZ-CERT");
+    expect(html).toContain("certsLabel");
+  });
+
+  // Launch (2026-10): a certification is a factual claim. With none entered —
+  // every fresh production database — nothing is claimed: no hard-coded list,
+  // and no "Certification" heading above an empty row.
+  it("claims NO certification when none is entered (no fallback list, no empty block)", () => {
+    for (const content of [null, withCerts([])]) {
+      const html = renderToStaticMarkup(<HomeCredibility content={content} />);
+      for (const mark of ["ISO 9001", "CE<", "EN 54", "A.TR"]) expect(html).not.toContain(mark);
+      expect(html).not.toContain("certsLabel");
+    }
   });
 
   it("never places a navy button on the ink band (DESIGN hard rule)", () => {
@@ -205,7 +234,8 @@ describe("HomeCredibility", () => {
   it("gives the cert chips an on-dark treatment, not a light fill", () => {
     // `filled`/`outline` both ship a light surface, which on the ink band renders
     // as a solid white block — visually a primary button, not a chip.
-    const html = renderToStaticMarkup(<HomeCredibility />);
+    const html = renderToStaticMarkup(<HomeCredibility content={withCerts(["ZZZ-CERT"])} />);
+    expect(html).toContain("ZZZ-CERT"); // the chips are actually rendered
     expect(html).toContain("border-on-dark-border");
     expect(html).toContain("text-on-dark-text");
     // The light-chip signatures: `filled` is bg-surface-2+text-ink-2, `outline`
@@ -229,7 +259,7 @@ describe("HomeCredibility", () => {
   // Story 4.4b: the editable model wins over messages when present; absent → the
   // messages fallback (here the mock returns the key). P5: drop the `content?.x ??`
   // in the component and the model values stop appearing.
-  it("prefers HomeContent model values over messages, and cert marks over CERTS", () => {
+  it("prefers HomeContent model values over messages", () => {
     const content = {
       kicker: null,
       title: null,
@@ -257,6 +287,5 @@ describe("HomeCredibility", () => {
   it("falls back to messages when content is null", () => {
     const html = renderToStaticMarkup(<HomeCredibility content={null} />);
     expect(html).toContain("credibilityTitle"); // the mock's key-as-value fallback
-    expect(html).toContain("ISO 9001"); // the CERTS fallback
   });
 });

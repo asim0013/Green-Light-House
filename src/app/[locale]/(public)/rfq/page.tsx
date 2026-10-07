@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import { getSlaContent } from "@/server/repositories/sla";
 import { getSitePhone } from "@/server/repositories/site-settings";
+import { getHomeContent } from "@/server/repositories/home-content";
 import { alternatesFor, robotsFor } from "@/lib/seo";
 import { rfqSignals } from "@/server/rfq-page";
 import { resolveRfqPrefill } from "@/server/rfq-prefill";
@@ -97,6 +98,9 @@ export default async function RfqPage(props: {
   // two consumers still makes a single round trip.
   const sla = await getSlaContent(locale);
   const phone = await getSitePhone(); // Story 4.8 — admin-managed phone (SITE fallback)
+  // The cert line in the rail is the homepage's admin-managed list — never a
+  // literal (launch). Empty ⇒ the line is omitted.
+  const certMarks = (await getHomeContent(locale))?.certMarks ?? [];
 
   const industries = await listIndustries(locale);
   const params = readPrefillParams(await props.searchParams);
@@ -128,7 +132,7 @@ export default async function RfqPage(props: {
               sla={sla}
             />
           }
-          side={<RfqRail sla={sla} phone={phone} />}
+          side={<RfqRail sla={sla} phone={phone} certMarks={certMarks} />}
         />
       </div>
     </div>

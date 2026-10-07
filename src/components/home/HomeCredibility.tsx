@@ -23,13 +23,16 @@ import type { HomeContent } from "@/server/repositories/home-content";
  *    `onDark*` variants, and the phone keeps its visible number in its accessible
  *    name.
  *
- * Cert marks WERE UI content until Story 4.4b made them editable via the
- * `HomeContent` model (FR36 "Homepage content"); `CERTS` remains the seed source
- * AND the runtime fallback when the model is empty. They are proper nouns, so
- * they are locale-invariant (one list on the parent row, no translation).
+ * Cert marks come ONLY from the `HomeContent` model (Story 4.4b, FR36), entered
+ * in Admin → Content → Homepage. They are proper nouns, so they are
+ * locale-invariant (one list on the parent row, no translation).
+ *
+ * ⚠️ NO FALLBACK LIST (launch, 2026-10). There used to be a hard-coded
+ * `ISO 9001 / CE / EN 54 / A.TR` shown whenever the model was empty — i.e. on
+ * every fresh production database, since the demo seed never runs there. A
+ * certification is a factual claim the business must be able to back, so with
+ * none entered the whole "Certification" block is omitted rather than invented.
  */
-const CERTS = ["ISO 9001", "CE", "EN 54", "A.TR"] as const;
-
 export function HomeCredibility({
   content = null,
   phone = SITE,
@@ -39,7 +42,7 @@ export function HomeCredibility({
 }) {
   const t = useTranslations("Home");
   const tNav = useTranslations("Nav");
-  const certs = content?.certMarks?.length ? content.certMarks : CERTS;
+  const certs = content?.certMarks ?? [];
 
   return (
     <DarkBand>
@@ -58,18 +61,20 @@ export function HomeCredibility({
                 {content?.capability ?? t("capability")}
               </p>
 
-              <div className="mt-8 border-t border-on-dark-border pt-6">
-                <Kicker>{t("certsLabel")}</Kicker>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {certs.map((cert) => (
-                    // `onDark`, not `outline`: the light variants ship a light fill,
-                    // which on the ink band reads as a solid white button.
-                    <Chip key={cert} variant="onDark" cert>
-                      {cert}
-                    </Chip>
-                  ))}
+              {certs.length > 0 && (
+                <div className="mt-8 border-t border-on-dark-border pt-6">
+                  <Kicker>{t("certsLabel")}</Kicker>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {certs.map((cert) => (
+                      // `onDark`, not `outline`: the light variants ship a light fill,
+                      // which on the ink band reads as a solid white button.
+                      <Chip key={cert} variant="onDark" cert>
+                        {cert}
+                      </Chip>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           }
           side={

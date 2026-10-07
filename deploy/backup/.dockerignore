@@ -1,0 +1,3 @@
+# The Storage Box key is bind-mounted at runtime (docker-compose.prod.yml), never
+# sent to the daemon as build context or copied into the image.
+ssh

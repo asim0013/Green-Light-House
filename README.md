@@ -5,7 +5,7 @@ B2B product-intelligence website for project-based supply of industrial + fire-r
 ## Prerequisites
 
 - **Node.js 22+** and npm
-- **Docker** (only for the full local stack — Postgres/Redis/MinIO/ClamAV/worker)
+- **Docker** (only for the full local stack — Postgres/Redis/S3 (SeaweedFS)/ClamAV/worker)
 
 ## Local setup
 
@@ -17,7 +17,7 @@ npm run dev               # http://localhost:3000
 
 ## Full stack via Docker
 
-The app, worker, and backing services (Postgres, **two Redis instances**, MinIO, ClamAV) run via Docker Compose.
+The app, worker, and backing services (Postgres, **two Redis instances**, S3-compatible storage via SeaweedFS, ClamAV) run via Docker Compose.
 
 ```bash
 cp .env.example .env      # REQUIRED FIRST — compose reads env_file: .env
@@ -28,7 +28,7 @@ docker compose up -d
 >
 > ⚠️ Corrected in Story 3.3's guard audit: this used to say ClamAV "downloads virus definitions on startup". It does not — Story 3.7b verified on the running container that the signature databases are BAKED INTO the pinned image (`main.cvd` and `bytecode.cvd` carry the image build date; only `daily.cld` is fetched later). The 360s `start_period` is slack, not a download budget.
 
-Services: `app` (:3000) · `worker` · `postgres` (:5432) · `redis` (:6379) · `redis-queue` (:6380) · `minio` (:9000, console :9001) · `clamav` (:3310).
+Services: `app` (:3000) · `worker` · `postgres` (:5432) · `redis` (:6379) · `redis-queue` (:6380) · `s3` (SeaweedFS S3 API on :9000) · `clamav` (:3310).
 
 ### Running the worker (Story 3.3)
 

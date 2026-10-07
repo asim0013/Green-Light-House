@@ -17,6 +17,8 @@ echo "$SCHEDULE /usr/local/bin/backup.sh >> /proc/1/fd/1 2>&1" > /etc/crontabs/r
 echo "[backup] scheduled: $SCHEDULE (container TZ=${TZ:-UTC})"
 
 if [ "${BACKUP_ON_START:-true}" = "true" ]; then
+  # A failure here is reported by backup.sh itself (log + heartbeat /fail); the
+  # container stays up so the next scheduled run can succeed once it is fixed.
   /usr/local/bin/backup.sh || echo "[backup] start-up run FAILED — fix the configuration; cron will retry on schedule"
 fi
 

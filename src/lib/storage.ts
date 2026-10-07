@@ -1,5 +1,6 @@
 import {
   S3Client,
+  type S3ClientConfig,
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
@@ -10,9 +11,10 @@ import {
 
 /**
  * S3-compatible object storage (Story 2.3) — the architecture's `lib/ storage(S3)`
- * module (architecture:180). MinIO in dev, R2-shaped for prod; the client is the
- * AWS SDK v3 because the architecture names no library (verified) and this one
- * speaks both dialects (`forcePathStyle` is the MinIO switch).
+ * module (architecture:180). SeaweedFS in dev/CI (MinIO until its images were
+ * withdrawn from Docker Hub, 2026-09), Hetzner Object Storage in production; the
+ * client is the AWS SDK v3 because the architecture names no library (verified)
+ * and it speaks every dialect (`forcePathStyle` is the local-emulator switch).
  *
  * Lazy singleton, same reason as `lib/db.ts`: construct on first use, reuse across
  * requests, and never at MODULE LOAD — importing this file must stay free of env
@@ -38,18 +40,34 @@ const BUCKET_LEVEL_CODES = new Set(["NoSuchBucket", "PermanentRedirect", "Access
 
 let client: S3Client | null = null;
 
+/**
+ * The ONE place the S3_* environment becomes a client config — shared by this
+ * module, `scripts/ensure-bucket.ts` and `scripts/seed-storage.ts`, so the
+ * production bootstrap can never connect differently from the app it serves.
+ *
+ * CHECKSUMS ONLY WHEN REQUIRED: SDK releases since early 2025 attach CRC32
+ * checksums to every upload by default, an AWS-only behaviour that several
+ * S3-compatible backends reject or mishandle. "WHEN_REQUIRED" is the SDK's
+ * pre-2025 behaviour and is valid against AWS too.
+ */
+export function s3ClientConfig(
+  env: Record<string, string | undefined> = process.env,
+): S3ClientConfig {
+  return {
+    endpoint: env.S3_ENDPOINT,
+    region: env.S3_REGION ?? "us-east-1",
+    forcePathStyle: env.S3_FORCE_PATH_STYLE === "true",
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
+    credentials: {
+      accessKeyId: env.S3_ACCESS_KEY_ID ?? "",
+      secretAccessKey: env.S3_SECRET_ACCESS_KEY ?? "",
+    },
+  };
+}
+
 function s3(): S3Client {
-  if (!client) {
-    client = new S3Client({
-      endpoint: process.env.S3_ENDPOINT,
-      region: process.env.S3_REGION ?? "us-east-1",
-      forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
-      credentials: {
-        accessKeyId: process.env.S3_ACCESS_KEY_ID ?? "",
-        secretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? "",
-      },
-    });
-  }
+  if (!client) client = new S3Client(s3ClientConfig());
   return client;
 }
 
@@ -88,7 +106,7 @@ function isMissingKey(error: unknown): boolean {
   const name = errorName(error);
   if (BUCKET_LEVEL_CODES.has(name)) return false;
   if (name === "NoSuchKey" || name === "NotFound") return true;
-  // `NoSuchKey` is not always typed — MinIO surfaces some misses as generic
+  // `NoSuchKey` is not always typed — some backends surface misses as generic
   // errors with a 404 status. Treat a 404-shaped service error as a miss ONLY
   // after the bucket-level codes above have been excluded by name.
   return httpStatus(error) === 404;

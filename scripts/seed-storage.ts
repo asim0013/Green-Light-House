@@ -4,6 +4,7 @@ import {
   PutObjectCommand,
   HeadBucketCommand,
 } from "@aws-sdk/client-s3";
+import { s3ClientConfig } from "../src/lib/storage";
 import { DOC_FIXTURES, tinyPdf } from "./doc-fixtures";
 import { MEDIA_FIXTURES, solidPng, FIXTURE_WIDTH, FIXTURE_HEIGHT } from "./media-fixtures";
 
@@ -47,15 +48,7 @@ async function main() {
   const bucket = process.env.S3_BUCKET;
   if (!bucket) throw new Error("S3_BUCKET is not set — copy .env.example to .env first.");
 
-  const s3 = new S3Client({
-    endpoint: process.env.S3_ENDPOINT,
-    region: process.env.S3_REGION ?? "us-east-1",
-    forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
-    credentials: {
-      accessKeyId: process.env.S3_ACCESS_KEY_ID ?? "",
-      secretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? "",
-    },
-  });
+  const s3 = new S3Client(s3ClientConfig());
 
   // HeadBucket answers 404 for "absent" and 401/403 for "your credentials are
   // wrong" — collapsing both into "create it" turned an auth failure into a

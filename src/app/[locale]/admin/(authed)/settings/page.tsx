@@ -27,7 +27,8 @@ export default async function SettingsPage(props: { params: Promise<{ locale: st
           <SlaEditor initial={sla} />
         ) : (
           <p className="p-8 text-[13px] text-ink-2">
-            No SLA process found — run <code>db:seed</code>.
+            No SLA process found. A deploy creates the default one (the <code>init</code> step);
+            locally, run <code>npm run db:seed</code>.
           </p>
         )}
       </div>

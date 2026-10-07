@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  * is a 404 — so the single most likely operator error was reported to operators
  * as a per-document data-integrity problem while every download silently 404'd.
  *
- * These are unit tests over the classification only; the live MinIO behaviour
+ * These are unit tests over the classification only; the live (then MinIO) behaviour
  * they encode was measured in the review (NoSuchBucket: name "NoSuchBucket",
  * $metadata.httpStatusCode 404).
  */
@@ -52,7 +52,33 @@ function serviceError(name: string, httpStatusCode: number): Error {
   return error;
 }
 
-const { getObjectStream, headObject, putObject, deleteObject } = await import("./storage");
+const { getObjectStream, headObject, putObject, deleteObject, s3ClientConfig } =
+  await import("./storage");
+
+describe("s3ClientConfig (shared by the app and the bucket scripts)", () => {
+  const env = {
+    S3_ENDPOINT: "https://fsn1.your-objectstorage.com",
+    S3_REGION: "fsn1",
+    S3_FORCE_PATH_STYLE: "false",
+    S3_ACCESS_KEY_ID: "id",
+    S3_SECRET_ACCESS_KEY: "secret",
+  };
+
+  it("maps the S3_* environment onto the client", () => {
+    const config = s3ClientConfig(env);
+    expect(config.endpoint).toBe("https://fsn1.your-objectstorage.com");
+    expect(config.region).toBe("fsn1");
+    expect(config.forcePathStyle).toBe(false);
+    expect(config.credentials).toEqual({ accessKeyId: "id", secretAccessKey: "secret" });
+    expect(s3ClientConfig({ ...env, S3_FORCE_PATH_STYLE: "true" }).forcePathStyle).toBe(true);
+  });
+
+  it("sends checksums only when required — the SDK's AWS-only default breaks other S3 backends", () => {
+    const config = s3ClientConfig(env);
+    expect(config.requestChecksumCalculation).toBe("WHEN_REQUIRED");
+    expect(config.responseChecksumValidation).toBe("WHEN_REQUIRED");
+  });
+});
 
 beforeEach(() => {
   send.mockReset();
@@ -64,7 +90,7 @@ describe("getObjectStream error classification", () => {
     await expect(getObjectStream("docs/gone.pdf")).resolves.toBeNull();
   });
 
-  it("returns null for a generic 404-shaped miss (MinIO does this)", async () => {
+  it("returns null for a generic 404-shaped miss (some backends do this)", async () => {
     send.mockRejectedValue(serviceError("NotFound", 404));
     await expect(getObjectStream("docs/gone.pdf")).resolves.toBeNull();
   });

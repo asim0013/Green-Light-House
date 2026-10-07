@@ -31,7 +31,7 @@ import { PRIVACY_POLICY_VERSION } from "../src/server/rfq/schema";
  *   email), because a whole-prefix deleteMany there races the other workers
  *   under fullyParallel — proven live, see the afterAll. Every test mints a
  *   UNIQUE suffix so parallel tests never share a row.
- * - No storage probe: nothing here touches MinIO, and an unneeded probe is a
+ * - No storage probe: nothing here touches object storage, and an unneeded probe is a
  *   skip vector (2.3's lesson).
  *
  * Sequence-gap disclosure: these runs advance `lead_reference_seq` permanently

@@ -11,3 +11,13 @@ playwright-report
 test-results
 e2e
 *.md
+# Never in an image (launch review): deploy/ holds the server-side Storage Box
+# SSH key at deploy/backup/ssh/ once the runbook is followed, and `COPY . .` in
+# Dockerfile.worker would bake it into glh-worker:prod, world-readable. The
+# backup image builds from deploy/backup with its own .dockerignore.
+deploy
+# Planning artefacts and local tooling state — not part of the app.
+_bmad
+_bmad-output
+.claude
+.playwright-mcp

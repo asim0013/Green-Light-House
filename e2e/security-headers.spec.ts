@@ -33,6 +33,8 @@ test.describe("security headers (AC1)", () => {
     expect(csp).toMatch(/script-src[^;]*'nonce-[\w+/=-]+'/);
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).toContain("object-src 'none'");
+    // No framework fingerprint (launch review; `poweredByHeader: false`).
+    expect(h["x-powered-by"], "X-Powered-By leaks the framework").toBeUndefined();
   });
 
   test("the static headers also cover a non-page route (next.config, not proxy)", async ({

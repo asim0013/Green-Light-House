@@ -1,4 +1,5 @@
 import { S3Client, HeadBucketCommand, CreateBucketCommand } from "@aws-sdk/client-s3";
+import { s3ClientConfig } from "../src/lib/storage";
 
 /**
  * Production bootstrap: make sure the `S3_BUCKET` bucket exists — and NOTHING else.
@@ -16,15 +17,7 @@ async function main(): Promise<void> {
   const bucket = process.env.S3_BUCKET;
   if (!bucket) throw new Error("S3_BUCKET is not set.");
 
-  const s3 = new S3Client({
-    endpoint: process.env.S3_ENDPOINT,
-    region: process.env.S3_REGION ?? "us-east-1",
-    forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true",
-    credentials: {
-      accessKeyId: process.env.S3_ACCESS_KEY_ID ?? "",
-      secretAccessKey: process.env.S3_SECRET_ACCESS_KEY ?? "",
-    },
-  });
+  const s3 = new S3Client(s3ClientConfig());
 
   try {
     await s3.send(new HeadBucketCommand({ Bucket: bucket }));
