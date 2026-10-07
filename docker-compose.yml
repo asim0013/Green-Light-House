@@ -1,5 +1,5 @@
 # GREENLIGHTHOUSE — dev/prod-parity stack.
-# Services: app, worker, postgres, redis, minio (S3-compatible), clamav.
+# Services: app, worker, postgres, redis, redis-queue, s3 (SeaweedFS), clamav.
 # SETUP: run `cp .env.example .env` BEFORE `docker compose up` — the app/worker
 #        services use `env_file: .env`, which must exist or compose errors.
 # Healthchecks + `depends_on: condition: service_healthy` (Story 1.2) ensure the
@@ -40,7 +40,7 @@ services:
       # `app` becomes a queue PRODUCER in Story 3.2.
       redis-queue:
         condition: service_healthy
-      minio:
+      s3:
         condition: service_healthy
       # Story 3.7b: `app` scans RFQ attachments IN THE REQUEST HANDLER, so it is
       # a clamd client in its own right — not only the worker.
@@ -124,24 +124,31 @@ services:
       retries: 5
       start_period: 10s
 
-  minio:
-    # Pinned off :latest — the curl-based healthcheck below depends on curl being
-    # present in the image, which isn't guaranteed across future minimal images.
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
-    command: server /data --console-address ":9001"
+  s3:
+    # Local S3-compatible object storage: SeaweedFS's all-in-one `mini` mode.
+    # REPLACED MinIO (2026-10): MinIO deleted its images from Docker Hub on
+    # 2026-09-11 and Quay stopped anonymous pulls on 2026-09-24, so `minio/minio`
+    # no longer pulls anywhere. Production uses Hetzner Object Storage instead
+    # (docs/deploy.md); this is the dev/CI stand-in.
+    #
+    # Published on host :9000 — the port `.env` has always pointed at — so no
+    # local `.env` changes. The keys stay the old dev values for the same reason;
+    # SeaweedFS takes its admin identity from AWS_ACCESS_KEY_ID/SECRET, and
+    # anonymous requests are refused (403).
+    image: chrislusf/seaweedfs:4.48
+    command: mini -dir=/data -master.telemetry=false
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "9000:8333"
     volumes:
-      - miniodata:/data
+      - s3data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8333/healthz"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
       start_period: 10s
 
   clamav:
@@ -172,5 +179,5 @@ services:
 
 volumes:
   pgdata:
-  miniodata:
+  s3data:
   queuedata:

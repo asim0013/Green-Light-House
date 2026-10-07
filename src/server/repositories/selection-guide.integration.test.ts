@@ -34,11 +34,22 @@ function data(overrides: Partial<GuideWriteData> = {}): GuideWriteData {
   return {
     status: "published",
     translations: [
-      { locale: "en", title: "Choosing flame detectors", intro: "EN intro", metaDescription: "EN meta" },
+      {
+        locale: "en",
+        title: "Choosing flame detectors",
+        intro: "EN intro",
+        metaDescription: "EN meta",
+      },
       { locale: "tr", title: "Alev dedektörü seçimi", intro: "TR intro", metaDescription: null },
     ],
     sections: [
-      { sort: 0, translations: [{ locale: "en", heading: "Step 1", body: "EN body" }, { locale: "tr", heading: "Adım 1", body: "TR body" }] },
+      {
+        sort: 0,
+        translations: [
+          { locale: "en", heading: "Step 1", body: "EN body" },
+          { locale: "tr", heading: "Adım 1", body: "TR body" },
+        ],
+      },
       { sort: 1, translations: [{ locale: "en", heading: "Step 2", body: "EN body 2" }] },
     ],
     productIds: [productId],
@@ -61,7 +72,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (dbReachable) await prisma.selectionGuide.deleteMany({ where: { slug: { startsWith: "zzz-guide" } } });
+  if (dbReachable)
+    await prisma.selectionGuide.deleteMany({ where: { slug: { startsWith: "zzz-guide" } } });
   await prisma.$disconnect();
 });
 
@@ -104,8 +116,22 @@ describe("selection-guide repository (integration)", () => {
 
   it("replaces sections + links on update (delete-then-create)", async (ctx) => {
     if (!dbReachable) return ctx.skip();
-    const existing = await getGuideForEdit((await prisma.selectionGuide.findUniqueOrThrow({ where: { slug: SLUG }, select: { id: true } })).id);
-    const ok = await updateGuide(existing!.id, data({ sections: [{ sort: 0, translations: [{ locale: "en", heading: "Only step", body: "B" }] }], productIds: [], categoryIds: [] }));
+    const existing = await getGuideForEdit(
+      (
+        await prisma.selectionGuide.findUniqueOrThrow({
+          where: { slug: SLUG },
+          select: { id: true },
+        })
+      ).id,
+    );
+    const ok = await updateGuide(
+      existing!.id,
+      data({
+        sections: [{ sort: 0, translations: [{ locale: "en", heading: "Only step", body: "B" }] }],
+        productIds: [],
+        categoryIds: [],
+      }),
+    );
     expect(ok).toBe(true);
     const after = await getGuideForEdit(existing!.id);
     expect(after?.sections).toHaveLength(1);
@@ -115,7 +141,10 @@ describe("selection-guide repository (integration)", () => {
 
   it("cascades sections/translations/links on delete", async (ctx) => {
     if (!dbReachable) return ctx.skip();
-    const row = await prisma.selectionGuide.findUniqueOrThrow({ where: { slug: SLUG }, select: { id: true } });
+    const row = await prisma.selectionGuide.findUniqueOrThrow({
+      where: { slug: SLUG },
+      select: { id: true },
+    });
     await deleteGuide(row.id);
     expect(await getGuideForEdit(row.id)).toBeNull();
     expect(await prisma.selectionGuideSection.count({ where: { guideId: row.id } })).toBe(0);

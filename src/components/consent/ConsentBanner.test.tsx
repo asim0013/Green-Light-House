@@ -13,7 +13,11 @@ import { CONSENT_COOKIE, readConsent } from "@/lib/consent";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 vi.mock("next-intl", () => ({ useTranslations: () => (k: string) => k }));
 vi.mock("@/i18n/navigation", () => ({
-  Link: ({ href, children, ...rest }: { href: string; children?: React.ReactNode } & Record<string, unknown>) => {
+  Link: ({
+    href,
+    children,
+    ...rest
+  }: { href: string; children?: React.ReactNode } & Record<string, unknown>) => {
     const p = { ...rest };
     delete p.locale;
     return (

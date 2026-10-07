@@ -21,6 +21,8 @@ describe("Cookie Policy effective date", () => {
   it("is a real calendar day, and not older than the shared Terms period", () => {
     expect(COOKIES_EFFECTIVE).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(Number.isNaN(Date.parse(COOKIES_EFFECTIVE))).toBe(false);
-    expect(COOKIES_EFFECTIVE.startsWith(LEGAL_EFFECTIVE) || COOKIES_EFFECTIVE > LEGAL_EFFECTIVE).toBe(true);
+    expect(
+      COOKIES_EFFECTIVE.startsWith(LEGAL_EFFECTIVE) || COOKIES_EFFECTIVE > LEGAL_EFFECTIVE,
+    ).toBe(true);
   });
 });

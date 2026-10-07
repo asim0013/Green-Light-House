@@ -267,7 +267,13 @@ export async function updateSlaStepText(
       prisma.slaStepTranslation.upsert({
         where: { stepId_locale: { stepId, locale: t.locale } },
         update: { badge: t.badge, title: t.title, description: t.description },
-        create: { stepId, locale: t.locale, badge: t.badge, title: t.title, description: t.description },
+        create: {
+          stepId,
+          locale: t.locale,
+          badge: t.badge,
+          title: t.title,
+          description: t.description,
+        },
       }),
     ),
   );

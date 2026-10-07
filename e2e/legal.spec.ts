@@ -84,7 +84,9 @@ test.describe("robots and the sitemap agree, in all three locales, in whatever s
     }
   });
 
-  test("the sitemap lists the legal pages iff they are indexable", async ({ request }, testInfo) => {
+  test("the sitemap lists the legal pages iff they are indexable", async ({
+    request,
+  }, testInfo) => {
     if (!dbReady) testInfo.skip();
     const res = await request.get("/sitemap.xml");
     expect(res.status()).toBe(200);

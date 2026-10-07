@@ -31,15 +31,23 @@ function req(file?: File, origin?: string): Request {
   if (file) form.set("file", file);
   const headers: Record<string, string> = {};
   if (origin) headers.origin = origin;
-  return new Request("http://glh.example/en/admin/settings/import", { method: "POST", body: form, headers });
+  return new Request("http://glh.example/en/admin/settings/import", {
+    method: "POST",
+    body: form,
+    headers,
+  });
 }
 const xlsx = () => new File(["data"], "products.xlsx");
 
 beforeEach(() => {
-  vi.mocked(requireAdmin).mockReset().mockResolvedValue({ sub: "admin-1" } as never);
+  vi.mocked(requireAdmin)
+    .mockReset()
+    .mockResolvedValue({ sub: "admin-1" } as never);
   clamav.scanBuffer.mockReset().mockResolvedValue({ status: "clean" });
   parse.parseSpreadsheet.mockReset().mockResolvedValue([{ slug: "a" }]);
-  proc.processImport.mockReset().mockResolvedValue({ total: 1, created: 1, updated: 0, errored: 0, errors: [] });
+  proc.processImport
+    .mockReset()
+    .mockResolvedValue({ total: 1, created: 1, updated: 0, errored: 0, errors: [] });
 });
 
 describe("POST settings import", () => {

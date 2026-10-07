@@ -2,7 +2,11 @@
 
 import { TAGS } from "@/lib/cache-tags";
 import { idSchema } from "@/server/admin/catalog/schema";
-import { withAdminMutation, MutationError, type MutationResult } from "@/server/admin/catalog/mutation";
+import {
+  withAdminMutation,
+  MutationError,
+  type MutationResult,
+} from "@/server/admin/catalog/mutation";
 import {
   createGuide,
   updateGuide,

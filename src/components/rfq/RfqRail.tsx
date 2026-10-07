@@ -28,8 +28,20 @@ import type { SlaContent } from "@/server/repositories/sla";
  *   contain). See `TalkCard`'s docstring for the full resolution.
  * - The cert marks are locale-invariant and deliberately NOT in messages
  *   (they are marks, not copy) — bare mono text, no chips, per the canvas.
+ *   ⚠️ THEY ARE THE HOMEPAGE'S LIST (`HomeContent.certMarks`, Admin → Content →
+ *   Homepage), passed in by the page. Until launch this line was the hard-coded
+ *   literal `ISO 9001 · CE · EN · A.TR` — a certification claim no admin could
+ *   change or remove. With no marks entered, the line is omitted.
  */
-export function RfqRail({ sla, phone = SITE }: { sla: SlaContent | null; phone?: SitePhone }) {
+export function RfqRail({
+  sla,
+  phone = SITE,
+  certMarks = [],
+}: {
+  sla: SlaContent | null;
+  phone?: SitePhone;
+  certMarks?: readonly string[];
+}) {
   const t = useTranslations("Rfq");
 
   return (
@@ -55,12 +67,14 @@ export function RfqRail({ sla, phone = SITE }: { sla: SlaContent | null; phone?:
       <div className="px-1">
         <Kicker tone="ink">{t("whyKicker")}</Kicker>
         <p className="mt-3 text-[14px] leading-relaxed text-ink-2">{t("whyBody")}</p>
-        <p
-          className="mt-4 font-mono text-[12px] uppercase tracking-[0.12em] text-ink-2"
-          translate="no"
-        >
-          ISO 9001 · CE · EN · A.TR
-        </p>
+        {certMarks.length > 0 && (
+          <p
+            className="mt-4 font-mono text-[12px] uppercase tracking-[0.12em] text-ink-2"
+            translate="no"
+          >
+            {certMarks.join(" · ")}
+          </p>
+        )}
       </div>
     </div>
   );

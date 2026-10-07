@@ -35,9 +35,14 @@ beforeAll(async () => {
   try {
     await prisma.$queryRaw`SELECT 1`;
     dbReachable = true;
-    mfr = (await prisma.manufacturer.findFirst({ orderBy: { slug: "asc" }, select: { slug: true } }))!.slug;
-    cat = (await prisma.category.findFirst({ orderBy: { slug: "asc" }, select: { slug: true } }))!.slug;
-    ind = (await prisma.industry.findFirst({ orderBy: { slug: "asc" }, select: { slug: true } }))!.slug;
+    mfr = (await prisma.manufacturer.findFirst({
+      orderBy: { slug: "asc" },
+      select: { slug: true },
+    }))!.slug;
+    cat = (await prisma.category.findFirst({ orderBy: { slug: "asc" }, select: { slug: true } }))!
+      .slug;
+    ind = (await prisma.industry.findFirst({ orderBy: { slug: "asc" }, select: { slug: true } }))!
+      .slug;
   } catch (err) {
     if (process.env.CI) throw err;
     dbReachable = false;
@@ -98,7 +103,10 @@ describe("processImport (integration)", () => {
     const slug = "zzz-imp-badmfr";
     const report = await processImport([row({ slug, manufacturerSlug: "no-such-manufacturer" })]);
     expect(report).toMatchObject({ created: 0, updated: 0, errored: 1 });
-    expect(report.errors[0]).toMatchObject({ field: "manufacturerSlug", key: "unknownManufacturer" });
+    expect(report.errors[0]).toMatchObject({
+      field: "manufacturerSlug",
+      key: "unknownManufacturer",
+    });
     expect(await prisma.product.findUnique({ where: { slug } })).toBeNull();
   });
 
@@ -114,7 +122,9 @@ describe("processImport (integration)", () => {
   it("reports a file-level error when a required column is absent", async (ctx) => {
     if (!dbReachable) return ctx.skip();
     // No manufacturerSlug column at all.
-    const report = await processImport([{ slug: "zzz-imp-x", model: "M", categorySlug: cat, name_en: "X" }]);
+    const report = await processImport([
+      { slug: "zzz-imp-x", model: "M", categorySlug: cat, name_en: "X" },
+    ]);
     expect(report.fileError).toContain("manufacturerSlug");
     expect(report.created).toBe(0);
   });

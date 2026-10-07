@@ -187,7 +187,8 @@ describe("RfqConfirmation — the eighth SLA surface", () => {
     try {
       act(() => root.render(<RfqConfirmation reference="GLH-RFQ-1042" sla={EN} />));
       expect(trackEvent).toHaveBeenCalledTimes(1);
-      const [name, props] = (trackEvent as unknown as { mock: { calls: unknown[][] } }).mock.calls[0];
+      const [name, props] = (trackEvent as unknown as { mock: { calls: unknown[][] } }).mock
+        .calls[0];
       expect(name).toBe(EVENT_RFQ);
       expect(props).toHaveProperty("locale", "en");
       expect(props).toHaveProperty("path");

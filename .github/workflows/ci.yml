@@ -6,6 +6,36 @@ on:
   pull_request:
 
 jobs:
+  # The production images (docker-compose.prod.yml). The app image had silently
+  # stopped building on 2026-07-31 — an npm-11 lockfile the image's npm 10 rejected,
+  # and a missing `prisma generate` — and nothing noticed for two months, because
+  # no job built it. This one does, on every push and PR.
+  docker-images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the app image
+        run: docker build -f Dockerfile -t glh-app:ci .
+      - name: Build the worker / init image
+        run: docker build -f Dockerfile.worker -t glh-worker:ci .
+      - name: Build the backup image
+        run: docker build -t glh-backup:ci deploy/backup
+      - name: Validate the production compose file
+        run: |
+          cp .env.production.example .env.production
+          # Fill every required-but-empty value; `config` then fails only on a
+          # genuinely broken file (or a new `:?` variable the template forgot).
+          sed -i -E 's/^([A-Z0-9_]+)=$/\1=ci-placeholder/' .env.production
+          docker compose -f docker-compose.prod.yml --env-file .env.production config --quiet
+      # Building our own images is not enough: on 2026-09-11 MinIO deleted its
+      # images from Docker Hub and the production stack stopped being deployable
+      # with every job here still green. Pull every third-party image the
+      # production compose file names, so a vanished image fails CI, not a deploy.
+      - name: Pull the production third-party images
+        run: |
+          docker compose -f docker-compose.prod.yml --env-file .env.production config --images \
+            | grep -v '^glh-' | sort -u | xargs -n1 docker pull --quiet
+
   verify:
     runs-on: ubuntu-latest
 
@@ -86,9 +116,10 @@ jobs:
       REDIS_URL: redis://localhost:6379
       REDIS_QUEUE_URL: redis://localhost:6380
       REVALIDATE_SECRET: ci-revalidate-secret
-      # Object storage for the Story 2.3 download endpoint. MinIO runs as a STEP
-      # rather than a service container because `minio/minio` needs a command
-      # (`server /data`) and `services:` cannot override one.
+      # Object storage for the Story 2.3 download endpoint. SeaweedFS (MinIO's
+      # images were withdrawn from Docker Hub in 2026-09) runs as a STEP rather
+      # than a service container because it needs a command (`mini -dir=/data`)
+      # and `services:` cannot override one.
       S3_ENDPOINT: http://localhost:9000
       S3_REGION: us-east-1
       S3_FORCE_PATH_STYLE: "true"
@@ -129,21 +160,22 @@ jobs:
       # AC1 test — the only end-to-end proof that documents download — skipped on
       # every run, permanently and silently. A skipped keystone test in the merge
       # gate is indistinguishable from a passing one.
-      - name: Start MinIO
+      # Same image and keys as the dev docker-compose.yml `s3` service.
+      - name: Start object storage (SeaweedFS)
         run: |
-          docker run -d --name minio -p 9000:9000 \
-            -e MINIO_ROOT_USER=minioadmin \
-            -e MINIO_ROOT_PASSWORD=minioadmin \
-            minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
-      - name: Wait for MinIO
+          docker run -d --name s3 -p 9000:8333 \
+            -e AWS_ACCESS_KEY_ID=minioadmin \
+            -e AWS_SECRET_ACCESS_KEY=minioadmin \
+            chrislusf/seaweedfs:4.48 mini -dir=/data -master.telemetry=false
+      - name: Wait for object storage
         run: |
-          for i in $(seq 1 30); do
-            if curl -fsS http://localhost:9000/minio/health/live >/dev/null 2>&1; then
-              echo "MinIO ready after ${i}s"; exit 0
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:9000/healthz >/dev/null 2>&1; then
+              echo "Object storage ready after ${i}s"; exit 0
             fi
             sleep 1
           done
-          echo "MinIO did not become ready"; docker logs minio; exit 1
+          echo "Object storage did not become ready"; docker logs s3; exit 1
       - run: npx tsx scripts/seed-storage.ts
       - run: npm run lint
       - run: npm run typecheck

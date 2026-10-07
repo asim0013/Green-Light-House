@@ -45,8 +45,8 @@ export async function querySitePhone(): Promise<SitePhone> {
  * layout — it must never import this module (a `@/server/**` reader in a client
  * bundle takes every page to HTTP 500).
  */
-export const getSitePhone = cache(
-  async (): Promise<SitePhone> => cached(() => querySitePhone(), ["site-phone"], [TAGS.settings]),
+export const getSitePhone = cache(async (): Promise<SitePhone> =>
+  cached(() => querySitePhone(), ["site-phone"], [TAGS.settings]),
 );
 
 /** Uncached read of the contact details (row values + CODE approvals). Exported for tests. */
@@ -86,9 +86,8 @@ export async function queryContactDetails(): Promise<ContactDetails> {
  * helpers so the robots tag and the sitemap gate read ONE object and cannot drift.
  * Cached + tagged `settings`.
  */
-export const getContactDetails = cache(
-  async (): Promise<ContactDetails> =>
-    cached(() => queryContactDetails(), ["contact-details"], [TAGS.settings]),
+export const getContactDetails = cache(async (): Promise<ContactDetails> =>
+  cached(() => queryContactDetails(), ["contact-details"], [TAGS.settings]),
 );
 
 // ---- Admin edit (Story 4.8) -----------------------------------------------

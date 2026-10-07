@@ -6,7 +6,12 @@ import { useRouter } from "@/i18n/navigation";
 import { zodResolver } from "@/lib/zod-resolver";
 import { siteSettingsSchema, type SiteSettingsInput } from "@/server/admin/settings/schema";
 import { updateSiteSettingsAction } from "@/server/admin/settings/actions";
-import { Field, errorText, inputClass, submitButtonClass } from "@/components/admin/catalog/CatalogFormKit";
+import {
+  Field,
+  errorText,
+  inputClass,
+  submitButtonClass,
+} from "@/components/admin/catalog/CatalogFormKit";
 import type { SiteSettingsValues } from "@/server/repositories/site-settings";
 
 type Values = {
@@ -71,7 +76,8 @@ export function SiteSettingsForm({ initial }: { initial: SiteSettingsValues }) {
     setFormError(result.error.message);
   };
 
-  const err = (k: keyof Values) => errorText(form.formState.errors[k]?.message as string | undefined);
+  const err = (k: keyof Values) =>
+    errorText(form.formState.errors[k]?.message as string | undefined);
 
   return (
     <form onSubmit={form.handleSubmit(onValid)} className="flex max-w-2xl flex-col gap-5 p-8">
@@ -81,25 +87,70 @@ export function SiteSettingsForm({ initial }: { initial: SiteSettingsValues }) {
         here.
       </p>
 
-      <Field label="RFQ notification email" htmlFor="rfqNotifyTo" error={err("rfqNotifyTo")} hint="Where a new inquiry notification is sent. The next RFQ routes here.">
-        <input id="rfqNotifyTo" type="email" className={inputClass} {...form.register("rfqNotifyTo")} />
+      <Field
+        label="RFQ notification email"
+        htmlFor="rfqNotifyTo"
+        error={err("rfqNotifyTo")}
+        hint="Where a new inquiry notification is sent. The next RFQ routes here."
+      >
+        <input
+          id="rfqNotifyTo"
+          type="email"
+          className={inputClass}
+          {...form.register("rfqNotifyTo")}
+        />
       </Field>
 
-      <Field label="Phone — tel: number (E.164)" htmlFor="phone" error={err("phone")} hint="e.g. +902121234567 — the dial target on every page.">
+      <Field
+        label="Phone — tel: number (E.164)"
+        htmlFor="phone"
+        error={err("phone")}
+        hint="e.g. +902121234567 — the dial target on every page."
+      >
         <input id="phone" className={inputClass} {...form.register("phone")} />
       </Field>
-      <Field label="Phone — display label" htmlFor="phoneDisplay" error={err("phoneDisplay")} hint="e.g. +90 212 123 45 67 — the human-readable label.">
+      <Field
+        label="Phone — display label"
+        htmlFor="phoneDisplay"
+        error={err("phoneDisplay")}
+        hint="e.g. +90 212 123 45 67 — the human-readable label."
+      >
         <input id="phoneDisplay" className={inputClass} {...form.register("phoneDisplay")} />
       </Field>
 
-      <Field label="Contact email" htmlFor="contactEmail" error={err("contactEmail")} hint="Shown on /contact once supplied.">
-        <input id="contactEmail" type="email" className={inputClass} {...form.register("contactEmail")} />
+      <Field
+        label="Contact email"
+        htmlFor="contactEmail"
+        error={err("contactEmail")}
+        hint="Shown on /contact once supplied."
+      >
+        <input
+          id="contactEmail"
+          type="email"
+          className={inputClass}
+          {...form.register("contactEmail")}
+        />
       </Field>
-      <Field label="Postal address" htmlFor="contactAddress" error={err("contactAddress")} hint="One address, newline-separated. The maps link is derived from it.">
-        <textarea id="contactAddress" rows={3} className={inputClass} {...form.register("contactAddress")} />
+      <Field
+        label="Postal address"
+        htmlFor="contactAddress"
+        error={err("contactAddress")}
+        hint="One address, newline-separated. The maps link is derived from it."
+      >
+        <textarea
+          id="contactAddress"
+          rows={3}
+          className={inputClass}
+          {...form.register("contactAddress")}
+        />
       </Field>
 
-      <Field label="Legal name (Ticaret unvanı)" htmlFor="legalName" error={err("legalName")} hint="The legal block's anchor — the block does not render without it (and legal review, set in code).">
+      <Field
+        label="Legal name (Ticaret unvanı)"
+        htmlFor="legalName"
+        error={err("legalName")}
+        hint="The legal block's anchor — the block does not render without it (and legal review, set in code)."
+      >
         <input id="legalName" className={inputClass} {...form.register("legalName")} />
       </Field>
       <Field label="Trade registry no." htmlFor="tradeRegistryNo" error={err("tradeRegistryNo")}>

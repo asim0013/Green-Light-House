@@ -1,0 +1,301 @@
+# GREENLIGHTHOUSE — PRODUCTION stack (single server; Hetzner EU per Decision 3).
+#
+# On the server, `.env` (from .env.production.example) sets COMPOSE_FILE to THIS
+# file, so every command is a bare `docker compose …` and the dev
+# docker-compose.yml — published ports, dev passwords — can never be started by
+# accident. Runbook: docs/deploy.md.
+#
+# Differences from the dev docker-compose.yml, on purpose:
+#  - ONLY Caddy publishes ports (80/443). Postgres, both Redis and ClamAV are
+#    reachable solely on the internal network — never from the internet.
+#  - Files live in Hetzner Object Storage (managed S3, EU), not on this server.
+#    MinIO's images were withdrawn from Docker Hub in 2026-09; nothing here runs
+#    an object store.
+#  - Every in-container address is set HERE (postgres, redis, clamav), so the
+#    host-style `localhost` values that broke the dev compose cannot leak in.
+#  - LEAST SECRETS: there is no `env_file`. Each service receives exactly the
+#    variables it reads, so code running in the web app cannot read the backup
+#    password, and the backup container cannot sign admin sessions.
+#  - REQUIRED values use `:?`, so a forgotten one fails `docker compose up` with
+#    its name instead of starting a half-configured service.
+#  - Use HEX secrets (`openssl rand -hex 32`): the Postgres password is embedded
+#    in a URL below and must not need escaping.
+#  - A one-shot `init` service runs `prisma migrate deploy` (also against a
+#    separate LEADS_DATABASE_URL, Story 5.3), checks the bucket, and creates the
+#    SLA defaults if none exist — BEFORE the app and worker start. It does NOT
+#    seed demo content.
+#  - `backup` takes nightly encrypted snapshots off-site (restic → Storage Box).
+
+# Docker's default json-file driver never rotates: Caddy logs every request (with
+# the client IP) to stdout, so without this the disk fills and personal data is
+# kept forever. 5 × 10 MB per container.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-db-env: &db-env
+  DATABASE_URL: postgresql://glh:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/greenlighthouse?schema=public
+  # Empty ⇒ leads live in the main database (src/lib/leads-db-url.ts).
+  LEADS_DATABASE_URL: ${LEADS_DATABASE_URL:-}
+
+x-s3-env: &s3-env
+  S3_ENDPOINT: ${S3_ENDPOINT:?set S3_ENDPOINT (e.g. https://fsn1.your-objectstorage.com)}
+  S3_REGION: ${S3_REGION:?set S3_REGION (e.g. fsn1)}
+  S3_BUCKET: ${S3_BUCKET:?set S3_BUCKET}
+  S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY}
+
+x-mail-env: &mail-env
+  EMAIL_PROVIDER: ${EMAIL_PROVIDER:-resend}
+  EMAIL_API_KEY: ${EMAIL_API_KEY:?set EMAIL_API_KEY}
+  EMAIL_FROM: ${EMAIL_FROM:?set EMAIL_FROM}
+  RFQ_NOTIFY_TO: ${RFQ_NOTIFY_TO:?set RFQ_NOTIFY_TO}
+
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    logging: *logging
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?set SITE_DOMAIN}
+      APEX_DOMAIN: ${APEX_DOMAIN:?set APEX_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      # STARTED, not healthy: if the app is unhealthy (say the leads store is
+      # down), Caddy must still come up and answer — a 502 is diagnosable, a
+      # refused connection on :443 is not. (If `init` FAILS, the app is never
+      # created and neither is Caddy: nothing answers on :443 — check
+      # `docker compose logs init`; docs/deploy.md "Troubleshooting".)
+      app:
+        condition: service_started
+
+  app:
+    image: glh-app:prod
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # BUILD-TIME values (Story 5.8 review F1): empty = analytics off.
+      args:
+        NEXT_PUBLIC_ANALYTICS_DOMAIN: ${NEXT_PUBLIC_ANALYTICS_DOMAIN:-}
+        PLAUSIBLE_HOST: ${PLAUSIBLE_HOST:-}
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      <<: [*db-env, *s3-env, *mail-env]
+      NODE_ENV: production
+      SITE_URL: https://${SITE_DOMAIN:?set SITE_DOMAIN}
+      SITE_ALLOW_INDEXING: ${SITE_ALLOW_INDEXING:-false}
+      REDIS_URL: redis://redis:6379
+      REDIS_QUEUE_URL: redis://redis-queue:6379
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: "3310"
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET}
+      REVALIDATE_SECRET: ${REVALIDATE_SECRET:?set REVALIDATE_SECRET}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redis-queue:
+        condition: service_healthy
+      # STARTED, not healthy: clamd needs minutes to load signatures, and the
+      # whole site must not wait for it. Until it answers, an RFQ WITH a file is
+      # refused (422, entered values kept, "send without the file" — the
+      # disclosed fail-closed cost in src/app/api/rfq/route.ts); an RFQ without
+      # one is unaffected.
+      clamav:
+        condition: service_started
+
+  worker:
+    image: glh-worker:prod
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    # A crashed worker stops every inquiry email silently — it must come back.
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      <<: [*db-env, *s3-env, *mail-env]
+      NODE_ENV: production
+      SITE_URL: https://${SITE_DOMAIN:?set SITE_DOMAIN}
+      REDIS_QUEUE_URL: redis://redis-queue:6379
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis-queue:
+        condition: service_healthy
+
+  # One-shot, every deploy: migrations (main + a separate leads store if set), a
+  # bucket check, and the SLA defaults if (and only if) none exist. Uses the
+  # worker image (it carries the Prisma CLI + tsx). Also the image for one-off
+  # ops commands (first admin, queue inspection) — see docs/deploy.md.
+  init:
+    image: glh-worker:prod
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: "no"
+    logging: *logging
+    environment:
+      <<: [*db-env, *s3-env]
+      NODE_ENV: production
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        npx prisma migrate deploy
+        if [ -n "$${LEADS_DATABASE_URL:-}" ]; then
+          echo "[init] migrating the separate leads database (Story 5.3)"
+          DATABASE_URL="$${LEADS_DATABASE_URL}" npx prisma migrate deploy
+        fi
+        node --import tsx scripts/ensure-bucket.ts
+        node --import tsx scripts/ensure-sla.ts
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_USER: glh
+      # ⚠️ Read ONLY when the data volume is first created. Changing it later in
+      # `.env` does NOT change the database password — see docs/deploy.md.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: greenlighthouse
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glh -d greenlighthouse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    # The Next incremental cache + RFQ rate-limit counters. DISPOSABLE: no
+    # persistence, LRU eviction (.env.example explains why it is a separate
+    # instance from the queue).
+    image: redis:7-alpine
+    restart: unless-stopped
+    logging: *logging
+    command:
+      [
+        "redis-server",
+        "--save",
+        "",
+        "--appendonly",
+        "no",
+        "--maxmemory",
+        "256mb",
+        "--maxmemory-policy",
+        "allkeys-lru",
+      ]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis-queue:
+    # BullMQ — DURABLE (AOF), never evicts: a lost job is a lost inquiry email.
+    image: redis:7-alpine
+    restart: unless-stopped
+    logging: *logging
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - queuedata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  clamav:
+    # Signatures are baked into this image; freshclam updates daily.cld.
+    image: clamav/clamav@sha256:24cab211a882e9f767b84b76afe197d82554306ad6d43b782f80cd6aa1e61427
+    restart: unless-stopped
+    logging: *logging
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 360s
+
+  backup:
+    image: glh-backup:prod
+    build:
+      context: ./deploy/backup
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      <<: [*db-env, *s3-env]
+      RESTIC_REPOSITORY: ${RESTIC_REPOSITORY:?set RESTIC_REPOSITORY}
+      RESTIC_PASSWORD: ${RESTIC_PASSWORD:?set RESTIC_PASSWORD}
+      RESTIC_CACHE_DIR: /cache
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-15 3 * * *}
+      BACKUP_KEEP_LAST: ${BACKUP_KEEP_LAST:-7}
+      BACKUP_KEEP_DAILY: ${BACKUP_KEEP_DAILY:-14}
+      BACKUP_KEEP_WEEKLY: ${BACKUP_KEEP_WEEKLY:-8}
+      BACKUP_KEEP_MONTHLY: ${BACKUP_KEEP_MONTHLY:-12}
+      BACKUP_ON_START: ${BACKUP_ON_START:-true}
+      # Dead-man's switch (e.g. a healthchecks.io check URL). Pinged on every
+      # success, `<url>/fail` on every failure; the service alerts you when the
+      # pings stop. Without it a broken backup is noticed only when you need one.
+      BACKUP_HEARTBEAT_URL: ${BACKUP_HEARTBEAT_URL:-}
+    volumes:
+      - ./deploy/backup/ssh:/ssh:ro
+      - backupstage:/stage
+      - backupstate:/state
+      - backupcache:/cache
+    healthcheck:
+      # Unhealthy when the last SUCCESSFUL backup is older than 26 hours.
+      test:
+        [
+          "CMD-SHELL",
+          "test -f /state/last-success && [ $$(( $$(date +%s) - $$(cat /state/last-success) )) -lt 93600 ]",
+        ]
+      interval: 10m
+      timeout: 10s
+      retries: 1
+      start_period: 30m
+    depends_on:
+      # After `init`: the start-up backup must not race the migrations (the first
+      # smoke run failed exactly that way).
+      init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:
+  pgdata:
+  queuedata:
+  backupstage:
+  backupstate:
+  backupcache:

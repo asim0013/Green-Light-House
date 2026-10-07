@@ -15,13 +15,20 @@ export const SITE = {
   rfqHref: "/rfq",
 } as const;
 
-/** Primary nav — industry-led (EXPERIENCE.md §IA). Labels resolve from messages `Nav`. */
+/**
+ * Primary nav — industry-led (EXPERIENCE.md §IA). Labels resolve from messages `Nav`.
+ *
+ * ⚠️ `about` WAS HERE and pointed at a route no story ever built — a 404 in the
+ * primary nav of every page, and in production its router prefetch never settled.
+ * Removed for launch; `site-links.test.ts` now fails if any nav/footer href has no
+ * page. Re-add `{ key: "about", href: "/about" }` together with the page (the
+ * `Nav.about` label is kept in the catalogues for that).
+ */
 export const NAV_ITEMS = [
   { key: "industries", href: "/industries" },
   { key: "products", href: "/products" },
   { key: "projects", href: "/projects" },
   { key: "services", href: "/services" },
-  { key: "about", href: "/about" },
 ] as const;
 
 /**

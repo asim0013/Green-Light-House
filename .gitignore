@@ -37,6 +37,12 @@ yarn-error.log*
 # first setup step. A fresh clone therefore could not follow its own instructions,
 # and any env var documented there (e.g. REVALIDATE_SECRET) reached nobody.
 !.env.example
+# The production template (docs/deploy.md). The real `.env.production` stays ignored.
+!.env.production.example
+
+# Backup SSH key for the Hetzner Storage Box — lives only on the server.
+deploy/backup/ssh/*
+!deploy/backup/ssh/.gitkeep
 
 # vercel
 .vercel

@@ -57,7 +57,8 @@ const LOCALE_CAP = [
 function translationShape(fields: readonly string[], max: number): Record<string, z.ZodTypeAny> {
   const shape: Record<string, z.ZodTypeAny> = {};
   for (const [cap] of LOCALE_CAP)
-    for (const f of fields) shape[`${f}${cap}`] = cap === "En" ? requiredText(max) : optionalText(max);
+    for (const f of fields)
+      shape[`${f}${cap}`] = cap === "En" ? requiredText(max) : optionalText(max);
   return shape;
 }
 

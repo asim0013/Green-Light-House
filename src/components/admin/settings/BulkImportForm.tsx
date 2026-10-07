@@ -24,9 +24,7 @@ export function BulkImportForm({ locale }: { locale: string }) {
     try {
       const res = await fetch(`/${locale}/admin/settings/import`, { method: "POST", body });
       const json = (await res.json().catch(() => null)) as
-        | { ok: true; report: ImportReport }
-        | { ok: false; key: string }
-        | null;
+        { ok: true; report: ImportReport } | { ok: false; key: string } | null;
       if (!res.ok || !json?.ok) {
         setError(json && !json.ok ? json.key : `error ${res.status}`);
         return;
@@ -46,8 +44,11 @@ export function BulkImportForm({ locale }: { locale: string }) {
         matched by <code>slug</code> and upserted idempotently; each row is applied atomically and
         any problems are reported below without a partial write. Required columns:{" "}
         <code>slug, model, manufacturerSlug, categorySlug, name_en</code>; optional:{" "}
-        <code>seriesSlug, status, name_tr, name_ru, description_en/tr/ru, industrySlugs (;), attributes (JSON)</code>.
-        Manufacturer/category/series/industry must already exist (referenced by slug).
+        <code>
+          seriesSlug, status, name_tr, name_ru, description_en/tr/ru, industrySlugs (;), attributes
+          (JSON)
+        </code>
+        . Manufacturer/category/series/industry must already exist (referenced by slug).
       </p>
       <div className="flex items-center gap-3">
         <input
@@ -76,8 +77,8 @@ export function BulkImportForm({ locale }: { locale: string }) {
             </p>
           ) : (
             <p className="text-ink">
-              {report.total} rows · <span className="font-semibold">{report.created}</span> created ·{" "}
-              <span className="font-semibold">{report.updated}</span> updated ·{" "}
+              {report.total} rows · <span className="font-semibold">{report.created}</span> created
+              · <span className="font-semibold">{report.updated}</span> updated ·{" "}
               <span className={report.errored ? "font-semibold text-[#B42318]" : "font-semibold"}>
                 {report.errored}
               </span>{" "}

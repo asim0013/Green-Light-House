@@ -10,13 +10,13 @@
  * test proving downloads work — with a skip reason blaming the fixtures.
  *
  * Reproduced by the review: with a wrong-key bug live in the handler (storage
- * healthy, both fixture objects verified present in MinIO), the suite reported
+ * healthy, both fixture objects verified present in storage), the suite reported
  * `1 skipped / 7 passed`, exit 0 — the keystone AC1 test excusing itself while
  * the endpoint was broken. Worse, two runs at the default 4 workers skipped that
  * same test on a HEALTHY endpoint, the 15s probe simply timing out under
  * contention.
  *
- * So the skip predicate depends on the ENVIRONMENT only. We ask MinIO directly,
+ * So the skip predicate depends on the ENVIRONMENT only. We ask object storage directly,
  * exactly as `probeDbReady` asks Postgres directly:
  *   - fixture object absent / S3 unreachable → skip (seed-storage was not run)
  *   - fixture object present                 → RUN, whatever the handler does.

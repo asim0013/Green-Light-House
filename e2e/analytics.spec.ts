@@ -28,7 +28,10 @@ test.beforeAll(async ({ baseURL }) => {
   await warmUp(baseURL, ["/en"]);
 });
 
-test("unprovisioned: no analytics request, script or cookie — even after consent (AC6)", async ({ page, context }, testInfo) => {
+test("unprovisioned: no analytics request, script or cookie — even after consent (AC6)", async ({
+  page,
+  context,
+}, testInfo) => {
   if (!dbReady) testInfo.skip();
   const analyticsRequests: string[] = [];
   page.on("request", (r) => {
@@ -41,24 +44,36 @@ test("unprovisioned: no analytics request, script or cookie — even after conse
   expect(await page.locator("#glh-plausible").count()).toBe(0);
 
   // Grant consent — STILL nothing, because analytics is unprovisioned (env gate).
-  await page.getByRole("region", { name: "Cookie consent" }).getByRole("button", { name: "Accept" }).click();
+  await page
+    .getByRole("region", { name: "Cookie consent" })
+    .getByRole("button", { name: "Accept" })
+    .click();
   await page.waitForLoadState("networkidle");
   expect(await page.locator("#glh-plausible").count()).toBe(0);
-  expect(analyticsRequests, `no analytics requests; got ${analyticsRequests.join(",")}`).toEqual([]);
+  expect(analyticsRequests, `no analytics requests; got ${analyticsRequests.join(",")}`).toEqual(
+    [],
+  );
 
   // Only essential cookies — never an analytics identifier.
-  const extra = (await context.cookies()).map((c) => c.name).filter((n) => n !== "NEXT_LOCALE" && n !== "glh-consent");
+  const extra = (await context.cookies())
+    .map((c) => c.name)
+    .filter((n) => n !== "NEXT_LOCALE" && n !== "glh-consent");
   expect(extra, `only essential cookies, extra: ${extra.join(",")}`).toEqual([]);
 });
 
-test("the disabled loader raises no CSP or console error (inert, not broken)", async ({ page }, testInfo) => {
+test("the disabled loader raises no CSP or console error (inert, not broken)", async ({
+  page,
+}, testInfo) => {
   if (!dbReady) testInfo.skip();
   const csp: string[] = [];
   page.on("console", (m) => {
     if (m.type() === "error" && /content security policy/i.test(m.text())) csp.push(m.text());
   });
   await page.goto("/en");
-  await page.getByRole("region", { name: "Cookie consent" }).getByRole("button", { name: "Accept" }).click();
+  await page
+    .getByRole("region", { name: "Cookie consent" })
+    .getByRole("button", { name: "Accept" })
+    .click();
   await page.waitForLoadState("networkidle");
   expect(csp, csp.join("\n")).toEqual([]);
 });

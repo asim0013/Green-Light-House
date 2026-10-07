@@ -10,7 +10,9 @@ vi.mock("@/lib/auth/guard", async (importOriginal) => {
   return { ...actual, requireAdmin: () => Promise.resolve({ sub: "admin-1" }) };
 });
 const revalidateTags = vi.fn();
-vi.mock("@/lib/revalidate", () => ({ revalidateTags: (t: readonly string[]) => revalidateTags(t) }));
+vi.mock("@/lib/revalidate", () => ({
+  revalidateTags: (t: readonly string[]) => revalidateTags(t),
+}));
 const repo = { createGuide: vi.fn(), updateGuide: vi.fn(), deleteGuide: vi.fn() };
 vi.mock("@/server/repositories/selection-guide", () => ({
   createGuide: (...a: unknown[]) => repo.createGuide(...a),
@@ -22,7 +24,9 @@ const { createGuideAction, updateGuideAction, deleteGuideAction } = await import
 
 const enGuide = {
   status: "published",
-  translations: [{ locale: "en", title: "Choosing detectors", intro: "Intro", metaDescription: null }],
+  translations: [
+    { locale: "en", title: "Choosing detectors", intro: "Intro", metaDescription: null },
+  ],
   sections: [{ translations: [{ locale: "en", heading: "Step 1", body: "Body" }] }],
   productIds: ["p1", "p2"],
   categoryIds: [],

@@ -78,9 +78,8 @@ export async function queryPublishedGuides(locale: Locale): Promise<GuideListIte
   return items;
 }
 
-export const listPublishedGuides = cache(
-  async (locale: Locale): Promise<GuideListItem[]> =>
-    cached(() => queryPublishedGuides(locale), ["guides-index", locale], [TAGS.guides]),
+export const listPublishedGuides = cache(async (locale: Locale): Promise<GuideListItem[]> =>
+  cached(() => queryPublishedGuides(locale), ["guides-index", locale], [TAGS.guides]),
 );
 
 export async function queryGuideBySlug(slug: string, locale: Locale): Promise<GuideDetail | null> {
@@ -95,11 +94,19 @@ export async function queryGuideBySlug(slug: string, locale: Locale): Promise<Gu
       },
       products: {
         orderBy: { sort: "asc" },
-        select: { product: { select: { slug: true, translations: { select: { locale: true, name: true } } } } },
+        select: {
+          product: {
+            select: { slug: true, translations: { select: { locale: true, name: true } } },
+          },
+        },
       },
       categories: {
         orderBy: { sort: "asc" },
-        select: { category: { select: { slug: true, translations: { select: { locale: true, name: true } } } } },
+        select: {
+          category: {
+            select: { slug: true, translations: { select: { locale: true, name: true } } },
+          },
+        },
       },
     },
   });
@@ -114,9 +121,10 @@ export async function queryGuideBySlug(slug: string, locale: Locale): Promise<Gu
     sections.push({ heading: st.value.heading, body: st.value.body, isFallback: st.isFallback });
   }
 
-  const linkView = (
-    link: { slug: string; translations: NamedTranslation[] },
-  ): GuideLinkView | null => {
+  const linkView = (link: {
+    slug: string;
+    translations: NamedTranslation[];
+  }): GuideLinkView | null => {
     const r = resolveTranslation(link.translations, locale);
     return r ? { slug: link.slug, name: r.value.name, isFallback: r.isFallback } : null;
   };
@@ -128,7 +136,9 @@ export async function queryGuideBySlug(slug: string, locale: Locale): Promise<Gu
     metaDescription: t.value.metaDescription,
     isFallback: t.isFallback,
     sections,
-    products: row.products.map((p) => linkView(p.product)).filter((x): x is GuideLinkView => x !== null),
+    products: row.products
+      .map((p) => linkView(p.product))
+      .filter((x): x is GuideLinkView => x !== null),
     categories: row.categories
       .map((c) => linkView(c.category))
       .filter((x): x is GuideLinkView => x !== null),
@@ -170,7 +180,12 @@ export interface GuideEditData {
   id: string;
   slug: string;
   status: "draft" | "published";
-  translations: { locale: Locale; title: string; intro: string | null; metaDescription: string | null }[];
+  translations: {
+    locale: Locale;
+    title: string;
+    intro: string | null;
+    metaDescription: string | null;
+  }[];
   sections: { sort: number; translations: { locale: Locale; heading: string; body: string }[] }[];
   productIds: string[];
   categoryIds: string[];
@@ -186,7 +201,10 @@ export async function getGuideForEdit(id: string): Promise<GuideEditData | null>
       translations: { select: { locale: true, title: true, intro: true, metaDescription: true } },
       sections: {
         orderBy: { sort: "asc" },
-        select: { sort: true, translations: { select: { locale: true, heading: true, body: true } } },
+        select: {
+          sort: true,
+          translations: { select: { locale: true, heading: true, body: true } },
+        },
       },
       products: { orderBy: { sort: "asc" }, select: { productId: true } },
       categories: { orderBy: { sort: "asc" }, select: { categoryId: true } },
@@ -207,7 +225,12 @@ export async function getGuideForEdit(id: string): Promise<GuideEditData | null>
 // ---- Writers (section + link replace = delete-then-create) -----------------
 export interface GuideWriteData {
   status: "draft" | "published";
-  translations: { locale: Locale; title: string; intro: string | null; metaDescription: string | null }[];
+  translations: {
+    locale: Locale;
+    title: string;
+    intro: string | null;
+    metaDescription: string | null;
+  }[];
   sections: { sort: number; translations: { locale: Locale; heading: string; body: string }[] }[];
   productIds: string[];
   categoryIds: string[];
@@ -228,7 +251,10 @@ function createNested(data: GuideWriteData) {
   };
 }
 
-export async function createGuide(slug: string, data: GuideWriteData): Promise<{ id: string; slug: string }> {
+export async function createGuide(
+  slug: string,
+  data: GuideWriteData,
+): Promise<{ id: string; slug: string }> {
   return prisma.selectionGuide.create({
     data: { slug, ...createNested(data) },
     select: { id: true, slug: true },

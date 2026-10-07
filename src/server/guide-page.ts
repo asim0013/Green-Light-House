@@ -51,7 +51,10 @@ export function guideListItemSignals(locale: Locale, item: GuideListItem): Conte
  * exists; a non-EN index that is entirely EN-fallback is `fallback-only`. Mirrors
  * the sitemap's `collectionsIndexable` shape (counts + fallback ratio).
  */
-export function guidesIndexSignals(locale: Locale, guides: readonly GuideListItem[]): ContentSignals {
+export function guidesIndexSignals(
+  locale: Locale,
+  guides: readonly GuideListItem[],
+): ContentSignals {
   return {
     locale,
     itemCount: guides.length,

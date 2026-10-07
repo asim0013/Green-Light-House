@@ -7,7 +7,7 @@ import { probeStorageReady } from "./storageReady";
  *
  * FIXTURES (the 2.3 seed + seed-storage): fd-9500-datasheet (datasheet, 602 B)
  * and fd-9500-en54 (certificate, 610 B, linked to oil-gas + fire-safety), both
- * public PDFs whose objects exist in MinIO under docs/*-v1.pdf — plus
+ * public PDFs whose objects exist in object storage under docs/*-v1.pdf — plus
  * fd-9500-datasheet-internal, a PRIVATE datasheet (version 2) pointing at the
  * real datasheet object, so "private is indistinguishable from unknown" and
  * "the datasheet pick ignores private rows" both have HTTP-level proof.
@@ -16,7 +16,7 @@ import { probeStorageReady } from "./storageReady";
  * download URL (browsers open a save dialog, not a document). The response IS
  * the file: status, headers, and bytes are the whole contract.
  *
- * Storage gating follows the dbReady philosophy and asks MINIO DIRECTLY (see
+ * Storage gating follows the dbReady philosophy and asks OBJECT STORAGE DIRECTLY (see
  * ./storageReady.ts). It deliberately does NOT probe the endpoint: the original
  * version did, which let any handler bug skip the download test with a message
  * blaming the fixtures. The probe gates only; the tests do the asserting.
@@ -27,7 +27,7 @@ let storageReady = true;
 
 test.beforeAll(async ({ baseURL }) => {
   dbReady = await probeDbReady();
-  // Asks MinIO for the fixture object itself — the app is never involved, so a
+  // Asks object storage for the fixture object itself — the app is never involved, so a
   // broken route cannot buy itself a skip.
   storageReady = await probeStorageReady();
   await warmUp(baseURL, ["/en", "/en/products", "/en/industries/oil-gas"]);
@@ -82,7 +82,7 @@ test.describe("the download endpoint (AC1, AC3)", () => {
   }, testInfo) => {
     if (!dbReady || !storageReady) testInfo.skip();
 
-    // The inverse of the 404 contract. We cannot stop MinIO from inside the
+    // The inverse of the 404 contract. We cannot stop object storage from inside the
     // suite, so this asserts the property that makes the distinction possible:
     // a PUBLIC, PRESENT document answers 200 and carries the validators a cache
     // needs. The outage half (503 + Retry-After) is proven in the review record

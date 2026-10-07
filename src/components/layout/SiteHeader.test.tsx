@@ -73,17 +73,17 @@ describe("SiteHeader active state", () => {
 
   it("marks nothing active on the homepage (not a nav item)", () => {
     const html = renderToStaticMarkup(<SiteHeader />);
-    for (const key of ["industries", "products", "projects", "services", "about"]) {
+    for (const key of ["industries", "products", "projects", "services"]) {
       expect(anchorFor(html, key)).not.toContain("aria-current");
     }
   });
 });
 
 describe("SiteHeader chrome", () => {
-  it("renders the brand, all five nav links, a tel: phone, and the RFQ CTA", () => {
+  it("renders the brand, all four nav links, a tel: phone, and the RFQ CTA", () => {
     const html = renderToStaticMarkup(<SiteHeader />);
     expect(html).toContain("GREENLIGHTHOUSE");
-    for (const key of ["industries", "products", "projects", "services", "about"]) {
+    for (const key of ["industries", "products", "projects", "services"]) {
       expect(anchorFor(html, key)).toBeDefined();
     }
     expect(html).toContain('href="tel:');

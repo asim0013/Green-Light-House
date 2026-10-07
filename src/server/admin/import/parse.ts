@@ -45,8 +45,17 @@ export function cellToString(value: ExcelJS.CellValue): string {
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   if (value instanceof Date) return value.toISOString();
   if (typeof value === "object") {
-    const v = value as { text?: unknown; result?: unknown; error?: unknown; richText?: { text: string }[] };
-    if (Array.isArray(v.richText)) return v.richText.map((r) => r.text).join("").trim();
+    const v = value as {
+      text?: unknown;
+      result?: unknown;
+      error?: unknown;
+      richText?: { text: string }[];
+    };
+    if (Array.isArray(v.richText))
+      return v.richText
+        .map((r) => r.text)
+        .join("")
+        .trim();
     if (v.error !== undefined) return ""; // a direct Excel error cell
     if (v.result !== undefined && v.result !== null) {
       if (v.result instanceof Date) return v.result.toISOString();
@@ -63,7 +72,10 @@ export function cellToString(value: ExcelJS.CellValue): string {
  * `ImportParseError` only for a structurally-unusable file; anything about
  * column contents is left to per-row validation downstream.
  */
-export async function parseSpreadsheet(buffer: Uint8Array, kind: ImportFileKind): Promise<RawRow[]> {
+export async function parseSpreadsheet(
+  buffer: Uint8Array,
+  kind: ImportFileKind,
+): Promise<RawRow[]> {
   const workbook = new ExcelJS.Workbook();
   let sheet: ExcelJS.Worksheet | undefined;
 

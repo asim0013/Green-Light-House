@@ -216,10 +216,7 @@ test.describe("the project detail page (AC2, AC11, AC15)", () => {
     const doorway = page.getByRole("link", { name: "I have a similar project" });
     await expect(doorway).toHaveCount(1);
     // Task 0 #2: FR22's exact label, in the CTA band, pointing at the doorway.
-    await expect(doorway).toHaveAttribute(
-      "href",
-      "/en/rfq?project=lng-terminal-fire-gas-upgrade",
-    );
+    await expect(doorway).toHaveAttribute("href", "/en/rfq?project=lng-terminal-fire-gas-upgrade");
 
     // INVERTED BY STORY 3.4 (its Task 0 #20, an Asim decision). Story 3.1 held
     // this copy back because the site must not promise behaviour it does not

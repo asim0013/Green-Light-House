@@ -139,8 +139,8 @@ test.describe("sitemap.xml and robots.txt (AC3, AC4)", () => {
     // covers in full).
     expect(locs).toContain("http://localhost:3000/en/services");
 
-    // Scope guard: the nav still links to About, which does not exist (no story
-    // owns it). A sitemap of 404s is worse than a small sitemap, so its ABSENCE
+    // Scope guard: /about does not exist (no story owns it; the nav link to it was
+    // removed for launch — src/config/site-links.test.ts). A sitemap of 404s is worse than a small sitemap, so its ABSENCE
     // is the assertion. `/rfq` left this list in Story 3.2 (asserted present
     // below); `/projects` left it in 3.1. The legal pages (`/privacy`, `/terms`,
     // `/cookies`) are NOT asserted here: they exist (Story 5.1) and their

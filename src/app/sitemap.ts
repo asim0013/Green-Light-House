@@ -56,8 +56,8 @@ export const dynamic = "force-dynamic";
  * publishes it here with no code change, which is why the emitter is gated
  * rather than commented out.
  *
- * The nav/footer `/about` still 404s (no story owns it) — listing it would
- * publish a sitemap of 404s, so it stays out. The three LEGAL pages — `/privacy`,
+ * `/about` still 404s (no story owns it; its nav link was removed for launch) —
+ * listing it would publish a sitemap of 404s, so it stays out. The three LEGAL pages — `/privacy`,
  * `/terms`, `/cookies` — now exist (Story 5.1) and are listed here, gated by the
  * SINGLE `legalSignals` predicate their pages' robots metadata also use: they are
  * `noindex` AND absent until BOTH `LEGAL.approvals` gates are set, then they

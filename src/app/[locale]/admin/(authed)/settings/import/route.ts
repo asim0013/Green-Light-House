@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { siteOrigin } from "@/lib/seo";
 import { requireAdmin, AuthRequiredError } from "@/lib/auth/guard";
 import { scanBuffer } from "@/lib/clamav";
-import { parseSpreadsheet, ImportParseError, type ImportFileKind } from "@/server/admin/import/parse";
+import {
+  parseSpreadsheet,
+  ImportParseError,
+  type ImportFileKind,
+} from "@/server/admin/import/parse";
 import { processImport } from "@/server/admin/import/process";
 
 /**
@@ -71,5 +75,8 @@ export async function POST(request: Request) {
   }
 
   const report = await processImport(rows);
-  return NextResponse.json({ ok: true, report }, { status: 200, headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json(
+    { ok: true, report },
+    { status: 200, headers: { "Cache-Control": "no-store" } },
+  );
 }
