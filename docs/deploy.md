@@ -1,12 +1,16 @@
 # Production deployment — www.greenlighthouse.net
 
-One Linux server runs the site with Docker Compose (`docker-compose.prod.yml`):
+One Linux server runs the whole site with Docker Compose (`docker-compose.prod.yml`):
 Caddy (HTTPS) → the Next.js app, plus the email worker, PostgreSQL, two Redis
-instances, ClamAV (upload scanning) and a nightly backup to a Hetzner Storage Box.
-Uploaded files (datasheets, RFQ attachments, images) live in **Hetzner Object
-Storage**. Only Caddy is reachable from the internet.
+instances, ClamAV (upload scanning), the file store for uploads (SeaweedFS, S3 API)
+and a nightly encrypted backup to **Backblaze B2**. Only Caddy is reachable from the
+internet.
 
-> Every command below runs **on the server**, in `/opt/glh`, unless it says
+The launch server is an **Oracle Cloud Always Free** Ampere A1 VM (arm64): free as
+long as usage stays inside Oracle's Always Free limits. The same files also run on
+a paid x86 VM (e.g. Hetzner) — differences are noted where they matter.
+
+> Every command below runs **on the server**, as root, in `/opt/glh`, unless it says
 > otherwise. Secrets are generated there and never pasted into chat, tickets or git.
 >
 > On the server the settings file is named **`.env`** and it selects the production
@@ -18,13 +22,14 @@ Storage**. Only Caddy is reachable from the internet.
 
 | Item | Notes |
 |---|---|
-| **Server** | Hetzner Cloud, EU location (e.g. Falkenstein), ~4 vCPU / 8 GB RAM (ClamAV alone uses ~1.5–2 GB), 80 GB+ disk, **Ubuntu 24.04**. Add your SSH key when creating it. Use a Hetzner Cloud **project of its own** for GLH (the Object Storage keys below are per project). |
-| **Firewall** | In the Hetzner Console create a **Firewall** for the server: inbound TCP 22, 80, 443 and UDP 443 only. |
-| **DNS** | At the registrar for `greenlighthouse.net`: `A` record for **`www`** and for **`@`** (the bare domain) → the server's IPv4. **Do not add `AAAA` (IPv6) records**: with Docker's default IPv4-only network every IPv6 visitor would reach the app from the same internal address and share one RFQ rate-limit bucket. |
-| **File storage** | Hetzner Console → **Object Storage** → create a bucket in the **same location as the server** (e.g. `fsn1`), visibility **Private**, a unique name such as `greenlighthouse-media`. Then **Security → S3 credentials → Generate**: copy the access key and secret key straight into `.env` in step 4 (the secret is shown only once). |
-| **Email sending** | A [Resend](https://resend.com) account with `greenlighthouse.net` added and **verified** (add the SPF/DKIM TXT records Resend shows). Add a DMARC record too, e.g. `_dmarc` TXT `v=DMARC1; p=none; rua=mailto:<you>`. |
-| **Inbox** | A mailbox that receives RFQ notifications, e.g. `sales@greenlighthouse.net` (Google Workspace, Zoho, …). Its MX records must exist. |
-| **Backups** | A Hetzner **Storage Box** (BX11 is plenty). In its settings enable **SSH support** and **automatic snapshots** (daily, keep 7+). Note its username/host (`uXXXXXX` / `uXXXXXX.your-storagebox.de`). The Storage Box's own snapshots are outside the server's reach, so a compromised server cannot delete them. |
+| **Oracle Cloud account** | Sign up at `https://signup.cloud.oracle.com`. Choose an **EU home region** — preferably **Germany Central (Frankfurt)**; it **cannot be changed later**. A card is required for identity verification (Always Free resources are not charged). |
+| **Upgrade to Pay As You Go** | Strongly recommended, still **€0** while you stay inside Always Free: Oracle *reclaims* idle Always Free VMs on free-only accounts, and free-only accounts often get "out of capacity" for Ampere A1. Billing → *Upgrade and manage payment*. Then set a **budget alert** of €1 (Billing → Budgets) so any accidental paid resource emails you. |
+| **Server** | Compute → Instances → *Create instance*: image **Canonical Ubuntu 24.04** (aarch64), shape **Ampere → VM.Standard.A1.Flex, 2 OCPU / 12 GB** (the current Always Free maximum), **boot volume 100 GB** (Always Free covers 200 GB in total), *Assign a public IPv4 address* on, and paste **your SSH public key**. "Out of capacity" → try another availability domain, or again later. Note the instance's **Public IP address** (instance page → *Instance access*). |
+| **Firewall (Oracle)** | Instance page → subnet → **Security List** → *Add Ingress Rules*: source `0.0.0.0/0`, TCP, destination ports **80,443**; and a second rule UDP **443**. (SSH 22 is already open.) The server's own firewall is opened in step 2. |
+| **DNS** | At the registrar for `greenlighthouse.net`: `A` record for **`www`** and for **`@`** (the bare domain) → the server's public IPv4. **Do not add `AAAA` (IPv6) records**: with Docker's default IPv4-only network every IPv6 visitor would reach the app from the same internal address and share one RFQ rate-limit bucket. |
+| **Backups (Backblaze B2)** | Sign up at `https://www.backblaze.com/sign-up/cloud-storage` and choose the **EU Central** region (it cannot be changed later). Buckets → *Create a Bucket*: **Private**, encryption on, a unique name such as `glh-backups-<something>`. Its *Lifecycle Settings* → **Keep prior versions for this number of days: 7** (deleted backup files stay recoverable for a week). Note the bucket's **Endpoint** (e.g. `s3.eu-central-003.backblazeb2.com`). Application Keys → *Add a New Application Key*: access **only that bucket**, Read and Write → copy **keyID** and **applicationKey** straight into `.env` in step 4 (the key is shown once). The first 10 GB are free. |
+| **Email sending** | A [Resend](https://resend.com) account (free tier: 3,000 emails/month) with `greenlighthouse.net` added and **verified** (add the SPF/DKIM TXT records Resend shows). Add a DMARC record too, e.g. `_dmarc` TXT `v=DMARC1; p=none; rua=mailto:<you>`. |
+| **Inbox** | A mailbox that receives RFQ notifications, e.g. `sales@greenlighthouse.net`. Its MX records must exist. |
 | **Backup alert** | A free [healthchecks.io](https://healthchecks.io) check (period 1 day, grace 2 hours) that emails you. You will paste its ping URL into `BACKUP_HEARTBEAT_URL`. |
 
 Check DNS has propagated before step 5 (Let's Encrypt needs it):
@@ -41,16 +46,33 @@ Both must print the server's IP.
 
 ## 2. Prepare the server (once)
 
+From your own computer (Oracle's Ubuntu user is `ubuntu`, not `root`):
+
 ```bash
-export DEBIAN_FRONTEND=noninteractive && apt update && apt -y upgrade && apt -y install ca-certificates curl git ufw unattended-upgrades
+ssh ubuntu@<server-IP>
+```
+
+Then become root for everything that follows:
+
+```bash
+sudo -i
+```
+
+```bash
+export DEBIAN_FRONTEND=noninteractive && apt update && apt -y upgrade && apt -y install ca-certificates curl git unattended-upgrades iptables-persistent
 ```
 
 ```bash
 curl -fsSL https://get.docker.com | sh
 ```
 
+Open HTTP/HTTPS in the server's own firewall. Oracle's Ubuntu image ships strict
+`iptables` rules ending in a REJECT, so the new rules go **first** (`-I`), then are
+saved for reboots. Do **not** install or enable `ufw` on Oracle — it fights these
+rules and can lock you out.
+
 ```bash
-ufw allow OpenSSH && ufw allow 80/tcp && ufw allow 443/tcp && ufw allow 443/udp && ufw --force enable
+iptables -I INPUT -p tcp -m multiport --dports 80,443 -m conntrack --ctstate NEW -j ACCEPT && iptables -I INPUT -p udp --dport 443 -j ACCEPT && netfilter-persistent save
 ```
 
 SSH: keys only, no passwords (make sure your own key login works first):
@@ -59,16 +81,20 @@ SSH: keys only, no passwords (make sure your own key login works first):
 printf 'PasswordAuthentication no\nPermitRootLogin prohibit-password\n' > /etc/ssh/sshd_config.d/10-glh.conf && systemctl reload ssh
 ```
 
-Reboot once so the upgraded kernel is running:
+Reboot once so the upgraded kernel is running, then reconnect and `sudo -i` again:
 
 ```bash
 reboot
 ```
 
-> Docker publishes ports **past** ufw. That is safe here only because Caddy is the
-> one service with published ports; never run the development `docker-compose.yml`
-> on this server (the `.env` from step 4 makes a bare `docker compose` use the
-> production file).
+> Docker publishes ports **past** the host firewall. That is safe here only because
+> Caddy is the one service with published ports; never run the development
+> `docker-compose.yml` on this server (the `.env` from step 4 makes a bare
+> `docker compose` use the production file).
+>
+> *On a paid x86 VM (e.g. Hetzner) instead:* use its cloud firewall for 22/80/443
+> and `ufw allow OpenSSH && ufw allow 80/tcp && ufw allow 443/tcp && ufw allow 443/udp && ufw --force enable`
+> in place of the `iptables` line.
 
 ## 3. Get the code
 
@@ -101,23 +127,31 @@ git clone git@github.com:asim0013/Green-Light-House.git /opt/glh && cd /opt/glh
 cp .env.production.example .env && chmod 600 .env
 ```
 
-Generate one value per secret (`POSTGRES_PASSWORD`, `AUTH_SECRET`,
-`REVALIDATE_SECRET`, `RESTIC_PASSWORD`) — run it once for each:
+Generate the secrets — `openssl rand -hex 32` once each for `POSTGRES_PASSWORD`,
+`AUTH_SECRET`, `REVALIDATE_SECRET`, `RESTIC_PASSWORD` and `S3_SECRET_ACCESS_KEY`,
+and `openssl rand -hex 16` for `S3_ACCESS_KEY_ID`:
 
 ```bash
 openssl rand -hex 32
 ```
 
-Then edit `.env` and fill in **every empty value** (the file explains each one):
-`ACME_EMAIL`, the secrets, the `S3_*` values from step 1, `EMAIL_API_KEY`,
-`EMAIL_FROM`, `RFQ_NOTIFY_TO`, `RESTIC_REPOSITORY`, `BACKUP_HEARTBEAT_URL`. Keep
+Then edit `.env` (e.g. `nano .env`) and fill in **every empty value** (the file
+explains each one): `ACME_EMAIL`, the secrets, `EMAIL_API_KEY`, `EMAIL_FROM`,
+`RFQ_NOTIFY_TO`, and for the backups `RESTIC_REPOSITORY`
+(`s3:https://<B2 endpoint>/<B2 bucket>`), `RESTIC_S3_REGION` (e.g. `eu-central-003`), `RESTIC_S3_ACCESS_KEY_ID` (the B2 keyID),
+`RESTIC_S3_SECRET_ACCESS_KEY` (the B2 applicationKey) and `BACKUP_HEARTBEAT_URL`.
+Keep `COMPOSE_PROFILES=local-s3` and the four fixed `S3_*` lines as they are, and
 `SITE_ALLOW_INDEXING=false` for now. A forgotten required value makes step 5 stop
 with its name.
 
 **Save a copy of the finished `.env` in your password manager.** Without it — above
 all `RESTIC_PASSWORD` — the backups cannot be read and a dead server cannot be rebuilt.
 
-### Backup SSH key (Storage Box)
+<details>
+<summary>Alternative backup target: a Hetzner Storage Box over SFTP</summary>
+
+Leave the two `RESTIC_S3_*` values empty and set
+`RESTIC_REPOSITORY=sftp:storagebox:glh-restic`. Then:
 
 ```bash
 ssh-keygen -t ed25519 -N "" -C glh-backup -f deploy/backup/ssh/id_ed25519
@@ -141,9 +175,10 @@ Host storagebox
   IdentityFile /root/.ssh/id_ed25519
 ```
 
-and set `RESTIC_REPOSITORY=sftp:storagebox:glh-restic` in `.env`. The key is mounted
-into the backup container at run time only; it is excluded from every image build
-(`.dockerignore`).
+The key is mounted into the backup container at run time only; it is excluded from
+every image build (`.dockerignore`).
+
+</details>
 
 ## 5. Start
 
@@ -235,9 +270,9 @@ docker compose exec worker node --import tsx scripts/queue-ops.ts failed
 ## 10. Backups
 
 The `backup` service runs once at start and then nightly (`BACKUP_SCHEDULE`, UTC):
-it dumps PostgreSQL (and a separate leads database, if configured), copies the
-Object Storage bucket, and stores an encrypted, deduplicated snapshot on the Storage
-Box (kept: the newest 7, then 14 daily, 8 weekly, 12 monthly). Every run pings `BACKUP_HEARTBEAT_URL`
+it dumps PostgreSQL (and a separate leads database, if configured), copies every
+uploaded file out of the file store, and stores an encrypted, deduplicated snapshot
+in the B2 bucket (kept: the newest 7, then 14 daily, 8 weekly, 12 monthly). Every run pings `BACKUP_HEARTBEAT_URL`
 (success) or `…/fail`; healthchecks.io emails you when the pings stop or fail.
 
 A run **refuses** when the bucket suddenly holds less than half the objects of the
@@ -271,11 +306,23 @@ docker compose exec backup rm -rf /restore
 ```
 
 With a split leads store the drill also creates `glh_restore_drill_leads`; drop it
-the same way. `restore.sh` refuses a database that already exists and the live
-database and bucket names. To also drill the files, create an empty private bucket (e.g.
-`greenlighthouse-media-drill`) in the Hetzner Console, add it as a third argument —
-`restore.sh latest glh_restore_drill greenlighthouse-media-drill` — check a file in
-the Console, then delete that bucket.
+the same way. `restore.sh` refuses a database that already exists and the live database and bucket
+names. To also drill the files, restore them into a scratch bucket of the file store,
+list it, and remove it:
+
+```bash
+docker compose exec backup sh -c '. /usr/local/bin/common.sh && rclone mkdir src:glh-drill'
+```
+
+```bash
+docker compose exec backup restore.sh latest glh_restore_drill2 glh-drill
+```
+
+```bash
+docker compose exec backup sh -c '. /usr/local/bin/common.sh && rclone ls src:glh-drill && rclone purge src:glh-drill'
+```
+
+(then drop `glh_restore_drill2` and remove `/restore` as above).
 
 ### Disaster recovery (live data lost or corrupted)
 
@@ -318,9 +365,9 @@ store (`docs/data-residency.md`) is restored as `greenlighthouse_leads` on this 
 move it to its regional server with `pg_dump`/`pg_restore` and keep
 `lead_reference_seq` exactly as restored.
 
-**Server gone entirely:** create a new server (steps 1–3), restore `.env` and the
-Storage Box key from your password manager into `/opt/glh/.env` and
-`deploy/backup/ssh/`, set `BACKUP_ON_START=false` in `.env` (so the empty new
+**Server gone entirely:** create a new server (steps 1–3), restore `.env` from your
+password manager into `/opt/glh/.env` (and, for a Storage Box, its key into
+`deploy/backup/ssh/`), set `BACKUP_ON_START=false` in `.env` (so the empty new
 server is not snapshotted first), run `docker compose up -d --build`, then the
 disaster recovery commands above **straight away** (the nightly run would otherwise
 snapshot the empty server — harmless thanks to `--keep-last`, but noise), then set
@@ -373,8 +420,12 @@ catalog entries first. That is deliberate (thin pages are kept out of search).
 
 - The app connects to PostgreSQL as the database owner (`glh`). A separate
   least-privilege role for the app is a planned hardening step.
-- Hetzner Object Storage credentials apply to every bucket in the Hetzner project —
-  which is why GLH gets a project of its own (step 1).
+- The file store lives on the same server as the database. The nightly backup is
+  its only copy off the machine: losing the VM's disk loses at most the uploads
+  since the last backup.
+- Oracle can change Always Free terms without notice (it halved the Ampere A1
+  allowance in June 2026). If the VM is shut down or reclaimed, rebuild on any VM —
+  "Server gone entirely" in §10 — and point DNS at it.
 
 ## Troubleshooting
 
@@ -382,8 +433,10 @@ catalog entries first. That is deliberate (thin pages are kept out of search).
 |---|---|
 | `docker compose up` stops with "required variable … is missing a value" | Fill that value in `.env`. |
 | Nothing answers on 443 and `app`/`caddy` stay `Created` | `init` failed, so nothing after it starts: `docker compose logs init`. |
+| Site unreachable although `docker compose ps` is healthy (Oracle) | Ports 80/443 missing in the subnet's **Security List**, or the `iptables` rules of step 2 were not saved: `iptables -L INPUT -n --line-numbers` must show the ACCEPT for 80,443 **above** the REJECT. |
+| "Out of capacity" creating the Oracle VM | Try another availability domain, try again later, or upgrade the account to Pay As You Go (step 1). |
 | Browser shows a certificate error | DNS not pointing here yet, or ports 80/443 blocked — `docker compose logs caddy` shows the ACME error. |
-| `init` exits 1 with "Cannot reach bucket (HTTP 403)" | `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` wrong, or `S3_ENDPOINT` / `S3_REGION` not the bucket's location. |
+| `init` exits 1 with "Cannot reach bucket (HTTP 403)" | On-server store: the `S3_*` keys in `.env` changed but the `s3` container was not recreated — `docker compose up -d` does that. Managed store: wrong keys, `S3_ENDPOINT` or `S3_REGION`. |
 | `app` never becomes healthy | `docker compose logs app` — usually an invalid `.env` value (`AUTH_SECRET` shorter than 32 bytes, `SITE_DOMAIN`). The site still answers 502 meanwhile. |
 | `worker` keeps restarting | `EMAIL_PROVIDER` must be `resend` with `EMAIL_API_KEY` set — production refuses a non-delivering transport. |
 | RFQ form says "forbidden" | `SITE_DOMAIN` must be exactly the host in the browser's address bar (`www.…`). |

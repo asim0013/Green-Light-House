@@ -85,8 +85,9 @@ jobs:
       # container: the clamav image needs no command override, so `services:`
       # works and no manual `docker run` step is required.
       #
-      # Digest-pinned to the same image docker-compose uses, so CI and dev scan
-      # against the identical signature set. Signatures are BAKED INTO this tag
+      # Digest-pinned to the same image docker-compose uses (and production:
+      # `clamav-debian`, multi-arch, because the server is arm64), so CI, dev and
+      # prod scan against the identical signature set. Signatures are BAKED INTO this tag
       # (verified on the running container) — do NOT switch to `_base`, which
       # ships without them and pays a multi-minute freshclam download on boot.
       #
@@ -95,7 +96,7 @@ jobs:
       # life, and a skipped malware-detection test in a merge gate is
       # indistinguishable from a passing one.
       clamav:
-        image: clamav/clamav@sha256:24cab211a882e9f767b84b76afe197d82554306ad6d43b782f80cd6aa1e61427
+        image: clamav/clamav-debian@sha256:9bb8712a50f0e75166e936c452cd82dd5e5be0b85586598930b5bbb84a99a578
         ports:
           - 3310:3310
         options: >-

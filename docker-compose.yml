@@ -167,7 +167,12 @@ services:
     #
     # `app` depends on this via condition: service_healthy (Story 3.7b,
     # in-handler scanning). The WORKER does not — see its comment above.
-    image: clamav/clamav@sha256:24cab211a882e9f767b84b76afe197d82554306ad6d43b782f80cd6aa1e61427
+    #
+    # `clamav-debian` (2026-10): the Alpine `clamav/clamav` image is amd64-only
+    # and production runs on arm64 (Oracle Ampere A1). This multi-arch digest is
+    # pinned identically in docker-compose.prod.yml and CI; its signatures are
+    # baked in too (main.cvd / daily.cvd / bytecode.cvd, verified 2026-10-07).
+    image: clamav/clamav-debian@sha256:9bb8712a50f0e75166e936c452cd82dd5e5be0b85586598930b5bbb84a99a578
     ports:
       - "3310:3310"
     healthcheck:

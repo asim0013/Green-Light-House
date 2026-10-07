@@ -1,4 +1,6 @@
-# GREENLIGHTHOUSE — PRODUCTION stack (single server; Hetzner EU per Decision 3).
+# GREENLIGHTHOUSE — PRODUCTION stack (single server, EU). Launch target: an Oracle
+# Cloud Always Free Ampere A1 VM (arm64, Frankfurt) — every image here is
+# multi-arch. The same file also runs on a paid x86 VM (e.g. Hetzner).
 #
 # On the server, `.env` (from .env.production.example) sets COMPOSE_FILE to THIS
 # file, so every command is a bare `docker compose …` and the dev
@@ -8,9 +10,13 @@
 # Differences from the dev docker-compose.yml, on purpose:
 #  - ONLY Caddy publishes ports (80/443). Postgres, both Redis and ClamAV are
 #    reachable solely on the internal network — never from the internet.
-#  - Files live in Hetzner Object Storage (managed S3, EU), not on this server.
-#    MinIO's images were withdrawn from Docker Hub in 2026-09; nothing here runs
-#    an object store.
+#  - Files live in an S3-compatible store chosen in `.env`, one of:
+#      * ON THIS SERVER — the `s3` service below (SeaweedFS), switched on with
+#        COMPOSE_PROFILES=local-s3. The free-tier choice: Oracle's free Object
+#        Storage allows only 50,000 requests a month, which document downloads
+#        and project images would exhaust. Internal-only, never published.
+#      * MANAGED — e.g. Hetzner Object Storage; leave the profile off.
+#    (MinIO's images were withdrawn from Docker Hub in 2026-09.)
 #  - Every in-container address is set HERE (postgres, redis, clamav), so the
 #    host-style `localhost` values that broke the dev compose cannot leak in.
 #  - LEAST SECRETS: there is no `env_file`. Each service receives exactly the
@@ -24,7 +30,8 @@
 #    separate LEADS_DATABASE_URL, Story 5.3), checks the bucket, and creates the
 #    SLA defaults if none exist — BEFORE the app and worker start. It does NOT
 #    seed demo content.
-#  - `backup` takes nightly encrypted snapshots off-site (restic → Storage Box).
+#  - `backup` takes nightly encrypted snapshots OFF the server with restic — to
+#    Backblaze B2 (S3 API; the free-tier choice) or a Storage Box (SFTP).
 
 # Docker's default json-file driver never rotates: Caddy logs every request (with
 # the client IP) to stdout, so without this the disk fills and personal data is
@@ -41,8 +48,8 @@ x-db-env: &db-env
   LEADS_DATABASE_URL: ${LEADS_DATABASE_URL:-}
 
 x-s3-env: &s3-env
-  S3_ENDPOINT: ${S3_ENDPOINT:?set S3_ENDPOINT (e.g. https://fsn1.your-objectstorage.com)}
-  S3_REGION: ${S3_REGION:?set S3_REGION (e.g. fsn1)}
+  S3_ENDPOINT: ${S3_ENDPOINT:?set S3_ENDPOINT (http://s3:8333 for the on-server store)}
+  S3_REGION: ${S3_REGION:?set S3_REGION (us-east-1 for the on-server store)}
   S3_BUCKET: ${S3_BUCKET:?set S3_BUCKET}
   S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
   S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID}
@@ -117,6 +124,11 @@ services:
         condition: service_healthy
       redis-queue:
         condition: service_healthy
+      # Only when the on-server store is on (COMPOSE_PROFILES=local-s3);
+      # `required: false` makes this a no-op when it is not.
+      s3:
+        condition: service_healthy
+        required: false
       # STARTED, not healthy: clamd needs minutes to load signatures, and the
       # whole site must not wait for it. Until it answers, an RFQ WITH a file is
       # refused (422, entered values kept, "send without the file" — the
@@ -145,6 +157,11 @@ services:
         condition: service_healthy
       redis-queue:
         condition: service_healthy
+      # Only when the on-server store is on (COMPOSE_PROFILES=local-s3);
+      # `required: false` makes this a no-op when it is not.
+      s3:
+        condition: service_healthy
+        required: false
 
   # One-shot, every deploy: migrations (main + a separate leads store if set), a
   # bucket check, and the SLA defaults if (and only if) none exist. Uses the
@@ -175,6 +192,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      # Only when the on-server store is on (COMPOSE_PROFILES=local-s3);
+      # `required: false` makes this a no-op when it is not.
+      s3:
+        condition: service_healthy
+        required: false
 
   postgres:
     image: postgres:17-alpine
@@ -236,7 +258,10 @@ services:
 
   clamav:
     # Signatures are baked into this image; freshclam updates daily.cld.
-    image: clamav/clamav@sha256:24cab211a882e9f767b84b76afe197d82554306ad6d43b782f80cd6aa1e61427
+    # `clamav-debian`, not `clamav/clamav`: the Alpine image is amd64-only, and the
+    # production server (Oracle Cloud Ampere A1) is arm64. This digest is a
+    # multi-arch index (amd64 + arm64), the same one dev and CI pin.
+    image: clamav/clamav-debian@sha256:9bb8712a50f0e75166e936c452cd82dd5e5be0b85586598930b5bbb84a99a578
     restart: unless-stopped
     logging: *logging
     healthcheck:
@@ -245,6 +270,28 @@ services:
       timeout: 10s
       retries: 5
       start_period: 360s
+
+  s3:
+    # ON-SERVER object storage (SeaweedFS, `mini` mode) — only with
+    # COMPOSE_PROFILES=local-s3 in .env. The same image dev and CI use. Never
+    # published: the app, the worker and the backup reach it at http://s3:8333.
+    # Its admin identity is the S3_* key pair from .env; anonymous requests get 403.
+    profiles: ["local-s3"]
+    image: chrislusf/seaweedfs:4.48
+    restart: unless-stopped
+    logging: *logging
+    command: mini -dir=/data -master.telemetry=false
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY}
+    volumes:
+      - s3data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   backup:
     image: glh-backup:prod
@@ -257,6 +304,14 @@ services:
       RESTIC_REPOSITORY: ${RESTIC_REPOSITORY:?set RESTIC_REPOSITORY}
       RESTIC_PASSWORD: ${RESTIC_PASSWORD:?set RESTIC_PASSWORD}
       RESTIC_CACHE_DIR: /cache
+      # For an S3-API repository (Backblaze B2: RESTIC_REPOSITORY=s3:https://…):
+      # the bucket's application key. Unused (empty) for an SFTP Storage Box.
+      AWS_ACCESS_KEY_ID: ${RESTIC_S3_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${RESTIC_S3_SECRET_ACCESS_KEY:-}
+      # The bucket region (B2: the middle of its endpoint, e.g. eu-central-003).
+      # Without it restic first probes the bucket location, and that probe stalled
+      # (retrying for minutes) when tried against an S3 store in the smoke test.
+      AWS_DEFAULT_REGION: ${RESTIC_S3_REGION:-}
       BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-15 3 * * *}
       BACKUP_KEEP_LAST: ${BACKUP_KEEP_LAST:-7}
       BACKUP_KEEP_DAILY: ${BACKUP_KEEP_DAILY:-14}
@@ -290,6 +345,11 @@ services:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
+      # Only when the on-server store is on (COMPOSE_PROFILES=local-s3);
+      # `required: false` makes this a no-op when it is not.
+      s3:
+        condition: service_healthy
+        required: false
 
 volumes:
   caddy_data:
@@ -299,3 +359,4 @@ volumes:
   backupstage:
   backupstate:
   backupcache:
+  s3data:
