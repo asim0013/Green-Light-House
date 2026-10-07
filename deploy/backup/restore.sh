@@ -43,6 +43,13 @@ case "$TARGET" in *[!a-zA-Z0-9_]* | '')
   exit 2
   ;;
 esac
+# A bucket NAME only — no path. `live-bucket/` or `live-bucket/docs` would slip
+# past the string comparison below and write into the live bucket (re-review F1).
+case "$BUCKET" in *[!a-z0-9.-]*)
+  echo "[restore] bucket must be a plain bucket name (a-z, 0-9, '.', '-'): '$BUCKET'" >&2
+  exit 2
+  ;;
+esac
 
 MAIN=$(libpq_url "$DATABASE_URL")
 LIVE_DBS=$(db_name "$MAIN")

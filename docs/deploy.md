@@ -30,11 +30,11 @@ Storage**. Only Caddy is reachable from the internet.
 Check DNS has propagated before step 5 (Let's Encrypt needs it):
 
 ```bash
-dig +short www.greenlighthouse.net
+nslookup www.greenlighthouse.net
 ```
 
 ```bash
-dig +short greenlighthouse.net
+nslookup greenlighthouse.net
 ```
 
 Both must print the server's IP.
@@ -152,8 +152,9 @@ docker compose up -d --build
 ```
 
 The first start takes several minutes (image builds; ClamAV loads its signatures).
-Watch it come up — every service should reach `running (healthy)`, and `init` should
-show `exited (0)`:
+Watch it come up — every service with a health check should reach
+`running (healthy)` (`worker` and `caddy` have none and show `running`), and `init`
+should show `exited (0)`:
 
 ```bash
 docker compose ps -a
@@ -269,8 +270,9 @@ docker compose exec postgres dropdb -U glh glh_restore_drill
 docker compose exec backup rm -rf /restore
 ```
 
-`restore.sh` refuses a database that already exists and the live database and bucket
-names. To also drill the files, create an empty private bucket (e.g.
+With a split leads store the drill also creates `glh_restore_drill_leads`; drop it
+the same way. `restore.sh` refuses a database that already exists and the live
+database and bucket names. To also drill the files, create an empty private bucket (e.g.
 `greenlighthouse-media-drill`) in the Hetzner Console, add it as a third argument —
 `restore.sh latest glh_restore_drill greenlighthouse-media-drill` — check a file in
 the Console, then delete that bucket.
@@ -298,6 +300,9 @@ docker compose exec postgres dropdb -U glh greenlighthouse
 docker compose exec -e RESTORE_OVER_LIVE=yes backup restore.sh <snapshot-id> greenlighthouse <your-bucket-name>
 ```
 
+If `restore.sh` stops with an error part-way, the half-restored database exists and a
+re-run refuses it: drop it again (`dropdb` above) and re-run.
+
 ```bash
 docker compose up -d
 ```
@@ -317,7 +322,9 @@ move it to its regional server with `pg_dump`/`pg_restore` and keep
 Storage Box key from your password manager into `/opt/glh/.env` and
 `deploy/backup/ssh/`, set `BACKUP_ON_START=false` in `.env` (so the empty new
 server is not snapshotted first), run `docker compose up -d --build`, then the
-disaster recovery commands above, then set `BACKUP_ON_START=true` again.
+disaster recovery commands above **straight away** (the nightly run would otherwise
+snapshot the empty server — harmless thanks to `--keep-last`, but noise), then set
+`BACKUP_ON_START=true` again.
 
 ## 11. Updates
 
@@ -374,6 +381,7 @@ catalog entries first. That is deliberate (thin pages are kept out of search).
 | Symptom | Check |
 |---|---|
 | `docker compose up` stops with "required variable … is missing a value" | Fill that value in `.env`. |
+| Nothing answers on 443 and `app`/`caddy` stay `Created` | `init` failed, so nothing after it starts: `docker compose logs init`. |
 | Browser shows a certificate error | DNS not pointing here yet, or ports 80/443 blocked — `docker compose logs caddy` shows the ACME error. |
 | `init` exits 1 with "Cannot reach bucket (HTTP 403)" | `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` wrong, or `S3_ENDPOINT` / `S3_REGION` not the bucket's location. |
 | `app` never becomes healthy | `docker compose logs app` — usually an invalid `.env` value (`AUTH_SECRET` shorter than 32 bytes, `SITE_DOMAIN`). The site still answers 502 meanwhile. |

@@ -34,6 +34,22 @@ ADMIN_EMAIL=you@example.com ADMIN_PASSWORD='a-new-long-password' \
   npm run bootstrap:admin -- --reset
 ```
 
+On the PRODUCTION server (Docker, no `npm` scripts there), the same script runs in
+the `init` image — type the values into variables first so the password stays out
+of the shell history (see `docs/deploy.md`, step 7):
+
+```bash
+read -r ADMIN_EMAIL && read -rs ADMIN_PASSWORD && export ADMIN_EMAIL ADMIN_PASSWORD
+```
+
+```bash
+docker compose run --rm -e ADMIN_EMAIL -e ADMIN_PASSWORD init node --import tsx scripts/bootstrap-admin.ts --reset
+```
+
+```bash
+unset ADMIN_PASSWORD
+```
+
 - Works only for an admin that already exists; clears any pending reset token.
 - Requires server/database access — the last-resort recovery path.
 

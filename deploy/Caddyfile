@@ -11,7 +11,7 @@
 #  - sets X-Forwarded-For to the real client IP, which the RFQ rate limiter reads
 #    (it trusts the rightmost entry only — Story 3.7a; exactly one edge, this one).
 #
-# Domains come from the environment (.env.production): SITE_DOMAIN (canonical,
+# Domains come from the environment (the server-side .env): SITE_DOMAIN (canonical,
 # e.g. www.greenlighthouse.net) and APEX_DOMAIN (e.g. greenlighthouse.net).
 
 {

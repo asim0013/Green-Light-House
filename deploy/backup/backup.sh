@@ -31,7 +31,7 @@ on_exit() {
     heartbeat "${BACKUP_HEARTBEAT_URL:-}"
   else
     log "FAILED (exit $status)"
-    heartbeat "${BACKUP_HEARTBEAT_URL:-}/fail"
+    heartbeat "${BACKUP_HEARTBEAT_URL%/}/fail"
   fi
 }
 

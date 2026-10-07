@@ -74,7 +74,9 @@ services:
     depends_on:
       # STARTED, not healthy: if the app is unhealthy (say the leads store is
       # down), Caddy must still come up and answer — a 502 is diagnosable, a
-      # refused connection on :443 is not.
+      # refused connection on :443 is not. (If `init` FAILS, the app is never
+      # created and neither is Caddy: nothing answers on :443 — check
+      # `docker compose logs init`; docs/deploy.md "Troubleshooting".)
       app:
         condition: service_started
 
