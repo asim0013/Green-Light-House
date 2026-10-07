@@ -6,6 +6,26 @@ on:
   pull_request:
 
 jobs:
+  # The production images (docker-compose.prod.yml). The app image had silently
+  # stopped building on 2026-07-31 — an npm-11 lockfile the image's npm 10 rejected,
+  # and a missing `prisma generate` — and nothing noticed for two months, because
+  # no job built it. This one does, on every push and PR.
+  docker-images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the app image
+        run: docker build -f Dockerfile -t glh-app:ci .
+      - name: Build the worker / init image
+        run: docker build -f Dockerfile.worker -t glh-worker:ci .
+      - name: Build the backup image
+        run: docker build -t glh-backup:ci deploy/backup
+      - name: Validate the production compose file
+        run: |
+          cp .env.production.example .env.production
+          sed -i -E 's/^(ACME_EMAIL|POSTGRES_PASSWORD|MINIO_ROOT_PASSWORD|AUTH_SECRET|REVALIDATE_SECRET)=$/\1=ci-placeholder/' .env.production
+          docker compose -f docker-compose.prod.yml --env-file .env.production config --quiet
+
   verify:
     runs-on: ubuntu-latest
 

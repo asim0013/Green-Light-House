@@ -1,0 +1,256 @@
+# GREENLIGHTHOUSE — PRODUCTION stack (single server; Hetzner EU per Decision 3).
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#
+# Runbook: docs/deploy.md. Differences from the dev docker-compose.yml, on purpose:
+#  - ONLY Caddy publishes ports (80/443). Postgres, both Redis, MinIO and ClamAV are
+#    reachable solely on the internal network — never from the internet.
+#  - Every in-container address is set HERE (postgres, redis, minio, clamav), so the
+#    host-style `localhost` values that broke the dev compose cannot leak in.
+#  - Secrets come from `.env.production` (gitignored; template:
+#    .env.production.example). Use HEX secrets (`openssl rand -hex 32`): the
+#    Postgres password is embedded in a URL below and must not need escaping.
+#  - A one-shot `init` service runs `prisma migrate deploy` (also against a
+#    separate LEADS_DATABASE_URL, Story 5.3) and creates the bucket BEFORE the app
+#    and worker start. It does NOT seed demo content.
+#  - `backup` takes nightly encrypted snapshots off-site (restic → Storage Box).
+
+x-app-env: &app-env
+  NODE_ENV: production
+  SITE_URL: https://${SITE_DOMAIN:?set SITE_DOMAIN in .env.production}
+  DATABASE_URL: postgresql://glh:${POSTGRES_PASSWORD:?}@postgres:5432/greenlighthouse?schema=public
+  REDIS_URL: redis://redis:6379
+  REDIS_QUEUE_URL: redis://redis-queue:6379
+  S3_ENDPOINT: http://minio:9000
+  S3_FORCE_PATH_STYLE: "true"
+  S3_REGION: us-east-1
+  S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?}
+  S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?}
+  CLAMAV_HOST: clamav
+  CLAMAV_PORT: "3310"
+
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?}
+      APEX_DOMAIN: ${APEX_DOMAIN:?}
+      ACME_EMAIL: ${ACME_EMAIL:?}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+
+  app:
+    image: glh-app:prod
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # BUILD-TIME values (Story 5.8 review F1): empty = analytics off.
+      args:
+        NEXT_PUBLIC_ANALYTICS_DOMAIN: ${NEXT_PUBLIC_ANALYTICS_DOMAIN:-}
+        PLAUSIBLE_HOST: ${PLAUSIBLE_HOST:-}
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      <<: *app-env
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redis-queue:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+
+  worker:
+    image: glh-worker:prod
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    # A crashed worker stops every inquiry email silently — it must come back.
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      <<: *app-env
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis-queue:
+        condition: service_healthy
+
+  # One-shot, every deploy: migrations (main + a separate leads store if set) and
+  # the bucket. Uses the worker image (it carries the Prisma CLI + tsx).
+  init:
+    image: glh-worker:prod
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: "no"
+    env_file: .env.production
+    environment:
+      <<: *app-env
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        npx prisma migrate deploy
+        if [ -n "$${LEADS_DATABASE_URL:-}" ]; then
+          echo "[init] migrating the separate leads database (Story 5.3)"
+          DATABASE_URL="$${LEADS_DATABASE_URL}" npx prisma migrate deploy
+        fi
+        node --import tsx scripts/ensure-bucket.ts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: glh
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: greenlighthouse
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glh -d greenlighthouse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    # The Next incremental cache + RFQ rate-limit counters. DISPOSABLE: no
+    # persistence, LRU eviction (.env.example explains why it is a separate
+    # instance from the queue).
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      [
+        "redis-server",
+        "--save",
+        "",
+        "--appendonly",
+        "no",
+        "--maxmemory",
+        "256mb",
+        "--maxmemory-policy",
+        "allkeys-lru",
+      ]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis-queue:
+    # BullMQ — DURABLE (AOF), never evicts: a lost job is a lost inquiry email.
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - queuedata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    restart: unless-stopped
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  clamav:
+    # Signatures are baked into this image; freshclam updates daily.cld.
+    image: clamav/clamav@sha256:24cab211a882e9f767b84b76afe197d82554306ad6d43b782f80cd6aa1e61427
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 360s
+
+  backup:
+    image: glh-backup:prod
+    build:
+      context: ./deploy/backup
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      DATABASE_URL: postgresql://glh:${POSTGRES_PASSWORD:?}@postgres:5432/greenlighthouse?schema=public
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?}
+      RESTIC_CACHE_DIR: /cache
+    volumes:
+      - ./deploy/backup/ssh:/ssh:ro
+      - backupstage:/stage
+      - backupstate:/state
+      - backupcache:/cache
+    healthcheck:
+      # Unhealthy when the last SUCCESSFUL backup is older than 26 hours.
+      test:
+        [
+          "CMD-SHELL",
+          "test -f /state/last-success && [ $$(( $$(date +%s) - $$(cat /state/last-success) )) -lt 93600 ]",
+        ]
+      interval: 10m
+      timeout: 10s
+      retries: 1
+      start_period: 30m
+    depends_on:
+      # After `init`: the start-up backup must not race the migrations or the
+      # bucket creation (the first smoke run failed exactly that way).
+      init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:
+  pgdata:
+  queuedata:
+  miniodata:
+  backupstage:
+  backupstate:
+  backupcache:

@@ -29,9 +29,12 @@ test("header shows brand, the 5 nav links, phone, and the RFQ CTA", async ({ pag
 
   // Strict-mode locators: exactly one match each, so a duplicate would fail.
   await expect(header.getByRole("link", { name: "GREENLIGHTHOUSE" })).toBeVisible();
-  for (const name of ["Industries", "Products", "Projects", "Services", "About"]) {
+  for (const name of ["Industries", "Products", "Projects", "Services"]) {
     await expect(header.getByRole("link", { name, exact: true })).toBeVisible();
   }
+  // `About` was removed for launch: it linked to a page that does not exist
+  // (src/config/site-links.test.ts now gates every chrome link on a real page).
+  await expect(header.getByRole("link", { name: "About", exact: true })).toHaveCount(0);
   await expect(header.getByRole("link", { name: "Request Project Quote" })).toBeVisible();
   // Phone is a co-equal tel: action. The header renders two tel: anchors (desktop
   // cluster + mobile menu); at this width only the desktop one is visible, so

@@ -44,9 +44,10 @@ function watch(page: Page) {
  * a NEGATIVE test ("nothing was sent") could pass vacuously by clicking before the
  * tel: listener exists. Hydration stamps a React fiber key on every host node.
  *
- * Deliberately NOT `waitForLoadState("networkidle")`: in production the router's
- * prefetch of the primary-nav `/about` link (a route that does not exist yet) never
- * settles, so the page never goes network-idle.
+ * Deliberately NOT `waitForLoadState("networkidle")`: when written, the router's
+ * prefetch of the then primary-nav `/about` link (a 404) never settled in
+ * production. The link is gone, but an explicit hydration signal is the more
+ * honest wait for "the listeners are attached" anyway.
  */
 async function hydrated(page: Page) {
   await page.waitForFunction(() => {
