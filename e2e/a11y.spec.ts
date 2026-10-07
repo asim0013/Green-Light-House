@@ -53,7 +53,10 @@ test.beforeAll(async ({ baseURL }) => {
     expect(dbReady, "CI provisions Postgres — an unreachable DB here is a defect").toBe(true);
   }
   // Pre-compile the dev routes so the per-test goto is not a cold compile.
-  await warmUp(baseURL, PATHS.map((p) => url("en", p)));
+  await warmUp(
+    baseURL,
+    PATHS.map((p) => url("en", p)),
+  );
 });
 
 for (const locale of LOCALES) {

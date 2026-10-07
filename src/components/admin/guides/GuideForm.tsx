@@ -17,27 +17,52 @@ const CAPS = [
 ] as const;
 
 interface SectionValue {
-  headingEn: string; headingTr: string; headingRu: string;
-  bodyEn: string; bodyTr: string; bodyRu: string;
+  headingEn: string;
+  headingTr: string;
+  headingRu: string;
+  bodyEn: string;
+  bodyTr: string;
+  bodyRu: string;
 }
 interface Values {
   slug: string;
   status: "draft" | "published";
-  titleEn: string; titleTr: string; titleRu: string;
-  introEn: string; introTr: string; introRu: string;
-  metaEn: string; metaTr: string; metaRu: string;
+  titleEn: string;
+  titleTr: string;
+  titleRu: string;
+  introEn: string;
+  introTr: string;
+  introRu: string;
+  metaEn: string;
+  metaTr: string;
+  metaRu: string;
   sections: SectionValue[];
   productIds: string[];
   categoryIds: string[];
 }
 
-const EMPTY_SECTION: SectionValue = { headingEn: "", headingTr: "", headingRu: "", bodyEn: "", bodyTr: "", bodyRu: "" };
+const EMPTY_SECTION: SectionValue = {
+  headingEn: "",
+  headingTr: "",
+  headingRu: "",
+  bodyEn: "",
+  bodyTr: "",
+  bodyRu: "",
+};
 
 function defaultsFrom(initial?: GuideEditData): Values {
   const v: Values = {
     slug: initial?.slug ?? "",
     status: initial?.status ?? "draft",
-    titleEn: "", titleTr: "", titleRu: "", introEn: "", introTr: "", introRu: "", metaEn: "", metaTr: "", metaRu: "",
+    titleEn: "",
+    titleTr: "",
+    titleRu: "",
+    introEn: "",
+    introTr: "",
+    introRu: "",
+    metaEn: "",
+    metaTr: "",
+    metaRu: "",
     sections: [{ ...EMPTY_SECTION }],
     productIds: initial?.productIds ?? [],
     categoryIds: initial?.categoryIds ?? [],
@@ -66,11 +91,19 @@ function defaultsFrom(initial?: GuideEditData): Values {
 
 /** Assemble the STRUCTURED payload the action validates (EN-only locales kept). */
 function toPayload(v: Values) {
-  const read = (base: string, cap: string) => ((v as unknown as Record<string, string>)[`${base}${cap}`] ?? "").trim();
+  const read = (base: string, cap: string) =>
+    ((v as unknown as Record<string, string>)[`${base}${cap}`] ?? "").trim();
   const translations = CAPS.flatMap(([locale, cap]) => {
     const title = read("title", cap);
     if (!title) return []; // a guide locale needs a title to be a row (EN enforced server-side)
-    return [{ locale, title, intro: read("intro", cap) || null, metaDescription: read("meta", cap) || null }];
+    return [
+      {
+        locale,
+        title,
+        intro: read("intro", cap) || null,
+        metaDescription: read("meta", cap) || null,
+      },
+    ];
   });
   const sections = v.sections.map((s) => ({
     translations: CAPS.flatMap(([locale, cap]) => {
@@ -79,7 +112,13 @@ function toPayload(v: Values) {
       return heading && body ? [{ locale, heading, body }] : [];
     }),
   }));
-  return { status: v.status, translations, sections, productIds: v.productIds, categoryIds: v.categoryIds };
+  return {
+    status: v.status,
+    translations,
+    sections,
+    productIds: v.productIds,
+    categoryIds: v.categoryIds,
+  };
 }
 
 export function GuideForm({
@@ -95,7 +134,10 @@ export function GuideForm({
 }) {
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
-  const form = useForm<Values>({ mode: "onBlur", defaultValues: defaultsFrom(initial) as DefaultValues<Values> });
+  const form = useForm<Values>({
+    mode: "onBlur",
+    defaultValues: defaultsFrom(initial) as DefaultValues<Values>,
+  });
   const sections = useFieldArray({ control: form.control, name: "sections" });
 
   const onValid = async (v: Values) => {
@@ -118,9 +160,20 @@ export function GuideForm({
       <div className="grid gap-2 sm:grid-cols-3">
         {CAPS.map(([, cap, abbr]) =>
           textarea ? (
-            <textarea key={cap} rows={2} placeholder={abbr} className={inputClass} {...form.register(`${base}${cap}` as keyof Values as never)} />
+            <textarea
+              key={cap}
+              rows={2}
+              placeholder={abbr}
+              className={inputClass}
+              {...form.register(`${base}${cap}` as keyof Values as never)}
+            />
           ) : (
-            <input key={cap} placeholder={abbr} className={inputClass} {...form.register(`${base}${cap}` as keyof Values as never)} />
+            <input
+              key={cap}
+              placeholder={abbr}
+              className={inputClass}
+              {...form.register(`${base}${cap}` as keyof Values as never)}
+            />
           ),
         )}
       </div>
@@ -129,7 +182,9 @@ export function GuideForm({
 
   const picker = (name: "productIds" | "categoryIds", label: string, options: Option[]) => (
     <fieldset className="flex flex-col gap-1 rounded border border-border-subtle p-4">
-      <legend className="px-1 font-mono text-[11px] uppercase tracking-[0.08em] text-ink-2">{label}</legend>
+      <legend className="px-1 font-mono text-[11px] uppercase tracking-[0.08em] text-ink-2">
+        {label}
+      </legend>
       <div className="grid gap-1 sm:grid-cols-2">
         {options.map((o) => (
           <label key={o.id} className="flex items-center gap-2 text-[13px] text-ink">
@@ -145,10 +200,14 @@ export function GuideForm({
     <form onSubmit={form.handleSubmit(onValid)} className="flex max-w-3xl flex-col gap-5 p-8">
       <p className="text-[13px] text-ink-2">
         Author in EN (required) + TR/RU (optional, fall back to EN). A guide needs a title and some
-        prose (intro or a section) to be indexable; draft guides stay noindex and out of the sitemap.
+        prose (intro or a section) to be indexable; draft guides stay noindex and out of the
+        sitemap.
       </p>
       {mode === "create" ? (
-        <Field label="Slug" hint="lowercase-with-hyphens; the /guides/<slug> URL (immutable after create)">
+        <Field
+          label="Slug"
+          hint="lowercase-with-hyphens; the /guides/<slug> URL (immutable after create)"
+        >
           <input className={inputClass} {...form.register("slug")} />
         </Field>
       ) : (
@@ -168,37 +227,84 @@ export function GuideForm({
       {localeInputs("meta", "Meta description (EN / TR / RU)", true)}
 
       <fieldset className="flex flex-col gap-4 rounded border border-border-subtle p-4">
-        <legend className="px-1 font-mono text-[11px] uppercase tracking-[0.08em] text-ink-2">Sections</legend>
+        <legend className="px-1 font-mono text-[11px] uppercase tracking-[0.08em] text-ink-2">
+          Sections
+        </legend>
         {sections.fields.map((f, i) => (
-          <div key={f.id} className="flex flex-col gap-2 border-b border-border-subtle pb-4 last:border-b-0">
+          <div
+            key={f.id}
+            className="flex flex-col gap-2 border-b border-border-subtle pb-4 last:border-b-0"
+          >
             <div className="flex items-center justify-between">
               <span className="font-mono text-[12px] text-ink-2">Section {i + 1}</span>
               <div className="flex gap-1">
-                <button type="button" onClick={() => i > 0 && sections.move(i, i - 1)} disabled={i === 0} aria-label={`Move section ${i + 1} up`} className="rounded border border-border-subtle px-2 py-1 text-[12px] text-ink-2 disabled:opacity-40">↑</button>
-                <button type="button" onClick={() => i < sections.fields.length - 1 && sections.move(i, i + 1)} disabled={i === sections.fields.length - 1} aria-label={`Move section ${i + 1} down`} className="rounded border border-border-subtle px-2 py-1 text-[12px] text-ink-2 disabled:opacity-40">↓</button>
-                <button type="button" onClick={() => sections.remove(i)} aria-label={`Remove section ${i + 1}`} className="rounded border border-border-subtle px-2 py-1 text-[12px] text-ink-2">✕</button>
+                <button
+                  type="button"
+                  onClick={() => i > 0 && sections.move(i, i - 1)}
+                  disabled={i === 0}
+                  aria-label={`Move section ${i + 1} up`}
+                  className="rounded border border-border-subtle px-2 py-1 text-[12px] text-ink-2 disabled:opacity-40"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  onClick={() => i < sections.fields.length - 1 && sections.move(i, i + 1)}
+                  disabled={i === sections.fields.length - 1}
+                  aria-label={`Move section ${i + 1} down`}
+                  className="rounded border border-border-subtle px-2 py-1 text-[12px] text-ink-2 disabled:opacity-40"
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  onClick={() => sections.remove(i)}
+                  aria-label={`Remove section ${i + 1}`}
+                  className="rounded border border-border-subtle px-2 py-1 text-[12px] text-ink-2"
+                >
+                  ✕
+                </button>
               </div>
             </div>
             <div className="grid gap-2 sm:grid-cols-3">
               {CAPS.map(([, cap, abbr]) => (
-                <input key={cap} placeholder={`Heading ${abbr}`} className={inputClass} {...form.register(`sections.${i}.heading${cap}` as never)} />
+                <input
+                  key={cap}
+                  placeholder={`Heading ${abbr}`}
+                  className={inputClass}
+                  {...form.register(`sections.${i}.heading${cap}` as never)}
+                />
               ))}
             </div>
             <div className="grid gap-2 sm:grid-cols-3">
               {CAPS.map(([, cap, abbr]) => (
-                <textarea key={cap} rows={3} placeholder={`Body ${abbr}`} className={inputClass} {...form.register(`sections.${i}.body${cap}` as never)} />
+                <textarea
+                  key={cap}
+                  rows={3}
+                  placeholder={`Body ${abbr}`}
+                  className={inputClass}
+                  {...form.register(`sections.${i}.body${cap}` as never)}
+                />
               ))}
             </div>
           </div>
         ))}
-        <button type="button" onClick={() => sections.append({ ...EMPTY_SECTION })} className="self-start rounded border border-border-subtle px-3 py-1.5 font-mono text-[12px] text-ink-2">+ Add section</button>
+        <button
+          type="button"
+          onClick={() => sections.append({ ...EMPTY_SECTION })}
+          className="self-start rounded border border-border-subtle px-3 py-1.5 font-mono text-[12px] text-ink-2"
+        >
+          + Add section
+        </button>
       </fieldset>
 
       {picker("productIds", "Recommended products", productOptions)}
       {picker("categoryIds", "Recommended categories", categoryOptions)}
 
       {formError && (
-        <p role="alert" className="text-[13px] text-[#B42318]">{formError}</p>
+        <p role="alert" className="text-[13px] text-[#B42318]">
+          {formError}
+        </p>
       )}
       <div>
         <button type="submit" disabled={form.formState.isSubmitting} className={submitButtonClass}>

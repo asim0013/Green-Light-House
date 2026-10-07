@@ -28,9 +28,7 @@ describe("trackEvent", () => {
   it("sends the event with path+locale only when granted — and nothing PII-shaped", () => {
     document.cookie = `${CONSENT_COOKIE}=granted; Path=/`;
     trackEvent(EVENT_PHONE, { path: "/en/products/as-60", locale: "en" });
-    expect(calls).toEqual([
-      [EVENT_PHONE, { props: { path: "/en/products/as-60", locale: "en" } }],
-    ]);
+    expect(calls).toEqual([[EVENT_PHONE, { props: { path: "/en/products/as-60", locale: "en" } }]]);
     // Guard: no phone-like digit run ever reaches the payload.
     expect(JSON.stringify(calls)).not.toMatch(/\d{7,}/);
   });

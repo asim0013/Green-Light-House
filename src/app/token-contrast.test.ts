@@ -59,7 +59,11 @@ const PAIRINGS: { fg: string; bg: string; note: string }[] = [
   { fg: "ink-2", bg: "surface", note: "body/secondary on white" },
   { fg: "ink-2", bg: "surface-2", note: "body/secondary on inset panels" },
   { fg: "muted", bg: "surface", note: "tertiary labels/meta on white (5.4 fix)" },
-  { fg: "muted", bg: "surface-2", note: "tertiary labels/meta on inset panels (5.4 fix — the binding surface)" },
+  {
+    fg: "muted",
+    bg: "surface-2",
+    note: "tertiary labels/meta on inset panels (5.4 fix — the binding surface)",
+  },
   { fg: "error", bg: "surface", note: "validation error text on white" },
   { fg: "error", bg: "surface-2", note: "validation error text on inset panels" },
   { fg: "accent-soft", bg: "ink", note: "kicker on the dark band" },
@@ -73,7 +77,16 @@ describe("token contrast — the WCAG AA contract (Story 5.4)", () => {
   });
 
   it("every documented token is present in globals.css", () => {
-    for (const name of ["ink", "ink-2", "muted", "error", "accent-soft", "on-dark-text", "surface", "surface-2"]) {
+    for (const name of [
+      "ink",
+      "ink-2",
+      "muted",
+      "error",
+      "accent-soft",
+      "on-dark-text",
+      "surface",
+      "surface-2",
+    ]) {
       expect(T[name], `--color-${name} missing from globals.css`).toMatch(/^#[0-9a-f]{6}$/);
     }
   });
@@ -81,9 +94,10 @@ describe("token contrast — the WCAG AA contract (Story 5.4)", () => {
   for (const { fg, bg, note } of PAIRINGS) {
     it(`${fg} on ${bg} meets AA (${note})`, () => {
       const ratio = contrast(T[fg], T[bg]);
-      expect(ratio, `${fg} (${T[fg]}) on ${bg} (${T[bg]}) = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(
-        AA_NORMAL,
-      );
+      expect(
+        ratio,
+        `${fg} (${T[fg]}) on ${bg} (${T[bg]}) = ${ratio.toFixed(2)}:1`,
+      ).toBeGreaterThanOrEqual(AA_NORMAL);
     });
   }
 

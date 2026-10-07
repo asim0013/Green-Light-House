@@ -21,7 +21,10 @@ test.beforeAll(async ({ baseURL }) => {
   await warmUp(baseURL, ["/en"]);
 });
 
-test("first visit: banner shown, and NO non-essential cookie is set", async ({ page, context }, testInfo) => {
+test("first visit: banner shown, and NO non-essential cookie is set", async ({
+  page,
+  context,
+}, testInfo) => {
   if (!dbReady) testInfo.skip();
   await page.goto("/en");
   const bar = page.getByRole("region", { name: "Cookie consent" });
@@ -32,9 +35,10 @@ test("first visit: banner shown, and NO non-essential cookie is set", async ({ p
   await expect(bar.getByRole("button", { name: "Accept" })).toBeEnabled();
   await page.waitForLoadState("networkidle");
   const names = (await context.cookies()).map((c) => c.name);
-  expect(essentialOnly(names), `only essential cookies on first visit, got ${names.join(",")}`).toBe(
-    true,
-  );
+  expect(
+    essentialOnly(names),
+    `only essential cookies on first visit, got ${names.join(",")}`,
+  ).toBe(true);
   // No glh-consent until a choice is made (privacy-first default = denied).
   expect(names).not.toContain("glh-consent");
   // And still nothing non-essential once the bar is dismissed.
@@ -42,12 +46,16 @@ test("first visit: banner shown, and NO non-essential cookie is set", async ({ p
   await expect(bar).toBeHidden();
   await page.waitForLoadState("networkidle");
   const after = (await context.cookies()).map((c) => c.name);
-  expect(essentialOnly(after), `only essential cookies after dismissal, got ${after.join(",")}`).toBe(
-    true,
-  );
+  expect(
+    essentialOnly(after),
+    `only essential cookies after dismissal, got ${after.join(",")}`,
+  ).toBe(true);
 });
 
-test("Decline persists denied, dismisses the bar, sets no non-essential cookie", async ({ page, context }, testInfo) => {
+test("Decline persists denied, dismisses the bar, sets no non-essential cookie", async ({
+  page,
+  context,
+}, testInfo) => {
   if (!dbReady) testInfo.skip();
   await page.goto("/en");
   const bar = page.getByRole("region", { name: "Cookie consent" });
@@ -61,10 +69,16 @@ test("Decline persists denied, dismisses the bar, sets no non-essential cookie",
   await expect(page.getByRole("region", { name: "Cookie consent" })).toBeHidden();
 });
 
-test("Accept persists granted and the bar does not reappear on reload", async ({ page, context }, testInfo) => {
+test("Accept persists granted and the bar does not reappear on reload", async ({
+  page,
+  context,
+}, testInfo) => {
   if (!dbReady) testInfo.skip();
   await page.goto("/en");
-  await page.getByRole("region", { name: "Cookie consent" }).getByRole("button", { name: "Accept" }).click();
+  await page
+    .getByRole("region", { name: "Cookie consent" })
+    .getByRole("button", { name: "Accept" })
+    .click();
   expect((await context.cookies()).find((c) => c.name === "glh-consent")?.value).toBe("granted");
   // ⚠️ A granted visitor must NOT be nagged on every page (review 5.2 #3): the
   // server-computed initialShow must keep the bar hidden after the choice.
@@ -72,16 +86,23 @@ test("Accept persists granted and the bar does not reappear on reload", async ({
   await expect(page.getByRole("region", { name: "Cookie consent" })).toBeHidden();
 });
 
-test("the footer 'Cookie settings' control re-opens the bar after a choice", async ({ page }, testInfo) => {
+test("the footer 'Cookie settings' control re-opens the bar after a choice", async ({
+  page,
+}, testInfo) => {
   if (!dbReady) testInfo.skip();
   await page.goto("/en");
-  await page.getByRole("region", { name: "Cookie consent" }).getByRole("button", { name: "Decline" }).click();
+  await page
+    .getByRole("region", { name: "Cookie consent" })
+    .getByRole("button", { name: "Decline" })
+    .click();
   await expect(page.getByRole("region", { name: "Cookie consent" })).toBeHidden();
   await page.getByRole("contentinfo").getByRole("button", { name: "Cookie settings" }).click();
   await expect(page.getByRole("region", { name: "Cookie consent" })).toBeVisible();
 });
 
-test("mobile: the open consent bar publishes its height so the CTA bar can clear it (375px)", async ({ page }, testInfo) => {
+test("mobile: the open consent bar publishes its height so the CTA bar can clear it (375px)", async ({
+  page,
+}, testInfo) => {
   if (!dbReady) testInfo.skip();
   // A detail page carries a MobileCtaBar (Story 5.5). With no consent choice yet,
   // the fixed consent bar (z-50) would otherwise occlude the sticky CTA bar (z-40),
@@ -95,19 +116,29 @@ test("mobile: the open consent bar publishes its height so the CTA bar can clear
   await expect(bar).toBeVisible();
   const readVar = () =>
     page.evaluate(
-      () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--glh-consent-h")) || 0,
+      () =>
+        parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue("--glh-consent-h"),
+        ) || 0,
     );
-  await expect.poll(readVar, { message: "consent bar publishes a positive height" }).toBeGreaterThan(0);
+  await expect
+    .poll(readVar, { message: "consent bar publishes a positive height" })
+    .toBeGreaterThan(0);
   // The published height equals the bar's REAL rendered height (so the CTA lifts by
   // exactly the right amount). Atomic read so a still-settling height can't race.
   const { varH, boxH } = await page.evaluate(() => {
     const el = document.querySelector('[aria-label="Cookie consent"]') as HTMLElement | null;
     return {
-      varH: parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--glh-consent-h")) || 0,
+      varH:
+        parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue("--glh-consent-h"),
+        ) || 0,
       boxH: el ? el.getBoundingClientRect().height : -1,
     };
   });
-  expect(Math.abs(varH - boxH), `published ${varH}px == bar height ${boxH}px`).toBeLessThanOrEqual(1);
+  expect(Math.abs(varH - boxH), `published ${varH}px == bar height ${boxH}px`).toBeLessThanOrEqual(
+    1,
+  );
   // ...and the CTA bar really LIFTS by it. POLLED, with the var and `bottom` read in
   // one snapshot: MobileCtaBar animates `bottom` over 150ms (`transition-[bottom]`),
   // so a one-shot read lands mid-transition. That transition — not sticky layout, as
@@ -116,11 +147,16 @@ test("mobile: the open consent bar publishes its height so the CTA bar can clear
   const ctaGap = () =>
     page.evaluate(() => {
       const nav = document.querySelector('nav[aria-label="Quick actions"]');
-      const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--glh-consent-h")) || 0;
+      const v =
+        parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue("--glh-consent-h"),
+        ) || 0;
       const b = nav ? parseFloat(getComputedStyle(nav).bottom) || 0 : 0;
       return b > 0 ? Math.abs(b - v) : Number.POSITIVE_INFINITY;
     });
-  await expect.poll(ctaGap, { message: "CTA bar's bottom equals the published consent height" }).toBeLessThanOrEqual(1);
+  await expect
+    .poll(ctaGap, { message: "CTA bar's bottom equals the published consent height" })
+    .toBeLessThanOrEqual(1);
   // Dismiss ⇒ the var collapses so the CTA bar returns flush to the bottom.
   await bar.getByRole("button", { name: "Decline" }).click();
   await expect(bar).toBeHidden();
@@ -131,9 +167,13 @@ test("no CSP violation from the consent UI", async ({ page }, testInfo) => {
   if (!dbReady) testInfo.skip();
   const violations: string[] = [];
   page.on("console", (m) => {
-    if (m.type() === "error" && /content security policy/i.test(m.text())) violations.push(m.text());
+    if (m.type() === "error" && /content security policy/i.test(m.text()))
+      violations.push(m.text());
   });
   await page.goto("/en");
-  await page.getByRole("region", { name: "Cookie consent" }).getByRole("button", { name: "Accept" }).click();
+  await page
+    .getByRole("region", { name: "Cookie consent" })
+    .getByRole("button", { name: "Accept" })
+    .click();
   expect(violations, violations.join("\n")).toEqual([]);
 });

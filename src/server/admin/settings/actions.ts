@@ -60,9 +60,7 @@ export async function updateSlaProcessTextAction(
 }
 
 /** Edit one SLA step's badge/title/description (per locale, EN required). */
-export async function updateSlaStepTextAction(
-  raw: unknown,
-): Promise<MutationResult<{ ok: true }>> {
+export async function updateSlaStepTextAction(raw: unknown): Promise<MutationResult<{ ok: true }>> {
   return withAdminMutation(slaStepTextSchema, raw, async (input) => {
     const rows = localeTextRows(input as unknown as Record<string, unknown>, SLA_STEP_FIELDS);
     await updateSlaStepText(
@@ -79,9 +77,7 @@ export async function updateSlaStepTextAction(
 }
 
 /** Reorder the SLA steps via the deferred-constraint transaction (AC2). */
-export async function reorderSlaStepsAction(
-  raw: unknown,
-): Promise<MutationResult<{ ok: true }>> {
+export async function reorderSlaStepsAction(raw: unknown): Promise<MutationResult<{ ok: true }>> {
   return withAdminMutation(slaReorderSchema, raw, async (input) => {
     await reorderSlaSteps(input.orderedStepIds);
     return { tags: [TAGS.sla], data: { ok: true } };

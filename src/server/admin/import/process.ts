@@ -47,13 +47,21 @@ function nameRows(
   const rows: { locale: Locale; name: string; description: string | null }[] = [
     { locale: "en", name: d.name_en, description: d.description_en ?? null },
   ];
-  if (d.name_tr) rows.push({ locale: "tr", name: d.name_tr, description: d.description_tr ?? null });
-  if (d.name_ru) rows.push({ locale: "ru", name: d.name_ru, description: d.description_ru ?? null });
+  if (d.name_tr)
+    rows.push({ locale: "tr", name: d.name_tr, description: d.description_tr ?? null });
+  if (d.name_ru)
+    rows.push({ locale: "ru", name: d.name_ru, description: d.description_ru ?? null });
   return rows;
 }
 
 export async function processImport(rows: RawRow[]): Promise<ImportReport> {
-  const report: ImportReport = { total: rows.length, created: 0, updated: 0, errored: 0, errors: [] };
+  const report: ImportReport = {
+    total: rows.length,
+    created: 0,
+    updated: 0,
+    errored: 0,
+    errors: [],
+  };
   if (rows.length === 0) {
     report.fileError = "noRows";
     return report;
@@ -110,13 +118,16 @@ export async function processImport(rows: RawRow[]): Promise<ImportReport> {
     const categoryId = cat.get(v.data.categorySlug);
     const seriesId = v.data.seriesSlug ? ser.get(v.data.seriesSlug) : undefined;
     const fkErrors: RowError[] = [];
-    if (!manufacturerId) fkErrors.push({ row: v.row, field: "manufacturerSlug", key: "unknownManufacturer" });
+    if (!manufacturerId)
+      fkErrors.push({ row: v.row, field: "manufacturerSlug", key: "unknownManufacturer" });
     if (!categoryId) fkErrors.push({ row: v.row, field: "categorySlug", key: "unknownCategory" });
-    if (v.data.seriesSlug && !seriesId) fkErrors.push({ row: v.row, field: "seriesSlug", key: "unknownSeries" });
+    if (v.data.seriesSlug && !seriesId)
+      fkErrors.push({ row: v.row, field: "seriesSlug", key: "unknownSeries" });
     const industryIds: string[] = [];
     for (const slug of v.industries) {
       const id = ind.get(slug);
-      if (!id) fkErrors.push({ row: v.row, field: "industrySlugs", key: `unknownIndustry:${slug}` });
+      if (!id)
+        fkErrors.push({ row: v.row, field: "industrySlugs", key: `unknownIndustry:${slug}` });
       else industryIds.push(id);
     }
     if (fkErrors.length > 0) {

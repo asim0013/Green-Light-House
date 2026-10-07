@@ -12,7 +12,10 @@ const accessed = new Set<string>();
 const accessedLeads = new Set<string>();
 vi.mock("@/lib/db", () => {
   const recorder = (seen: Set<string>) => {
-    const models: Record<string, { findMany: () => Promise<unknown[]>; findUnique: () => Promise<null> }> = {};
+    const models: Record<
+      string,
+      { findMany: () => Promise<unknown[]>; findUnique: () => Promise<null> }
+    > = {};
     return new Proxy(
       {},
       {

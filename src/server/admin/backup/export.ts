@@ -131,7 +131,10 @@ export async function buildDatasetExport(): Promise<DatasetExport> {
         steps: { orderBy: { sort: "asc" }, include: { translations: localeOrder } },
       },
     }),
-    prisma.homeContent.findMany({ orderBy: { key: "asc" }, include: { translations: localeOrder } }),
+    prisma.homeContent.findMany({
+      orderBy: { key: "asc" },
+      include: { translations: localeOrder },
+    }),
     prisma.teamMember.findMany({
       orderBy: [{ order: "asc" }, { id: "asc" }],
       include: { translations: localeOrder },

@@ -86,7 +86,9 @@ describe("buildDatasetExport (integration)", () => {
     expect(hasNonEn, "expected at least one non-EN industry translation").toBe(true);
     // SLA step translations carry more than one locale somewhere.
     const stepLocales = new Set(
-      out.data.slaProcesses.flatMap((p) => p.steps.flatMap((s) => s.translations.map((t) => t.locale))),
+      out.data.slaProcesses.flatMap((p) =>
+        p.steps.flatMap((s) => s.translations.map((t) => t.locale)),
+      ),
     );
     expect(stepLocales.size).toBeGreaterThan(1);
   });
@@ -97,7 +99,8 @@ describe("buildDatasetExport (integration)", () => {
       expect(typeof p.attributes).toBe("object");
       expect(Array.isArray(p.media)).toBe(true);
     }
-    if (out.data.homeContent[0]) expect(Array.isArray(out.data.homeContent[0].certMarks)).toBe(true);
+    if (out.data.homeContent[0])
+      expect(Array.isArray(out.data.homeContent[0].certMarks)).toBe(true);
   });
 
   it("contains NO admin credentials or approval gates", async (ctx) => {

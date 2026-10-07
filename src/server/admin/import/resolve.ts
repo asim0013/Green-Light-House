@@ -22,14 +22,19 @@ async function idsBySlug(
 
 export function manufacturerIdsBySlug(slugs: Iterable<string>): Promise<Map<string, string>> {
   return idsBySlug(
-    (s) => prisma.manufacturer.findMany({ where: { slug: { in: s } }, select: { id: true, slug: true } }),
+    (s) =>
+      prisma.manufacturer.findMany({
+        where: { slug: { in: s } },
+        select: { id: true, slug: true },
+      }),
     slugs,
   );
 }
 
 export function categoryIdsBySlug(slugs: Iterable<string>): Promise<Map<string, string>> {
   return idsBySlug(
-    (s) => prisma.category.findMany({ where: { slug: { in: s } }, select: { id: true, slug: true } }),
+    (s) =>
+      prisma.category.findMany({ where: { slug: { in: s } }, select: { id: true, slug: true } }),
     slugs,
   );
 }
@@ -43,7 +48,8 @@ export function seriesIdsBySlug(slugs: Iterable<string>): Promise<Map<string, st
 
 export function industryIdsBySlug(slugs: Iterable<string>): Promise<Map<string, string>> {
   return idsBySlug(
-    (s) => prisma.industry.findMany({ where: { slug: { in: s } }, select: { id: true, slug: true } }),
+    (s) =>
+      prisma.industry.findMany({ where: { slug: { in: s } }, select: { id: true, slug: true } }),
     slugs,
   );
 }

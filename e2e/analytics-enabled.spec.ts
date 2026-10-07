@@ -33,7 +33,8 @@ function watch(page: Page) {
     if (m.type() === "error" && /content security policy/i.test(m.text())) csp.push(m.text());
   });
   page.on("request", (r) => {
-    if (ANALYTICS.test(new URL(r.url()).pathname)) analyticsRequests.push(r.method() + " " + r.url());
+    if (ANALYTICS.test(new URL(r.url()).pathname))
+      analyticsRequests.push(r.method() + " " + r.url());
   });
   return { csp, analyticsRequests };
 }
@@ -81,7 +82,11 @@ test.beforeEach(async ({ request }, testInfo) => {
   await request.get(`${STUB}/__reset`);
 });
 
-test("first visit, no choice: nothing reaches the provider — not even on a tel: click", async ({ page, context, request }) => {
+test("first visit, no choice: nothing reaches the provider — not even on a tel: click", async ({
+  page,
+  context,
+  request,
+}) => {
   const w = watch(page);
   await page.goto("/en");
   await expect(page.getByRole("region", { name: CONSENT })).toBeVisible();
@@ -92,7 +97,9 @@ test("first visit, no choice: nothing reaches the provider — not even on a tel
   expect(w.analyticsRequests).toEqual([]);
   expect(await events(request)).toEqual([]);
   expect(await page.evaluate(() => localStorage.getItem("plausible_ignore"))).toBeNull();
-  const extra = (await context.cookies()).map((c) => c.name).filter((n) => n !== "NEXT_LOCALE" && n !== "glh-consent");
+  const extra = (await context.cookies())
+    .map((c) => c.name)
+    .filter((n) => n !== "NEXT_LOCALE" && n !== "glh-consent");
   expect(extra).toEqual([]);
 });
 
@@ -109,7 +116,10 @@ test("Decline: still nothing reaches the provider", async ({ page, request }) =>
   expect(await events(request)).toEqual([]);
 });
 
-test("Accept after load: script + pageview + a PII-free Phone event, no reload, zero CSP violations", async ({ page, request }) => {
+test("Accept after load: script + pageview + a PII-free Phone event, no reload, zero CSP violations", async ({
+  page,
+  request,
+}) => {
   const w = watch(page);
   await page.goto("/en");
   await hydrated(page);
@@ -122,7 +132,9 @@ test("Accept after load: script + pageview + a PII-free Phone event, no reload, 
   await expect.poll(async () => (await events(request)).map((e) => e.n)).toContain("pageview");
 
   await clickTel(page);
-  await expect.poll(async () => (await events(request)).filter((e) => e.n === "Phone").length).toBe(1);
+  await expect
+    .poll(async () => (await events(request)).filter((e) => e.n === "Phone").length)
+    .toBe(1);
 
   const all = await events(request);
   const phone = all.find((e) => e.n === "Phone")!;
@@ -140,14 +152,20 @@ test("Accept after load: script + pageview + a PII-free Phone event, no reload, 
   expect(w.csp, w.csp.join("\n")).toEqual([]);
 });
 
-test("revoke via footer Cookie settings: the loaded script stops sending, and stays off after reload", async ({ page, request }) => {
+test("revoke via footer Cookie settings: the loaded script stops sending, and stays off after reload", async ({
+  page,
+  request,
+}) => {
   await page.goto("/en");
   await hydrated(page);
   await page.getByRole("region", { name: CONSENT }).getByRole("button", { name: "Accept" }).click();
   await expect.poll(async () => (await events(request)).map((e) => e.n)).toContain("pageview");
 
   await page.getByRole("contentinfo").getByRole("button", { name: "Cookie settings" }).click();
-  await page.getByRole("region", { name: CONSENT }).getByRole("button", { name: "Decline" }).click();
+  await page
+    .getByRole("region", { name: CONSENT })
+    .getByRole("button", { name: "Decline" })
+    .click();
   expect(await page.evaluate(() => localStorage.getItem("plausible_ignore"))).toBe("true");
 
   await request.get(`${STUB}/__reset`);
@@ -162,7 +180,12 @@ test("revoke via footer Cookie settings: the loaded script stops sending, and st
   expect(await events(request)).toEqual([]);
 });
 
-test("returning visitor with consent granted: loads on first paint", async ({ page, context, request, baseURL }) => {
+test("returning visitor with consent granted: loads on first paint", async ({
+  page,
+  context,
+  request,
+  baseURL,
+}) => {
   await context.addCookies([{ name: "glh-consent", value: "granted", url: baseURL! }]);
   const w = watch(page);
   await page.goto("/en");

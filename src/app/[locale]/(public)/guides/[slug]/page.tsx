@@ -52,7 +52,10 @@ export default async function GuideDetailPage(props: {
   return (
     <article className="bg-surface">
       <Breadcrumb
-        items={[{ label: t("crumb"), href: "/guides" }, { label: guide.title, isFallback: guide.isFallback }]}
+        items={[
+          { label: t("crumb"), href: "/guides" },
+          { label: guide.title, isFallback: guide.isFallback },
+        ]}
       />
       <div className={`${CONTAINER} py-10 md:py-12`}>
         <header className="max-w-[72ch]">
@@ -64,7 +67,10 @@ export default async function GuideDetailPage(props: {
             <FallbackNotice isFallback={guide.isFallback} />
           </h1>
           {guide.intro && (
-            <p lang={lang} className="mt-4 text-[17px] leading-relaxed text-ink-2 whitespace-pre-line">
+            <p
+              lang={lang}
+              className="mt-4 text-[17px] leading-relaxed text-ink-2 whitespace-pre-line"
+            >
               {guide.intro}
             </p>
           )}
@@ -132,7 +138,10 @@ export default async function GuideDetailPage(props: {
         )}
 
         <p className="mt-10 text-[13px]">
-          <Link href="/guides" className="text-ink-2 hover:text-accent hover:underline underline-offset-4">
+          <Link
+            href="/guides"
+            className="text-ink-2 hover:text-accent hover:underline underline-offset-4"
+          >
             ← {t("title")}
           </Link>
         </p>

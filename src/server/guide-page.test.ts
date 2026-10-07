@@ -43,8 +43,14 @@ describe("guideSignals", () => {
     expect(guideSignals("en", guide({ intro: null, sections: [] })).itemCount).toBe(0);
     // Curated links do NOT count as prose.
     expect(
-      guideSignals("en", guide({ intro: null, sections: [], products: [{ slug: "p", name: "P", isFallback: false }] }))
-        .itemCount,
+      guideSignals(
+        "en",
+        guide({
+          intro: null,
+          sections: [],
+          products: [{ slug: "p", name: "P", isFallback: false }],
+        }),
+      ).itemCount,
     ).toBe(0);
   });
 
@@ -59,14 +65,31 @@ describe("guideListItemSignals (the sitemap's per-guide gate)", () => {
   it("matches guideSignals' formula from a list item — prose required, fallback honored", () => {
     // Prose-less (no intro, 0 sections) → empty; with a section → content.
     expect(
-      guideListItemSignals("en", { slug: "g", title: "G", intro: null, sectionCount: 0, isFallback: false }).itemCount,
+      guideListItemSignals("en", {
+        slug: "g",
+        title: "G",
+        intro: null,
+        sectionCount: 0,
+        isFallback: false,
+      }).itemCount,
     ).toBe(0);
     expect(
-      guideListItemSignals("en", { slug: "g", title: "G", intro: "x", sectionCount: 2, isFallback: false }).itemCount,
+      guideListItemSignals("en", {
+        slug: "g",
+        title: "G",
+        intro: "x",
+        sectionCount: 2,
+        isFallback: false,
+      }).itemCount,
     ).toBe(3);
     expect(
-      guideListItemSignals("tr", { slug: "g", title: "G", intro: "x", sectionCount: 1, isFallback: true })
-        .fallbackFields,
+      guideListItemSignals("tr", {
+        slug: "g",
+        title: "G",
+        intro: "x",
+        sectionCount: 1,
+        isFallback: true,
+      }).fallbackFields,
     ).toBe(1);
   });
 });

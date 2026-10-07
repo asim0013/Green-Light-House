@@ -14,22 +14,36 @@ import { probeDbReady, warmUp } from "./dbReady";
 
 const MOBILE = { width: 375, height: 812 };
 const DESKTOP = { width: 1440, height: 900 };
-const NO_SCROLL_PAGES = ["/en", "/en/products", "/en/products/fd-9500", "/en/projects/hospital-fire-suppression"];
+const NO_SCROLL_PAGES = [
+  "/en",
+  "/en/products",
+  "/en/products/fd-9500",
+  "/en/projects/hospital-fire-suppression",
+];
 
 let dbReady = true;
 
 test.beforeAll(async ({ baseURL }) => {
   dbReady = await probeDbReady();
   if (process.env.CI) expect(dbReady).toBe(true);
-  await warmUp(baseURL, ["/en/products/fd-9500", "/en/projects/hospital-fire-suppression", "/en/products"]);
+  await warmUp(baseURL, [
+    "/en/products/fd-9500",
+    "/en/projects/hospital-fire-suppression",
+    "/en/products",
+  ]);
 });
 
 test.describe("sticky mobile CTA bar (AC1)", () => {
   for (const { path, doorwayHref } of [
     { path: "/en/products/fd-9500", doorwayHref: "/rfq?product=fd-9500" },
-    { path: "/en/projects/hospital-fire-suppression", doorwayHref: "/rfq?project=hospital-fire-suppression" },
+    {
+      path: "/en/projects/hospital-fire-suppression",
+      doorwayHref: "/rfq?project=hospital-fire-suppression",
+    },
   ]) {
-    test(`${path}: the bar is visible at mobile, with a quote + call action`, async ({ page }, testInfo) => {
+    test(`${path}: the bar is visible at mobile, with a quote + call action`, async ({
+      page,
+    }, testInfo) => {
       if (!dbReady) testInfo.skip();
       await page.setViewportSize(MOBILE);
       await page.goto(path);
@@ -41,7 +55,9 @@ test.describe("sticky mobile CTA bar (AC1)", () => {
       await expect(bar.locator('a[href^="tel:"]')).toBeVisible();
     });
 
-    test(`${path}: the bar is ABSENT at desktop (the anchor card carries the CTAs)`, async ({ page }, testInfo) => {
+    test(`${path}: the bar is ABSENT at desktop (the anchor card carries the CTAs)`, async ({
+      page,
+    }, testInfo) => {
       if (!dbReady) testInfo.skip();
       await page.setViewportSize(DESKTOP);
       await page.goto(path);

@@ -19,7 +19,10 @@ export default async function SettingsPage(props: { params: Promise<{ locale: st
       <AdminTopbar title="Settings" subtitle="Operations · Contact, phone, notifications & SLA" />
       <SiteSettingsForm initial={settings} />
       <div className="border-t border-border-subtle">
-        <AdminTopbar title="Response process (SLA)" subtitle="Operations · Editable process steps shown in place of prices" />
+        <AdminTopbar
+          title="Response process (SLA)"
+          subtitle="Operations · Editable process steps shown in place of prices"
+        />
         {sla ? (
           <SlaEditor initial={sla} />
         ) : (
@@ -29,12 +32,15 @@ export default async function SettingsPage(props: { params: Promise<{ locale: st
         )}
       </div>
       <div className="border-t border-border-subtle">
-        <AdminTopbar title="Backup / Export" subtitle="Operations · Download the full dataset (Story 4.9)" />
+        <AdminTopbar
+          title="Backup / Export"
+          subtitle="Operations · Download the full dataset (Story 4.9)"
+        />
         <div className="flex max-w-2xl flex-col gap-3 p-8">
           <p className="text-[13px] text-ink-2">
-            Downloads the full catalog, content and leads as one re-importable JSON file for
-            backup or migration. Admin credentials are never included. Stored attachment and
-            media objects are backed up separately at the storage layer, not in this file.
+            Downloads the full catalog, content and leads as one re-importable JSON file for backup
+            or migration. Admin credentials are never included. Stored attachment and media objects
+            are backed up separately at the storage layer, not in this file.
           </p>
           {/* A PLAIN anchor (not next-intl <Link>) so the browser does a full GET and the
               attachment downloads, rather than a client-side navigation to a file route. The
@@ -49,7 +55,10 @@ export default async function SettingsPage(props: { params: Promise<{ locale: st
         </div>
       </div>
       <div className="border-t border-border-subtle">
-        <AdminTopbar title="Bulk import" subtitle="Operations · Product audit CSV / Excel (Story 4.10)" />
+        <AdminTopbar
+          title="Bulk import"
+          subtitle="Operations · Product audit CSV / Excel (Story 4.10)"
+        />
         <BulkImportForm locale={locale} />
       </div>
     </>
